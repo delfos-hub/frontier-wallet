@@ -9,6 +9,22 @@ import { A, META, POOLS } from './fixture.mjs';
 // LUNC per USTC in the fixture: 9.4e8 / 5e6
 const USTC_IN_LUNC = 188;
 
+group('which dialect an exchange speaks');
+{
+  // the feed's names as they actually arrive, including the two it just added
+  const { mod } = await loadMarket();
+  const want = {
+    'Garuda DEX': 'gd', 'CL8Y DEX': 'cl', 'LuncSwap': 'ts',
+    'Terraswap': 'ts', 'Terraport v2': 'ts', 'Terraport v3': 'ts', 'Weso DeFi': 'ts'
+  };
+  for (const name in want) {
+    ok(name + ' is guessed as ' + want[name], mod.dexDialect(name) === want[name],
+       mod.dexDialect(name));
+  }
+  ok('an exchange with no name falls back rather than failing',
+     mod.dexDialect(undefined) === 'ts');
+}
+
 group('the market map');
 {
   const { mod } = await loadMarket();

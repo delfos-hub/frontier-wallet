@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=556f9c7e';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=9b827937';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -613,6 +613,19 @@ const marketComplete = () => MARKET_COMPLETE;
 const OW_URL = 'https://orbitwire-proxy.vladislav-baydan.workers.dev/pairs';
 
 let OW = null;
+/* The feed names the exchange, and the exchange decides the dialect.
+   A first guess only - simulateSwap still probes the rest if it is wrong - but a
+   wrong one costs a failed query on every new pool of that exchange, and it
+   fails silently, so it has to be right on its own account. */
+function dexDialect(name){
+  const n = String(name || '');
+  if (/garuda/i.test(n)) return 'gd';
+  if (/cl8y/i.test(n)) return 'cl';
+  // TerraSwap, both Terraport generations, LuncSwap and Weso all answer as
+  // terraswap::pair::QueryMsg
+  return 'ts';
+}
+
 const owKey = t => (t.type === 'NATIVE' || String(t.address).slice(0, 6) !== 'terra1')
   ? 'native:' + t.address : 'cw20:' + t.address;
 
@@ -638,7 +651,7 @@ async function owMarket(){
     // ordered without asking any of them, and the dex name travels with it
     // because it is the first guess at which dialect the pool speaks.
     const liq = Number(p.liquidity) || 0;
-    const dex = /garuda/i.test(String(p.dex || '')) ? 'gd' : 'ts';
+    const dex = dexDialect(p.dex);
     (edges[a] = edges[a] || []).push({ to: b, pair: p.pool, liq: liq, dex: dex });
     (edges[b] = edges[b] || []).push({ to: a, pair: p.pool, liq: liq, dex: dex });
     for (const t of [p.base, p.quote]) {
@@ -991,4 +1004,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, dexDialect, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
