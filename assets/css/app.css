@@ -741,3 +741,23 @@ button.waddr:active{opacity:.6}
    ту же пару у высоты приложение уже использует. */
 body{width:100%;max-width:100vw;margin:0 auto}
 .tabs{max-width:min(var(--app-w),100vw)}
+
+/* ---------------- P2P market ----------------
+   The widget fills the screen under a thin header. The height follows the
+   Telegram viewport, the same variable .step uses. */
+#st-p2p{padding:10px 10px 0;display:none;flex-direction:column}
+#st-p2p.on{display:flex}
+.p2p-top{display:flex;align-items:center;gap:12px;margin:0 4px 10px;flex:none}
+.p2p-top h2{margin:0;font-size:17px}
+.p2p-frame{flex:1;min-height:calc(var(--tg-viewport-stable-height, 100vh) - 64px);
+  border-radius:16px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+.p2p-frame iframe{display:block;width:100%;height:calc(var(--tg-viewport-stable-height, 100vh) - 66px);border:0}
+.p2p-frame .empty{padding:40px 0;text-align:center;color:var(--muted)}
+.p2p-lines{display:flex;flex-direction:column;gap:1px;border-radius:12px;overflow:hidden;
+  border:1px solid var(--border);margin-bottom:10px;flex:none}
+.p2p-line{display:flex;justify-content:space-between;gap:14px;padding:10px 12px;background:var(--surface2);
+  font-size:13px;line-height:1.45}
+.p2p-line span{color:var(--muted);flex:none}
+.p2p-line b{font-weight:600;color:var(--text);text-align:right;word-break:break-word}
+#p2p-left{text-transform:none;letter-spacing:0;font-size:11px}
+#p2p-sheet .sw-sheet-in{overflow-y:auto}
