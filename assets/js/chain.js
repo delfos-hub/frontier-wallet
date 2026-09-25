@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=edeab0ea';
+import { $ } from './shell.js?v=5e7bb797';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -14,6 +14,20 @@ const CW20 = [
   'terra1ljyvgw50u67r3ep7pp7qexgnsgy96fl57q0suut325ehed7eal8qwdtdq4'
 ];
 const NATIVE = { uluna:{sym:'LUNC',dec:6}, uusd:{sym:'USTC',dec:6} };
+// IBC denoms the wallet names itself, by full hash only - a prefix match could
+// put a USDC label on some other token. Each hash checked by recomputing
+// sha256 of its trace:
+//   ibc/0BB9D85... = transfer/channel-113/uusdc (Noble USDC). Circle stops the
+//     route it redeems through: CCTP v1 pauses 2026-12-01, suspended 2027-01-12.
+//   ibc/F5211239... = transfer/channel-143/erc20:0xa00C...235a (Injective USDC),
+//     where community liquidity moved under Prop 12226.
+// `usd: 1` prices them at a dollar; neither has a LUNC pool worth trusting.
+const KNOWN_IBC = {
+  'ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5':
+    { sym: 'USDC.n', dec: 6, note: 'Noble', logo: 'assets/tokens/USDC.png', usd: 1, sunset: true },
+  'ibc/F52112392095A6D6D1B17EF1FE19BE0B39B2A79B8A2B2F55CD721FC7DBF5081F':
+    { sym: 'USDC.inj', dec: 6, note: 'Injective', logo: 'assets/tokens/USDC.png', usd: 1 },
+};
 const COLOR  = { LUNC:'#7B5CFF', USTC:'#00FFB0', TCO:'#00D4FF', TERRA:'#E8C840' };
 // a stable colour per symbol so tokens do not change appearance between loads
 function hue(sym){
@@ -265,4 +279,4 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, LCD, NATIVE, THIN_LUNC, amt, chainLogo, dbg, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
+export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, dbg, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };

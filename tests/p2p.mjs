@@ -43,7 +43,8 @@ globalThis.__smart = async (addr, msg) => {
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2p-'));
 const stubs = {
-  'chain.js': `export const amt=(r,d)=>Number(r||0)/Math.pow(10,d);
+  'chain.js': `export const KNOWN_IBC={'ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5':{sym:'USDC.n',dec:6},'ibc/F52112392095A6D6D1B17EF1FE19BE0B39B2A79B8A2B2F55CD721FC7DBF5081F':{sym:'USDC.inj',dec:6}};
+export const amt=(r,d)=>Number(r||0)/Math.pow(10,d);
 export const fmt=v=>v.toLocaleString('en-US',{maximumFractionDigits:v<1?6:2});
 export const smart=(a,m)=>globalThis.__smart(a,m);`,
   'onboarding.js': `export const PIN_LEN=8; export const digitsOnly=e=>e.value; export const dots=()=>{}; export const focusPin=()=>{};`,
@@ -141,6 +142,12 @@ await expect('Noble USDC named USDC.n, not a hash', async () => {
   const p = await m.understand({ contract: P2P, msg: { create_order: { ask: { native: { denom: USDC } }, ask_total: '47000000', ttl: null } },
     funds: [{ denom: 'uluna', amount: '1000000000000' }] });
   if (lineOf(p, 'For') !== '47 USDC.n') throw new Error(lineOf(p, 'For'));
+});
+await expect('Injective USDC named USDC.inj', async () => {
+  const INJ = 'ibc/F52112392095A6D6D1B17EF1FE19BE0B39B2A79B8A2B2F55CD721FC7DBF5081F';
+  const p = await m.understand({ contract: P2P, msg: { create_order: { ask: { native: { denom: INJ } }, ask_total: '47000000', ttl: null } },
+    funds: [{ denom: 'uluna', amount: '1000000000000' }] });
+  if (lineOf(p, 'For') !== '47 USDC.inj') throw new Error(lineOf(p, 'For'));
 });
 await expect('a look-alike IBC denom is not called USDC', async () => {
   const p = await m.understand({ contract: P2P, msg: { create_order: { ask: { native: { denom: 'ibc/0BB9D85000000000000000000000000000000000000000000000000000000000' } }, ask_total: '1000000', ttl: null } },
