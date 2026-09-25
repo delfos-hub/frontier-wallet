@@ -136,6 +136,17 @@ await expect('native fill of a CW20 order, minimum shown', async () => {
   if (!/about 0\.999 TUSD/.test(lineOf(p, 'You get'))) throw new Error(lineOf(p, 'You get'));
   if (!/^0\.99 TUSD/.test(lineOf(p, 'Minimum'))) throw new Error(lineOf(p, 'Minimum'));
 });
+await expect('Noble USDC named USDC.n, not a hash', async () => {
+  const USDC = 'ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5';
+  const p = await m.understand({ contract: P2P, msg: { create_order: { ask: { native: { denom: USDC } }, ask_total: '47000000', ttl: null } },
+    funds: [{ denom: 'uluna', amount: '1000000000000' }] });
+  if (lineOf(p, 'For') !== '47 USDC.n') throw new Error(lineOf(p, 'For'));
+});
+await expect('a look-alike IBC denom is not called USDC', async () => {
+  const p = await m.understand({ contract: P2P, msg: { create_order: { ask: { native: { denom: 'ibc/0BB9D85000000000000000000000000000000000000000000000000000000000' } }, ask_total: '1000000', ttl: null } },
+    funds: [{ denom: 'uluna', amount: '1000000' }] });
+  if (/USDC/.test(lineOf(p, 'For'))) throw new Error(lineOf(p, 'For'));
+});
 await expect('own cancel allowed and described', async () => {
   const p = await m.understand({ contract: P2P, msg: { cancel_order: { order_id: 9 } }, funds: [] });
   if (!/^1\.5 LUNC/.test(lineOf(p, 'Returned to you'))) throw new Error(lineOf(p, 'Returned to you'));
