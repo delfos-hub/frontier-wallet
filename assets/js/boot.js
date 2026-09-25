@@ -1,11 +1,11 @@
-import { amt, fmt } from './chain.js?v=9b827937';
-import { finish } from './crypto.js?v=9b827937';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=9b827937';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=9b827937';
-import { S } from './state.js?v=9b827937';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=9b827937';
-import { paintSendTok } from './tx.js?v=9b827937';
-import { luncRaw, openWallet } from './tokens.js?v=9b827937';
+import { amt, fmt } from './chain.js?v=edeab0ea';
+import { finish } from './crypto.js?v=edeab0ea';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=edeab0ea';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=edeab0ea';
+import { S } from './state.js?v=edeab0ea';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=edeab0ea';
+import { paintSendTok } from './tx.js?v=edeab0ea';
+import { luncRaw, openWallet } from './tokens.js?v=edeab0ea';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -44,7 +44,9 @@ $('#pu').addEventListener('input', async () => {
 
 document.querySelectorAll('#tabs .tab').forEach(b =>
   b.addEventListener('click', () => go(b.dataset.tab)));
-$('#act-stake').addEventListener('click', () => go('stake'));
+// Stake left the home row for P2P; it stays in the tab bar.
+const _actStake = $('#act-stake');
+if (_actStake) _actStake.addEventListener('click', () => go('stake'));
 /* Receive used to be an alert with a bech32 string in it.
 
    The encoder is loaded when this screen opens and not before: it is fifty

@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=9b827937">
+<link rel="stylesheet" href="assets/css/app.css?v=edeab0ea">
 </head>
 <body>
 <div id="rt"></div>
@@ -310,7 +310,7 @@
     <button class="act" id="act-recv"><i><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></i>Receive</button>
     <button class="act" id="act-send"><i><svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></i>Send</button>
     <button class="act" id="act-swap"><i><svg viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m14 4 4 4-4 4"/><path d="M20 16H7"/><path d="m10 12-4 4 4 4"/></svg></i>Swap</button>
-<button class="act" id="act-stake"><i><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/><path d="m3 12 9 5 9-5"/></svg></i>Stake</button>
+<button class="act" id="act-p2p"><i><svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M14 7h3a2 2 0 0 1 2 2v3"/><path d="m17 10 2 2 2-2"/><path d="M10 17H7a2 2 0 0 1-2-2v-3"/><path d="m7 14-2-2-2 2"/></svg></i>P2P</button>
   </div>
 
   <div class="ads" id="ads" hidden><div class="ads-track" id="ads-track"></div><div class="ads-ticks" id="ads-ticks"></div></div>
@@ -481,6 +481,33 @@
   <button class="btn solid" id="send-review">Check what this would cost</button>
 </section>
 
+<!-- ================= P2P ================= -->
+<!-- The market itself is the widget in a frame (delfos-hub/widgets). This
+     page only holds the keys; assets/js/p2p.js answers the frame's requests. -->
+<section class="step" id="st-p2p">
+  <div class="p2p-top">
+    <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+    <h2>P2P market</h2>
+  </div>
+  <div class="p2p-frame" id="p2p-frame"><div class="empty"><span class="spin"></span>Loading</div></div>
+</section>
+
+<div class="sw-sheet" id="p2p-sheet" hidden>
+  <div class="sw-sheet-in">
+    <div class="sw-sheet-top"><span>Confirm in Frontier</span><span id="p2p-left"></span></div>
+    <p class="tiny" style="text-align:left;margin:0 0 10px">The P2P market asks you to sign this. Check it: this is exactly what will be sent.</p>
+    <div class="p2p-lines" id="p2p-lines"></div>
+    <div class="tiny" id="p2p-fee" style="text-align:left"></div>
+    <div class="pinbox" id="p2p-pinbox" hidden style="margin-top:12px">
+      <label>Enter your PIN to sign</label>
+      <div class="pinrow" id="p2p-pinrow"></div>
+      <input class="pinin" id="p2p-pin" type="tel" inputmode="numeric" maxlength="8" autocomplete="off">
+    </div>
+    <div class="meter-txt" id="p2p-msg" style="min-height:18px;text-align:center"></div>
+    <button class="btn quiet" id="p2p-reject" type="button">Reject</button>
+  </div>
+</div>
+
 <section class="step wpad" id="st-stake">
   <div class="head" style="margin:6px 4px 14px"><h2>Staking</h2><span id="stk-count"></span></div>
   <div id="stk-body"><div class="empty">Loading</div></div>
@@ -551,10 +578,11 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=9b827937"></script>
-<script src="assets/js/ads.js?v=9b827937"></script>
-<script type="module" src="assets/js/swap.js?v=9b827937"></script>
-<script type="module" src="assets/js/activity.js?v=9b827937"></script>
-<script type="module" src="assets/js/nft.js?v=9b827937"></script>
+<script type="module" src="assets/js/app.js?v=edeab0ea"></script>
+<script src="assets/js/ads.js?v=edeab0ea"></script>
+<script type="module" src="assets/js/swap.js?v=edeab0ea"></script>
+<script type="module" src="assets/js/activity.js?v=edeab0ea"></script>
+<script type="module" src="assets/js/nft.js?v=edeab0ea"></script>
+<script type="module" src="assets/js/p2p.js?v=edeab0ea"></script>
 </body>
 </html>
