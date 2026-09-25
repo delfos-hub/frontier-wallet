@@ -22,12 +22,12 @@
      in   { channel, type:'execute', id, contract, msg, funds }
      out  { channel, type:'execute-result', id, txHash } | { ..., type:'error', id, message }
 */
-import { amt, fmt, smart } from './chain.js?v=edeab0ea';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=edeab0ea';
-import { $, buzz, go, libs, report } from './shell.js?v=edeab0ea';
-import { S } from './state.js?v=edeab0ea';
-import { decryptSeed } from './storage.js?v=edeab0ea';
-import { dryRunSwap, sendSwap } from './tx.js?v=edeab0ea';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=5e7bb797';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=5e7bb797';
+import { $, buzz, go, libs, report } from './shell.js?v=5e7bb797';
+import { S } from './state.js?v=5e7bb797';
+import { decryptSeed } from './storage.js?v=5e7bb797';
+import { dryRunSwap, sendSwap } from './tx.js?v=5e7bb797';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -88,14 +88,7 @@ const refuse = (id, message) => reply({ type: 'error', id: id, message: String(m
 /* ---------------- reading the chain ----------------
    Token names and the whitelist come from the chain, not from the widget. */
 const META = {};
-// Full denoms only: a prefix match could name some other IBC token USDC.
-// ibc/0BB9D85... = sha256("transfer/channel-113/uusdc"), Noble USDC, checked
-// by recomputing the hash. Injective USDC ("USDC.inj") goes here once it exists.
-const NATIVE_SYM = {
-  uluna: 'LUNC',
-  uusd: 'USTC',
-  'ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5': 'USDC.n',
-};
+const NATIVE_SYM = { uluna: 'LUNC', uusd: 'USTC' };
 
 function assetKind(a){
   if (!a || typeof a !== 'object') return null;
@@ -111,6 +104,8 @@ async function metaOf(a){
   if (!k) throw new Error('unknown asset');
   if (k.native) {
     const d = k.native;
+    // Full denoms only (KNOWN_IBC in chain.js): USDC.n, USDC.inj.
+    if (KNOWN_IBC[d]) return { sym: KNOWN_IBC[d].sym, dec: KNOWN_IBC[d].dec, native: true };
     return { sym: NATIVE_SYM[d] || (d.indexOf('ibc/') === 0 ? 'IBC ' + d.slice(4, 10) : d), dec: 6, native: true };
   }
   if (META[k.cw20]) return META[k.cw20];

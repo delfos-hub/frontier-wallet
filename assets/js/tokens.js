@@ -1,6 +1,6 @@
-import { CW20, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=edeab0ea';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=edeab0ea';
-import { $, go } from './shell.js?v=edeab0ea';
+import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=5e7bb797';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=5e7bb797';
+import { $, go } from './shell.js?v=5e7bb797';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -193,6 +193,7 @@ function fiatOf(t){
   return null;
 }
 
+let SUNSET_CLOSED = false;
 const HOME_NOTE = 'LUNC and USTC use a price feed. Everything else is priced from pools on chain, ' +
   'following a route to LUNC when there is no direct pair. The depth shown is the narrowest pool ' +
   'on that route, because that is the leg a real sale has to fit through.';
@@ -473,6 +474,12 @@ function renderTokens(list, found, px, hint){
   // on a cold start there is nothing honest to put here yet, so the placeholder
   // stays until the sweep finishes
   $('#home-note').textContent = hint || HOME_NOTE;
+  const nob = found.find(t => t.denom && KNOWN_IBC[t.denom] && KNOWN_IBC[t.denom].sunset && t.v > 0);
+  const sun = $('#usdc-sunset');
+  if (sun) {
+    sun.hidden = !nob || SUNSET_CLOSED;
+    if (nob) $('#usdc-sunset-amt').textContent = fmt(nob.v) + ' ' + nob.sym;
+  }
 }
 
 (function wireDust(){
@@ -550,6 +557,12 @@ async function loadBalances(addr, force){
         // only what a human reads
         found.push({ sym: m.sym, v: amt(b.amount, m.dec), note: '', denom: b.denom, dec: m.dec });
         if (b.denom === 'uluna') LUNC_RAW = Number(b.amount);
+      } else if (KNOWN_IBC[b.denom]) {
+        // named here, ahead of the market map: two different USDCs must never
+        // show under the same name, and one of them is being retired
+        const k = KNOWN_IBC[b.denom];
+        found.push({ sym: k.sym, v: amt(b.amount, k.dec), note: k.note, denom: b.denom, dec: k.dec, logo: k.logo });
+        if (k.usd) px[k.sym] = k.usd;
       } else if (b.denom.startsWith('ibc/')) {
         let sym = 'IBC', note = b.denom.slice(4, 12) + '\u2026';
         // The market map names the denoms that actually trade, which is the set
@@ -788,5 +801,23 @@ export { fiatOf, forget, registry, remember, heldTokens, luncRaw, openWallet, re
     try { await loadBalances(LAST_ADDR, true); } catch (e) { /* the banner reports it */ }
     b.textContent = was;
     delete b.dataset.busy;
+  });
+})();
+
+// Noble USDC notice: the link and the close button. Closing lasts until the
+// app is reopened - the deadline does not move, so neither should the reminder
+// for long.
+(function () {
+  const close = $('#usdc-sunset-x');
+  if (close) close.addEventListener('click', function () {
+    SUNSET_CLOSED = true;
+    $('#usdc-sunset').hidden = true;
+  });
+  const more = $('#usdc-sunset-more');
+  if (more) more.addEventListener('click', function (e) {
+    e.preventDefault();
+    const url = more.getAttribute('href');
+    if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink) Telegram.WebApp.openLink(url);
+    else window.open(url, '_blank', 'noopener');
   });
 })();
