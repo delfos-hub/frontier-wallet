@@ -22,12 +22,12 @@
      in   { channel, type:'execute', id, contract, msg, funds }
      out  { channel, type:'execute-result', id, txHash } | { ..., type:'error', id, message }
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=e6d4c28a';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=e6d4c28a';
-import { $, buzz, go, libs, report } from './shell.js?v=e6d4c28a';
-import { S } from './state.js?v=e6d4c28a';
-import { decryptSeed } from './storage.js?v=e6d4c28a';
-import { dryRunSwap, sendSwap } from './tx.js?v=e6d4c28a';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=3aed2ea0';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=3aed2ea0';
+import { $, buzz, go, libs, report } from './shell.js?v=3aed2ea0';
+import { S } from './state.js?v=3aed2ea0';
+import { decryptSeed } from './storage.js?v=3aed2ea0';
+import { dryRunSwap, sendSwap } from './tx.js?v=3aed2ea0';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */

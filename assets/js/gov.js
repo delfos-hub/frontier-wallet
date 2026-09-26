@@ -6,16 +6,17 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=e6d4c28a';
-import { $, buzz, go } from './shell.js?v=e6d4c28a';
-import { S } from './state.js?v=e6d4c28a';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=e6d4c28a';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=3aed2ea0';
+import { $, buzz, go } from './shell.js?v=3aed2ea0';
+import { S } from './state.js?v=3aed2ea0';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=3aed2ea0';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const L = raw => fmt(amt(String(raw), 6));
 const G = LCD + '/cosmos/gov/v1';
+const UNKNOWN = { unknown: true };
 
 const OPT = {
   VOTE_OPTION_YES: 'Yes', VOTE_OPTION_NO: 'No',
@@ -143,7 +144,10 @@ async function load(addr){
   const [tallies, mine] = await Promise.all([
     Promise.all(props.map(p => getJSON(G + '/proposals/' + p.id + '/tally').then(r => r.tally).catch(() => null))),
     Promise.all(props.map(p => addr
-      ? getJSON(G + '/proposals/' + p.id + '/votes/' + addr, 10000, 1).then(r => r.vote).catch(() => null)
+      // only a refusal (400/404) means "no vote"; a failed read is unknown,
+      // and unknown is not shown as "not voted"
+      ? getJSON(G + '/proposals/' + p.id + '/votes/' + addr, 10000, 1).then(r => r.vote)
+          .catch(e => (e && (e.status === 400 || e.status === 404)) ? null : UNKNOWN)
       : Promise.resolve(null)))
   ]);
   props.forEach((p, i) => { p._tally = tallies[i]; p._mine = mine[i]; });
@@ -152,7 +156,8 @@ async function load(addr){
   DATA = {
     live: props,
     recent: (recent.proposals || []).filter(p => !liveIds.has(p.id)).slice(0, 10),
-    rules: { quorum: Number(tp.quorum || 0.4), threshold: Number(tp.threshold || 0.5), veto: Number(tp.veto_threshold || 0.334) },
+    rules: { quorum: Number(tp.quorum || 0.4), threshold: Number(tp.threshold || 0.5), veto: Number(tp.veto_threshold || 0.334),
+             expedited: Number((rules.params && rules.params.expedited_threshold) || tp.expedited_threshold || 0.667) },
     bonded: BigInt((pool.pool && pool.pool.bonded_tokens) || '0'),
     power: (dels.delegation_responses || []).reduce((a, d) => a + BigInt(d.balance && d.balance.amount || '0'), 0n)
   };
@@ -160,6 +165,8 @@ async function load(addr){
 }
 
 // Where the vote stands against the chain's own rules.
+// An expedited proposal passes on a higher threshold (0.667 on mainnet).
+const rulesFor = (p, rules) => p && p.expedited ? Object.assign({}, rules, { threshold: rules.expedited }) : rules;
 function standing(t, rules, bonded){
   const y = BigInt(t.yes_count || '0'), n = BigInt(t.no_count || '0'),
         v = BigInt(t.no_with_veto_count || '0'), a = BigInt(t.abstain_count || '0');
@@ -199,12 +206,13 @@ function draw(){
   h += '<div class="head" style="margin:0 4px 10px"><h2>Voting now</h2><span>' + d.live.length + '</span></div>';
   if (!d.live.length) h += '<div class="empty">No proposal is in its voting period right now.</div>';
   h += d.live.map(p => {
-    const s = p._tally ? standing(p._tally, d.rules, d.bonded) : null;
+    const s = p._tally ? standing(p._tally, rulesFor(p, d.rules), d.bonded) : null;
     const mine = p._mine && p._mine.options && p._mine.options[0] ? OPT[p._mine.options[0].option] : null;
+    const unknown = p._mine === UNKNOWN;
     return '<button class="row gov-row" data-id="' + esc(p.id) + '" type="button"><div class="row-main">' +
       '<div class="row-name">#' + esc(p.id) + ' ' + esc(titleOf(p)) + '</div>' +
       '<div class="row-amt">' + esc(kindOf(p)) + ' \u00b7 ' + left(p.voting_end_time) +
-      (mine ? ' \u00b7 <b class="gov-mine">you: ' + esc(mine) + '</b>' : ' \u00b7 <b class="gov-todo">not voted</b>') + '</div>' +
+      (mine ? ' \u00b7 <b class="gov-mine">you: ' + esc(mine) + '</b>' : unknown ? '' : ' \u00b7 <b class="gov-todo">not voted</b>') + '</div>' +
       (s ? bar(s) + '<div class="row-sub ' + (s.verdict.ok ? 'gov-ok' : 'gov-bad') + '">' + esc(s.verdict.text) +
         ' \u00b7 Yes ' + s.yes.toFixed(1) + '% \u00b7 No ' + s.no.toFixed(1) + '% \u00b7 Veto ' + s.veto.toFixed(1) + '%</div>' : '') +
       '</div></button>';
@@ -240,6 +248,7 @@ let FLOW = null;
 
 function sheet(on){ $('#gov-sheet').hidden = !on; }
 $('#gov-sheet-x').addEventListener('click', () => { FLOW = null; sheet(false); });
+$('#gov-sheet').addEventListener('click', e => { if (e.target.id === 'gov-sheet') { FLOW = null; sheet(false); } });
 
 function open(id){
   const p = DATA.live.find(x => String(x.id) === String(id)) || DATA.recent.find(x => String(x.id) === String(id));
@@ -247,12 +256,12 @@ function open(id){
   const live = DATA.live.indexOf(p) >= 0;
   FLOW = { id: String(p.id), live: live };
   $('#gov-sheet-title').textContent = 'Proposal #' + p.id;
-  const s = live && p._tally ? standing(p._tally, DATA.rules, DATA.bonded) : null;
+  const s = live && p._tally ? standing(p._tally, rulesFor(p, DATA.rules), DATA.bonded) : null;
   const mine = p._mine && p._mine.options && p._mine.options[0] ? OPT[p._mine.options[0].option] : null;
   const text = textOf(p);
   let h = '<h3 class="gov-title">' + esc(titleOf(p)) + '</h3>' +
     '<div class="p2p-lines">' +
-    '<div class="p2p-line"><span>Type</span><b>' + esc(kindOf(p)) + '</b></div>' +
+    '<div class="p2p-line"><span>Type</span><b>' + esc(kindOf(p)) + (p.expedited ? ' \u00b7 expedited, passes at ' + (DATA.rules.expedited * 100).toFixed(1) + '%' : '') + '</b></div>' +
     '<div class="p2p-line"><span>Status</span><b>' + esc(STATUS[p.status] || p.status) + (live ? ' \u00b7 ' + left(p.voting_end_time) : '') + '</b></div>' +
     (live ? '<div class="p2p-line"><span>Ends</span><b>' + new Date(p.voting_end_time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</b></div>' : '') +
     (s ? '<div class="p2p-line"><span>Turnout</span><b>' + s.turnout.toFixed(1) + '% (quorum ' + (DATA.rules.quorum * 100).toFixed(0) + '%)</b></div>' : '') +
@@ -330,22 +339,28 @@ async function review(opt){
     (opt === 'veto' ? '<p class="tiny" style="text-align:left">No with veto also counts as No. If vetoes pass ' + (DATA.rules.veto * 100).toFixed(1) +
       '% the proposal fails and its deposit is burned.</p>' : '') +
     '<div class="field" style="margin-top:10px"><label>Comment <span class="tiny">optional, public, in the vote memo</span></label>' +
-    '<textarea id="gov-memo" rows="3" maxlength="' + MEMO_MAX + '" placeholder="Why you vote this way"></textarea>' +
+    '<textarea id="gov-memo" rows="3" placeholder="Why you vote this way"></textarea>' +
     '<div class="tiny" id="gov-memo-n" style="text-align:right">0 / ' + MEMO_MAX + '</div></div>' +
     '<div class="tiny" id="gov-fee" style="text-align:left">Checking with the chain\u2026</div>' +
     '<div id="gov-out"></div><button class="btn solid" id="gov-go" type="button" disabled>Vote ' + esc(LABEL[opt]) + '</button>';
+  // The limit is in bytes (the chain's max_memo_characters counts bytes), so
+  // accents and emoji use more than one each. Over it, the button waits.
   const memoBox = $('#gov-memo');
+  const memoOver = () => new TextEncoder().encode(memoBox.value.trim()).length > MEMO_MAX;
   memoBox.addEventListener('input', () => {
-    const n = new TextEncoder().encode(memoBox.value).length;
-    $('#gov-memo-n').textContent = n + ' / ' + MEMO_MAX;
+    const n = new TextEncoder().encode(memoBox.value.trim()).length;
+    $('#gov-memo-n').textContent = n + ' / ' + MEMO_MAX + (n > MEMO_MAX ? ' - too long' : '');
     $('#gov-memo-n').style.color = n > MEMO_MAX ? 'var(--red)' : '';
+    const b = $('#gov-go');
+    if (b && f.ready && !f.sent) b.disabled = n > MEMO_MAX;
   });
   try {
     const est = await dryRunVote(addrOf(), f.id, opt, S.MNEMONIC);
     if (FLOW !== f || f.opt !== opt) return;
     $('#gov-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
     const btn = $('#gov-go');
-    btn.disabled = false;
+    f.ready = true;
+    btn.disabled = memoOver();
     btn.addEventListener('click', () => confirm(btn, f, opt));
   } catch (e) {
     if (FLOW !== f || f.opt !== opt) return;
@@ -407,7 +422,8 @@ async function badge(){
     b.hidden = !live.length;
     const a = addrOf();
     if (!a || !live.length) return;
-    const mine = await Promise.all(live.map(p => getJSON(G + '/proposals/' + p.id + '/votes/' + a, 10000, 1).then(() => 1).catch(() => 0)));
+    const mine = await Promise.all(live.map(p => getJSON(G + '/proposals/' + p.id + '/votes/' + a, 10000, 1).then(() => 1)
+      .catch(e => (e && (e.status === 400 || e.status === 404)) ? 0 : 1)));
     b.classList.toggle('todo', mine.some(x => !x));
   } catch (e) { /* the tab works without it */ }
 }
@@ -416,7 +432,7 @@ function badgeFromData(){
   if (!b || !DATA) return;
   b.textContent = DATA.live.length > 9 ? '9+' : String(DATA.live.length);
   b.hidden = !DATA.live.length;
-  b.classList.toggle('todo', DATA.live.some(p => !p._mine));
+  b.classList.toggle('todo', DATA.live.some(p => !p._mine));   // UNKNOWN is truthy: not counted
 }
 setTimeout(badge, 3000);
 setInterval(badge, 10 * 60000);
