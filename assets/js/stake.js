@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=01122e5f';
-import { $, buzz } from './shell.js?v=01122e5f';
-import { S } from './state.js?v=01122e5f';
-import { luncRaw, refreshBalances } from './tokens.js?v=01122e5f';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=01122e5f';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=b7446abc';
+import { $, buzz } from './shell.js?v=b7446abc';
+import { S } from './state.js?v=b7446abc';
+import { luncRaw, refreshBalances } from './tokens.js?v=b7446abc';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=b7446abc';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -27,6 +27,49 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
 const L = raw => fmt(amt(String(raw), 6));
 const shortVal = v => v.slice(0, 16) + '\u2026' + v.slice(-4);
 
+/* Validator pictures. A validator sets a Keybase key in its description
+   (identity); Keybase serves the picture for it. The same lookup every
+   explorer does. Only the URL is kept, for a week, and a validator with no
+   key or no picture keeps its letter. */
+const LOGO_TTL = 7 * 86400000;
+function logoCached(id){
+  if (!id) return null;
+  try { const c = JSON.parse(localStorage.getItem('vlogo:' + id) || 'null'); if (c && Date.now() - c.t < LOGO_TTL) return c; } catch (e) {}
+  return null;
+}
+function ico(v){
+  const c = logoCached(v.ident);
+  if (c && c.u) return '<span class="sym stk-ico"><img src="' + esc(c.u) + '" alt="" loading="lazy" referrerpolicy="no-referrer"></span>';
+  return '<span class="sym stk-ico"' + (v.ident && !c ? ' data-ident="' + esc(v.ident) + '"' : '') + '>' + esc(v.name.slice(0, 1).toUpperCase()) + '</span>';
+}
+let LOGO_Q = Promise.resolve();
+function fillLogos(root){
+  const els = [...root.querySelectorAll('.stk-ico[data-ident]')];
+  const ids = [...new Set(els.map(e => e.getAttribute('data-ident')))];
+  // four at a time, behind whatever is already being fetched
+  LOGO_Q = LOGO_Q.then(async () => {
+    for (let i = 0; i < ids.length; i += 4) {
+      await Promise.all(ids.slice(i, i + 4).map(async id => {
+        let u = '';
+        if (!logoCached(id)) {
+          try {
+            const r = await fetch('https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=' + encodeURIComponent(id) + '&fields=pictures');
+            const j = await r.json();
+            u = (j.them && j.them[0] && j.them[0].pictures && j.them[0].pictures.primary && j.them[0].pictures.primary.url) || '';
+            if (!/^https:\/\//.test(u)) u = '';
+            try { localStorage.setItem('vlogo:' + id, JSON.stringify({ u: u, t: Date.now() })); } catch (e) {}
+          } catch (e) { return; }
+        } else u = logoCached(id).u;
+        if (!u) return;
+        document.querySelectorAll('.stk-ico[data-ident="' + id + '"]').forEach(el => {
+          el.removeAttribute('data-ident');
+          el.innerHTML = '<img src="' + esc(u) + '" alt="" loading="lazy" referrerpolicy="no-referrer">';
+        });
+      }));
+    }
+  }).catch(() => {});
+}
+
 /* ---------------- reading ---------------- */
 let DATA = null;       // { dels, rewards, unbonding, vals, byAddr, bondedTotal }
 let VALS_AT = 0;
@@ -39,6 +82,7 @@ async function validators(){
     addr: v.operator_address,
     name: (v.description && v.description.moniker || '').trim() || shortVal(v.operator_address),
     site: v.description && v.description.website || '',
+    ident: (v.description && v.description.identity || '').trim(),
     tokens: BigInt(v.tokens || '0'),
     rate: Number(v.commission && v.commission.commission_rates && v.commission.commission_rates.rate || 0),
     jailed: !!v.jailed,
@@ -51,6 +95,7 @@ async function one(addr){
     const r = await getJSON(LCD + '/cosmos/staking/v1beta1/validators/' + addr, 10000);
     const v = r.validator || {};
     return { addr: addr, name: (v.description && v.description.moniker || '').trim() || shortVal(addr),
+             ident: (v.description && v.description.identity || '').trim(),
              tokens: BigInt(v.tokens || '0'), rate: Number(v.commission && v.commission.commission_rates.rate || 0),
              jailed: !!v.jailed, bonded: v.status === 'BOND_STATUS_BONDED' };
   } catch (e) {
@@ -122,7 +167,7 @@ function draw(){
     const flag = v.jailed ? ' <span class="stk-flag bad">jailed</span>' : (!v.bonded ? ' <span class="stk-flag">inactive</span>' : '');
     const open = OPEN_ROW === r.val;
     return '<div class="row stk-row' + (open ? ' open' : '') + '" data-val="' + esc(r.val) + '">' +
-      '<span class="sym stk-ico">' + esc(v.name.slice(0, 1).toUpperCase()) + '</span>' +
+      ico(v) +
       '<div class="row-main"><div class="row-name">' + esc(v.name) + flag + '</div>' +
       '<div class="row-amt">' + (v.rate * 100).toFixed(1) + '% commission \u00b7 reward ' + L(r.reward) + '</div></div>' +
       '<div class="row-val"><div class="row-fiat">' + L(r.amount) + '</div><div class="row-sub">LUNC</div></div>' +
@@ -146,6 +191,7 @@ function draw(){
   }
   h += '<p class="tiny">Tap a validator to stake more, move or unstake. Moving is instant; unstaking takes ' + UNBOND_DAYS + ' days, and the LUNC earns nothing meanwhile.</p>';
   body.innerHTML = h;
+  fillLogos(body);
   wire();
 }
 
@@ -185,18 +231,19 @@ function sheet(on, title){
 const view = html => { $('#stk-sheet-body').innerHTML = html; };
 
 $('#stk-sheet-x').addEventListener('click', () => { FLOW = null; sheet(false); });
+$('#stk-sheet').addEventListener('click', e => { if (e.target.id === 'stk-sheet') { FLOW = null; sheet(false); } });
 
 // Validators to choose from: active, not jailed, with a search box. Sorted
-// smallest voting power first by default - the largest few already decide too
-// much, and a wallet that lists them on top keeps it that way.
+// Largest first by default, the order people expect; "smaller first" is one
+// tap away, and the top ten stay marked either way.
 function startPick(kind, from){
   FLOW = { kind: kind, from: from || null };
   sheet(true, kind === 'redelegate' ? 'Move to which validator?' : 'Stake with which validator?');
   view('<input type="search" id="stk-q" placeholder="Search validators" autocomplete="off">' +
-    '<div class="stk-sort"><button class="dust on" data-sort="small">Smaller first</button>' +
-    '<button class="dust" data-sort="big">Largest first</button><button class="dust" data-sort="fee">Lowest commission</button></div>' +
+    '<div class="stk-sort"><button class="dust on" data-sort="big">Largest first</button>' +
+    '<button class="dust" data-sort="small">Smaller first</button><button class="dust" data-sort="fee">Lowest commission</button></div>' +
     '<div id="stk-vals" class="stk-vals"><div class="empty"><span class="spin"></span>Loading validators</div></div>');
-  let sort = 'small';
+  let sort = 'big';
   const paint = () => {
     const q = ($('#stk-q').value || '').trim().toLowerCase();
     const total = DATA.bondedTotal || 1n;
@@ -210,11 +257,12 @@ function startPick(kind, from){
       const share = Number(v.tokens * 10000n / total) / 100;
       const top = ranked.indexOf(v.addr) < 10;
       return '<button class="row stk-val" data-val="' + esc(v.addr) + '" type="button">' +
-        '<span class="sym stk-ico">' + esc(v.name.slice(0, 1).toUpperCase()) + '</span>' +
+        ico(v) +
         '<div class="row-main"><div class="row-name">' + esc(v.name) + (top ? ' <span class="stk-flag">top 10</span>' : '') + '</div>' +
         '<div class="row-amt">' + share.toFixed(2) + '% of votes</div></div>' +
         '<div class="row-val"><div class="row-fiat">' + (v.rate * 100).toFixed(1) + '%</div><div class="row-sub">commission</div></div></button>';
     }).join('') || '<div class="empty">No validator matches.</div>';
+    fillLogos($('#stk-vals'));
     document.querySelectorAll('#stk-vals .stk-val').forEach(b => b.addEventListener('click', () => {
       const val = b.getAttribute('data-val');
       if (FLOW.kind === 'redelegate') startAmount({ kind: 'redelegate', from: FLOW.from, to: val });
