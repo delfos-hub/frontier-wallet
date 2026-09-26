@@ -769,3 +769,48 @@ body{width:100%;max-width:100vw;margin:0 auto}
 .warn.sunset a{color:var(--accent);text-decoration:underline;align-self:flex-start}
 .sunset-x{position:absolute;top:6px;right:8px;width:24px;height:24px;border:0;background:none;
   color:inherit;opacity:.6;font-size:18px;line-height:1;cursor:pointer}
+
+/* ---------------- governance ---------------- */
+button.row.gov-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.gov-row .row-name{white-space:normal;line-height:1.35}
+.gov-mine{color:var(--green);font-weight:600}
+.gov-todo{color:var(--accent);font-weight:600}
+.gov-ok{color:var(--green)}
+.gov-bad{color:var(--muted)}
+.gov-st-passed{color:var(--green)}.gov-st-rejected,.gov-st-failed{color:var(--red)}
+.gov-st-voting{color:var(--accent)}.gov-st-deposit{color:var(--muted)}
+.gov-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--surface2);margin:8px 0 4px}
+.gov-bar i{display:block;height:100%}
+.gov-bar .y,.gov-legend .y::before{background:#3ecf8e}
+.gov-bar .n,.gov-legend .n::before{background:#f06a6a}
+.gov-bar .v,.gov-legend .v::before{background:#b04ae8}
+.gov-bar .a,.gov-legend .a::before{background:#8a93a6}
+.gov-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted)}
+.gov-legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.gov-title{margin:0 0 10px;font-size:16px;line-height:1.35}
+.gov-text{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.55;color:var(--text);
+  background:var(--surface2);border-radius:12px;padding:12px;margin:10px 0}
+.gov-text.clip{max-height:220px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent)}
+.gov-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 10px}
+.gov-opt{padding:12px 0}
+.gov-opt.on{border-color:var(--accent);color:var(--accent)}
+#gov-sheet .sw-sheet-in{overflow-y:auto}
+#st-gov .warn a{color:var(--accent)}
+.tab{position:relative}
+.tab-badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:16px;height:16px;padding:0 4px;border-radius:8px;
+  background:var(--surface2);color:var(--text);font-size:10px;font-weight:700;line-height:16px;text-align:center}
+.tab-badge.todo{background:var(--accent);color:#fff}
+.gov-voters{display:flex;flex-direction:column;gap:6px}
+.gov-voters .gov-voter.more{display:none}
+.gov-voters.all .gov-voter.more{display:block}
+.gov-voter{background:var(--surface2);border-radius:10px;padding:8px 10px}
+.gov-voter-top{display:flex;align-items:center;gap:8px;font-size:13px}
+.gov-rank{color:var(--muted);font-size:11px;min-width:18px}
+.gov-who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gov-vp{color:var(--muted);font-size:11px}
+.gov-v{font-size:11px;font-weight:600;padding:2px 6px;border-radius:6px;white-space:nowrap}
+.gov-v.y{color:#3ecf8e;background:rgba(62,207,142,.12)}.gov-v.n{color:#f06a6a;background:rgba(240,106,106,.12)}
+.gov-v.v{color:#c77dff;background:rgba(176,74,232,.14)}.gov-v.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
+.gov-v.none{color:var(--muted);font-weight:500}
+.gov-memo{margin-top:6px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text)}
+#gov-memo{width:100%;box-sizing:border-box;resize:vertical;font:inherit}

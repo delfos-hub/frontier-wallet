@@ -1,8 +1,8 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=5e7bb797';
-import { $, buzz, go, tap } from './shell.js?v=5e7bb797';
-import { S } from './state.js?v=5e7bb797';
-import { iconHTML, paintIcons } from './chain.js?v=5e7bb797';
-import { heldTokens, refreshBalances } from './tokens.js?v=5e7bb797';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=e6d4c28a';
+import { $, buzz, go, tap } from './shell.js?v=e6d4c28a';
+import { S } from './state.js?v=e6d4c28a';
+import { iconHTML, paintIcons } from './chain.js?v=e6d4c28a';
+import { heldTokens, refreshBalances } from './tokens.js?v=e6d4c28a';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -609,3 +609,52 @@ async function sendSwap(from, steps, mnemonic){
   return { hash: hash, gas: p.gas, gasFee: p.gasFee, wait: function(){ return waitFor(hash); } };
 }
 export { dryRunSwap, sendSwap };
+
+/* ---------------- governance ----------------
+   One message: cosmos.gov.v1 MsgVote - proposal_id 1 (uint64), voter 2,
+   option 3 (enum), metadata 4 (left empty). Checked byte for byte against
+   cosmjs-types in tests/gov.mjs. The fee is measured by simulation, as for
+   every other transaction here. */
+const VOTE_URL = '/cosmos.gov.v1.MsgVote';
+const VOTE_OPTIONS = { yes: 1, abstain: 2, no: 3, veto: 4 };
+
+function voteAny(from, proposalId, option){
+  const o = VOTE_OPTIONS[option];
+  if (!o) throw new Error('unknown vote option ' + option);
+  if (!/^\d+$/.test(String(proposalId)) || String(proposalId) === '0') throw new Error('bad proposal id');
+  return any(VOTE_URL, cat([fUint(1, String(proposalId)), fStr(2, from), fUint(3, String(o))]));
+}
+
+// The comment goes in the memo, not in the vote's metadata field: the memo is
+// where Terra Classic voters and validators already write their reasons, and
+// where explorers show them.
+const MEMO_MAX = 256;
+function memoOk(memo){
+  const m = String(memo || '').trim();
+  if (new TextEncoder().encode(m).length > MEMO_MAX) throw new Error('comment is longer than ' + MEMO_MAX + ' bytes');
+  return m;
+}
+
+async function votePlan(from, proposalId, option, mnemonic, memo){
+  const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
+  const msg = voteAny(from, proposalId, option);
+  const probe = { body: txBody([msg], memoOk(memo)), auth: authInfo(key.pub, acc.seq, [{ denom: 'uluna', amount: '1000000' }], 300000) };
+  const used = await simulateGas(probe.body, probe.auth);
+  const gas = Math.ceil(used * GAS_SAFETY);
+  return { acc: acc, key: key, msg: msg, memo: memoOk(memo), used: used, gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
+}
+
+async function dryRunVote(from, proposalId, option, mnemonic, memo){
+  const p = await votePlan(from, proposalId, option, mnemonic, memo);
+  return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee };
+}
+
+async function sendVote(from, proposalId, option, mnemonic, memo){
+  const p = await votePlan(from, proposalId, option, mnemonic, memo);
+  const body = txBody([p.msg], p.memo);
+  const auth = authInfo(p.key.pub, p.acc.seq, [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
+  const sig = p.key.node.sign(p.key.sha256(signDoc(body, auth, CHAIN, p.acc.num)));
+  const hash = await broadcast(txRaw(body, auth, [sig]));
+  return { hash: hash, gasFee: p.gasFee, wait: function(){ return waitFor(hash); } };
+}
+export { MEMO_MAX, VOTE_OPTIONS, dryRunVote, sendVote, voteAny };
