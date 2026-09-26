@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=01122e5f';
-import { $, buzz } from './shell.js?v=01122e5f';
-import { S } from './state.js?v=01122e5f';
-import { luncRaw, refreshBalances } from './tokens.js?v=01122e5f';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=01122e5f';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=409a4100';
+import { $, buzz } from './shell.js?v=409a4100';
+import { S } from './state.js?v=409a4100';
+import { luncRaw, refreshBalances } from './tokens.js?v=409a4100';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=409a4100';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -27,6 +27,52 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
 const L = raw => fmt(amt(String(raw), 6));
 const shortVal = v => v.slice(0, 16) + '\u2026' + v.slice(-4);
 
+/* Validator pictures. A validator sets a Keybase key in its description
+   (identity); Keybase serves the picture for it. The same lookup every
+   explorer does. Only the URL is kept, for a week, and a validator with no
+   key or no picture keeps its letter. */
+const LOGO_TTL = 7 * 86400000;
+function logoCached(id){
+  if (!id) return null;
+  try { const c = JSON.parse(localStorage.getItem('vlogo:' + id) || 'null'); if (c && Date.now() - c.t < LOGO_TTL) return c; } catch (e) {}
+  return null;
+}
+function ico(v){
+  const c = logoCached(v.ident);
+  if (c && c.u) return '<span class="sym stk-ico"><img src="' + esc(c.u) + '" alt="" loading="lazy" referrerpolicy="no-referrer"></span>';
+  return '<span class="sym stk-ico"' + (v.ident && !c ? ' data-ident="' + esc(v.ident) + '"' : '') + '>' + esc(v.name.slice(0, 1).toUpperCase()) + '</span>';
+}
+let LOGO_Q = Promise.resolve();
+function fillLogos(root){
+  const els = [...root.querySelectorAll('.stk-ico[data-ident]')];
+  const ids = [...new Set(els.map(e => e.getAttribute('data-ident')))];
+  // four at a time, behind whatever is already being fetched
+  LOGO_Q = LOGO_Q.then(async () => {
+    for (let i = 0; i < ids.length; i += 4) {
+      await Promise.all(ids.slice(i, i + 4).map(async id => {
+        let u = '';
+        if (!logoCached(id)) {
+          try {
+            const r = await fetch('https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=' + encodeURIComponent(id) + '&fields=pictures');
+            const j = await r.json();
+            u = (j.them && j.them[0] && j.them[0].pictures && j.them[0].pictures.primary && j.them[0].pictures.primary.url) || '';
+            if (!/^https:\/\//.test(u)) u = '';
+            try { localStorage.setItem('vlogo:' + id, JSON.stringify({ u: u, t: Date.now() })); } catch (e) {}
+          } catch (e) { return; }
+        } else u = logoCached(id).u;
+        if (!u) return;
+        // the identity is operator-chosen text: escaped, or one quote in it
+        // breaks the selector and stops every logo after it
+        const sel = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(id) : id.replace(/["\\]/g, '\\$&');
+        document.querySelectorAll('.stk-ico[data-ident="' + sel + '"]').forEach(el => {
+          el.removeAttribute('data-ident');
+          el.innerHTML = '<img src="' + esc(u) + '" alt="" loading="lazy" referrerpolicy="no-referrer">';
+        });
+      }));
+    }
+  }).catch(() => {});
+}
+
 /* ---------------- reading ---------------- */
 let DATA = null;       // { dels, rewards, unbonding, vals, byAddr, bondedTotal }
 let VALS_AT = 0;
@@ -39,6 +85,7 @@ async function validators(){
     addr: v.operator_address,
     name: (v.description && v.description.moniker || '').trim() || shortVal(v.operator_address),
     site: v.description && v.description.website || '',
+    ident: (v.description && v.description.identity || '').trim(),
     tokens: BigInt(v.tokens || '0'),
     rate: Number(v.commission && v.commission.commission_rates && v.commission.commission_rates.rate || 0),
     jailed: !!v.jailed,
@@ -51,6 +98,7 @@ async function one(addr){
     const r = await getJSON(LCD + '/cosmos/staking/v1beta1/validators/' + addr, 10000);
     const v = r.validator || {};
     return { addr: addr, name: (v.description && v.description.moniker || '').trim() || shortVal(addr),
+             ident: (v.description && v.description.identity || '').trim(),
              tokens: BigInt(v.tokens || '0'), rate: Number(v.commission && v.commission.commission_rates.rate || 0),
              jailed: !!v.jailed, bonded: v.status === 'BOND_STATUS_BONDED' };
   } catch (e) {
@@ -59,11 +107,15 @@ async function one(addr){
 }
 
 async function load(addr){
-  const [dels, rew, unb, vals] = await Promise.all([
+  const [dels, rew, unb, vals, wd] = await Promise.all([
     getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + addr),
     getJSON(LCD + '/cosmos/distribution/v1beta1/delegators/' + addr + '/rewards').catch(() => ({})),
     getJSON(LCD + '/cosmos/staking/v1beta1/delegators/' + addr + '/unbonding_delegations').catch(() => ({})),
-    validators()
+    validators(),
+    // Rewards may be set to go to another address (MsgSetWithdrawAddress is
+    // enabled on mainnet). Restake has to know: it stakes what the withdraw
+    // brought in, and if it went elsewhere it would stake the free balance.
+    getJSON(LCD + '/cosmos/distribution/v1beta1/delegators/' + addr + '/withdraw_address').catch(() => null)
   ]);
   const byAddr = {};
   vals.forEach(v => { byAddr[v.addr] = v; });
@@ -87,45 +139,171 @@ async function load(addr){
     val: u.validator_address, amount: BigInt(e.balance || '0'), at: new Date(e.completion_time)
   })));
   unbonding.sort((a, b) => a.at - b.at);
-  DATA = { dels: rows, unbonding: unbonding, vals: vals, byAddr: byAddr, bondedTotal: bondedTotal };
+  // null = the node would not say; Restake stays off until it can be sure
+  const withdrawTo = wd && wd.withdraw_address ? wd.withdraw_address : null;
+  DATA = { dels: rows, unbonding: unbonding, vals: vals, byAddr: byAddr, bondedTotal: bondedTotal,
+           withdrawTo: withdrawTo, restakeOk: withdrawTo === addr };
   return DATA;
 }
 
+/* ---------------- staking return, from the chain ----------------
+   Staking rewards on Terra Classic come mostly from the oracle reward pool,
+   which pays 1/window of its balance every block straight to the validators
+   (not through the fee collector, so the 50% community tax does not touch
+   it). The pool holds LUNC and a large amount of USTC - about a quarter of
+   its value - so USTC is counted at its market price against LUNC. The other
+   old stable denoms in it are worth next to nothing and are left out. Mint
+   provisions, if any, do go through the fee collector and are taxed.
+
+     APR = (pool LUNC + pool USTC in LUNC) / window * blocks per year
+           / bonded  +  provisions * (1 - community tax) / bonded
+
+   Checked on 26 Sep 2026: 3.06% here against 3.23% on the official site;
+   the gap is gas fees, which are not modelled. Before commission. */
+let APR = null, APR_AT = 0;
+async function stakingApr(){
+  if (APR !== null && Date.now() - APR_AT < 30 * 60000) return APR;
+  const one = (u, t) => getJSON(LCD + u, 12000, t || 2).catch(() => null);
+  const [op, mod, dist, pool, mint, latest, px] = await Promise.all([
+    one('/terra/oracle/v1beta1/params'), one('/cosmos/auth/v1beta1/module_accounts/oracle'),
+    one('/cosmos/distribution/v1beta1/params'), one('/cosmos/staking/v1beta1/pool'),
+    one('/cosmos/mint/v1beta1/annual_provisions', 1), one('/cosmos/base/tendermint/v1beta1/blocks/latest'),
+    marketPrices()
+  ]);
+  const win = Number(op && op.params && op.params.reward_distribution_window);
+  const acc = mod && mod.account && (mod.account.base_account ? mod.account.base_account.address : mod.account.address);
+  const bonded = Number(pool && pool.pool && pool.pool.bonded_tokens);
+  if (!win || !acc || !bonded) return null;
+  const [bl, bu] = await Promise.all([
+    one('/cosmos/bank/v1beta1/balances/' + acc + '/by_denom?denom=uluna'),
+    one('/cosmos/bank/v1beta1/balances/' + acc + '/by_denom?denom=uusd')
+  ]);
+  const luna = Number(bl && bl.balance && bl.balance.amount || 0);
+  const ustc = Number(bu && bu.balance && bu.balance.amount || 0);
+  // USTC in LUNC at market; without prices the USTC share is left out and the
+  // figure reads low rather than made up
+  const ratio = px && px.LUNC && px.USTC ? px.USTC / px.LUNC : 0;
+  const inPool = luna + ustc * ratio;
+  // seconds per block, measured over the last 20,000 blocks; 6 s if that
+  // block is already pruned from this node
+  let spb = 6;
+  try {
+    const h = Number(latest.block.header.height), t1 = Date.parse(latest.block.header.time);
+    const past = await one('/cosmos/base/tendermint/v1beta1/blocks/' + (h - 20000), 1);
+    const t0 = Date.parse(past.block.header.time);
+    if (t1 > t0) spb = (t1 - t0) / 1000 / 20000;
+  } catch (e) {}
+  const perYear = 31557600 / spb;
+  const provisions = Number(mint && mint.annual_provisions || 0);
+  const ctax = Number(dist && dist.params && dist.params.community_tax || 0);
+  APR = ((inPool / win) * perYear + provisions * (1 - ctax)) / bonded;
+  APR_AT = Date.now();
+  return APR;
+}
+const pctTxt = x => (x == null || !isFinite(x)) ? '\u2014' : (x * 100).toFixed(x < 0.1 ? 2 : 1) + '%';
+
+let PX = null, PRICES = null;
+async function marketPrices(){
+  if (PRICES) return PRICES;
+  try { const p = await prices(); if (p && p.LUNC) { PRICES = p; PX = p.LUNC; } } catch (e) {}
+  return PRICES;
+}
+const luncUsd = () => marketPrices().then(() => PX);
+
 /* ---------------- the screen ---------------- */
 let OPEN_ROW = null;
+
+const REWARD_MIN = 1000000n;   // 1 LUNC: below this a claim costs more gas than it brings
+
+function donut(parts){
+  // parts: [[value, color], ...]; a ring drawn with stroke dash offsets
+  const total = parts.reduce((a, p) => a + p[0], 0) || 1;
+  const C = 2 * Math.PI * 46;
+  let off = 0, arcs = '';
+  parts.forEach(p => {
+    const len = C * p[0] / total;
+    if (len > 0.5) arcs += '<circle cx="56" cy="56" r="46" fill="none" stroke="' + p[1] + '" stroke-width="12" stroke-dasharray="' +
+      Math.max(0, len - 2).toFixed(1) + ' ' + C.toFixed(1) + '" stroke-dashoffset="' + (-off).toFixed(1) + '" transform="rotate(-90 56 56)"/>';
+    off += len;
+  });
+  return '<svg class="stk-donut" width="112" height="112" viewBox="0 0 112 112" aria-hidden="true">' +
+    '<circle cx="56" cy="56" r="46" fill="none" stroke="var(--border)" stroke-width="12"/>' + arcs + '</svg>';
+}
 
 function draw(){
   const body = $('#stk-body');
   const d = DATA;
   const staked = d.dels.reduce((a, r) => a + r.amount, 0n);
   const reward = d.dels.reduce((a, r) => a + r.reward, 0n);
+  const claimable = d.dels.filter(r => r.reward >= REWARD_MIN).reduce((a, r) => a + r.reward, 0n);
+  const earning = r => { const v = d.byAddr[r.val]; return v && !v.jailed && v.bonded; };
+  const restakable = d.dels.filter(r => r.reward >= REWARD_MIN && earning(r)).reduce((a, r) => a + r.reward, 0n);
   const leaving = d.unbonding.reduce((a, u) => a + u.amount, 0n);
-  $('#stk-count').textContent = d.dels.length ? d.dels.length + ' validator' + (d.dels.length > 1 ? 's' : '') : '';
+  const free = BigInt(Math.floor(luncRaw() || 0));
+  const usd = raw => PX ? '\u2248 $' + (amt(String(raw), 6) * PX).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '';
+  $('#stk-count').textContent = 'LUNC \u00b7 Classic';
 
   if (!d.dels.length && !d.unbonding.length) {
-    body.innerHTML = '<div class="empty">Nothing staked yet. Delegating LUNC earns rewards and gives your address weight in governance votes.</div>' +
-      '<button class="btn solid" id="stk-new" type="button">Stake LUNC</button>' +
-      '<p class="tiny">Staked LUNC can be moved to another validator at any time. Unstaking takes ' + UNBOND_DAYS + ' days.</p>';
+    const top = d.vals.filter(v => !v.jailed && v.rate < 1).sort((a, b) => (b.tokens > a.tokens ? 1 : -1)).slice(0, 3);
+    const total = d.bondedTotal || 1n;
+    body.innerHTML =
+      '<section class="stk-hero stk-hero-empty"><span class="stk-cap">Ready to stake</span>' +
+      '<div class="stk-big">' + L(free) + ' <small>LUNC</small></div>' +
+      '<p>Delegate to a validator to earn staking rewards and a say in governance votes. Your LUNC never leaves your wallet\'s control.</p>' +
+      '<div class="stk-apr-line">Staking return now about <b id="stk-apr">' + pctTxt(APR) + '</b> a year, before commission</div>' +
+      '<button class="btn solid" id="stk-new" type="button">Stake LUNC</button></section>' +
+      '<div class="stk-steps">' + [['Pick', 'a validator'], ['Stake', 'any amount'], ['Claim', 'rewards anytime']].map((x, i) =>
+        '<div><span>' + (i + 1) + '</span><b>' + x[0] + '</b><small>' + x[1] + '</small></div>').join('') + '</div>' +
+      '<div class="head" style="margin:18px 4px 10px"><h2>Popular validators</h2><button class="dust" id="stk-all" type="button">See all</button></div>' +
+      top.map(v => '<button class="row stk-val stk-pop" data-val="' + esc(v.addr) + '" type="button">' + ico(v) +
+        '<div class="row-main"><div class="row-name">' + esc(v.name) + '</div><div class="row-amt">' +
+        (Number(v.tokens * 10000n / total) / 100).toFixed(2) + '% of votes</div></div>' +
+        '<div class="row-val"><div class="row-fiat">' + (v.rate * 100).toFixed(1) + '%</div><div class="row-sub">commission</div></div></button>').join('') +
+      '<p class="tiny">Unstaking takes ' + UNBOND_DAYS + ' days. Moving stake to another validator is instant.</p>';
+    fillLogos(body);
     wire();
     return;
   }
 
-  let h = '<div class="bal" style="margin-bottom:12px"><div class="bal-label">Staked</div>' +
-    '<div class="bal-value" style="font-size:32px">' + L(staked) + ' <span style="font-size:18px;color:var(--muted)">LUNC</span></div>' +
-    '<div class="row-sub" style="margin-top:8px">Rewards ' + L(reward) + ' LUNC' +
-    (leaving > 0n ? ' \u00b7 Unstaking ' + L(leaving) + ' LUNC' : '') + '</div></div>' +
-    '<div class="stk-acts"><button class="btn solid" id="stk-new" type="button">Stake LUNC</button>' +
-    '<button class="btn quiet" id="stk-claim" type="button"' + (reward >= 1000000n ? '' : ' disabled') + '>Claim rewards</button></div>';
+  const whole = Number(staked) + Number(free) + Number(leaving) || 1;
+  const share = Math.round(Number(staked) * 100 / whole);
+  let h = '<section class="stk-hero"><div class="stk-hero-top">' +
+    '<div class="stk-ring">' + donut([[Number(staked), 'var(--accent)'], [Number(leaving), 'var(--accent2)']]) +
+    '<div class="stk-ring-in"><b>' + share + '%</b><small>staked</small></div></div>' +
+    '<div class="stk-hero-num"><span class="stk-cap">Total staked</span><div class="stk-big">' + L(staked) + '</div>' +
+    '<small>LUNC ' + usd(staked) + '</small></div></div>' +
+    '<div class="stk-tiles">' +
+    '<div><small>Rewards</small><b class="g">' + L(reward) + '</b></div>' +
+    '<div><small>Est. APR</small><b id="stk-apr">' + pctTxt(APR) + '</b></div>' +
+    '<div><small>Unstaking</small><b class="c">' + L(leaving) + '</b></div></div>' +
+    '<div class="stk-legend"><span><i style="background:var(--accent)"></i>Staked</span>' +
+    '<span><i class="free"></i>Available ' + L(free) + '</span>' +
+    '<span><i style="background:var(--accent2)"></i>Unstaking</span></div></section>';
 
+  h += '<div class="stk-bigacts">' +
+    '<button class="stk-bigact main" id="stk-new" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><b>Stake</b></button>' +
+    '<button class="stk-bigact" id="stk-claim" type="button"' + (claimable > 0n ? '' : ' disabled') + '><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><b>Claim</b><small class="g">' + L(claimable) + '</small></button>' +
+    '<button class="stk-bigact" id="stk-restake" type="button"' + (restakable > 0n && d.restakeOk ? '' : ' disabled') + '><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><b>Restake</b><small>claim + stake</small></button>' +
+    '</div>';
+
+  if (!d.restakeOk && d.withdrawTo) {
+    h += '<p class="tiny stk-wd">Rewards from this address are set to go to ' + esc(shortVal(d.withdrawTo)) +
+      ', so Restake is off: it would stake your own balance instead of the rewards.</p>';
+  }
+  h += '<div class="head" style="margin:18px 4px 10px"><h2>Your validators</h2><span>' + d.dels.length + '</span></div>';
   h += d.dels.map(r => {
     const v = d.byAddr[r.val] || { name: shortVal(r.val), rate: 0 };
-    const flag = v.jailed ? ' <span class="stk-flag bad">jailed</span>' : (!v.bonded ? ' <span class="stk-flag">inactive</span>' : '');
+    const bad = v.jailed || !v.bonded;
     const open = OPEN_ROW === r.val;
-    return '<div class="row stk-row' + (open ? ' open' : '') + '" data-val="' + esc(r.val) + '">' +
-      '<span class="sym stk-ico">' + esc(v.name.slice(0, 1).toUpperCase()) + '</span>' +
-      '<div class="row-main"><div class="row-name">' + esc(v.name) + flag + '</div>' +
-      '<div class="row-amt">' + (v.rate * 100).toFixed(1) + '% commission \u00b7 reward ' + L(r.reward) + '</div></div>' +
-      '<div class="row-val"><div class="row-fiat">' + L(r.amount) + '</div><div class="row-sub">LUNC</div></div>' +
+    const part = staked > 0n ? Number(r.amount * 1000n / staked) / 10 : 0;
+    return '<div class="stk-card' + (bad ? ' bad' : '') + (open ? ' open' : '') + '" data-val="' + esc(r.val) + '">' +
+      '<div class="stk-card-top">' + ico(v) +
+      '<div class="stk-card-mid"><div class="stk-card-name"><span>' + esc(v.name) + '</span>' +
+      '<em class="' + (bad ? 'bad' : 'ok') + '">' + (v.jailed ? 'Jailed' : !v.bonded ? 'Inactive' : 'Active') + '</em></div>' +
+      '<small>' + (v.rate * 100).toFixed(1) + '% commission' + (APR != null && !bad ? ' \u00b7 you earn ~' + pctTxt(APR * (1 - v.rate)) : '') + '</small></div>' +
+      '<div class="stk-card-val"><b>' + L(r.amount) + '</b><small class="g">+' + L(r.reward) + '</small></div></div>' +
+      '<div class="stk-bar"><i style="width:' + part + '%"></i></div>' +
+      (bad ? '<div class="stk-card-warn">Not earning while ' + (v.jailed ? 'jailed' : 'outside the active set') + ' - move this stake to keep earning.</div>' : '') +
       (open ? '<div class="stk-row-acts">' +
         '<button class="dust" data-act="more">Stake more</button>' +
         '<button class="dust" data-act="move">Move</button>' +
@@ -137,22 +315,29 @@ function draw(){
     h += '<div class="head" style="margin:18px 4px 10px"><h2>Unstaking</h2><span>' + UNBOND_DAYS + ' days each</span></div>';
     h += d.unbonding.map(u => {
       const v = d.byAddr[u.val] || { name: shortVal(u.val) };
-      const days = Math.max(0, Math.ceil((u.at - Date.now()) / 86400000));
-      return '<div class="row"><div class="row-main"><div class="row-name">' + L(u.amount) + ' LUNC</div>' +
-        '<div class="row-amt">from ' + esc(v.name) + '</div></div>' +
-        '<div class="row-val"><div class="row-sub">back on ' + u.at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) +
-        '</div><div class="row-sub">' + (days ? 'in ' + days + ' day' + (days > 1 ? 's' : '') : 'today') + '</div></div></div>';
+      const leftMs = Math.max(0, u.at - Date.now());
+      const days = Math.ceil(leftMs / 86400000);
+      const done = Math.min(UNBOND_DAYS, Math.max(0, UNBOND_DAYS - leftMs / 86400000));
+      return '<div class="stk-unb"><div class="stk-unb-top"><b>' + L(u.amount) + ' LUNC</b><small>back on ' +
+        u.at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' \u00b7 ' + (days ? days + ' day' + (days > 1 ? 's' : '') : 'today') + '</small></div>' +
+        '<div class="stk-bar c"><i style="width:' + (done * 100 / UNBOND_DAYS).toFixed(1) + '%"></i></div>' +
+        '<small>from ' + esc(v.name) + ' \u00b7 ' + Math.floor(done) + ' of ' + UNBOND_DAYS + ' days</small></div>';
     }).join('');
   }
   h += '<p class="tiny">Tap a validator to stake more, move or unstake. Moving is instant; unstaking takes ' + UNBOND_DAYS + ' days, and the LUNC earns nothing meanwhile.</p>';
   body.innerHTML = h;
+  fillLogos(body);
   wire();
 }
 
 function wire(){
   const n = $('#stk-new'); if (n) n.addEventListener('click', () => startPick('delegate'));
-  const c = $('#stk-claim'); if (c) c.addEventListener('click', startClaim);
-  document.querySelectorAll('#stk-body .stk-row').forEach(el => el.addEventListener('click', function (ev) {
+  const c = $('#stk-claim'); if (c) c.addEventListener('click', () => startClaim('claim'));
+  const rs = $('#stk-restake'); if (rs) rs.addEventListener('click', () => startClaim('restake'));
+  const all = $('#stk-all'); if (all) all.addEventListener('click', () => startPick('delegate'));
+  document.querySelectorAll('#stk-body .stk-pop').forEach(b => b.addEventListener('click', () =>
+    startAmount({ kind: 'delegate', validator: b.getAttribute('data-val') })));
+  document.querySelectorAll('#stk-body .stk-card').forEach(el => el.addEventListener('click', function (ev) {
     const val = el.getAttribute('data-val');
     const btn = ev.target.closest('[data-act]');
     if (btn) {
@@ -171,7 +356,11 @@ function wire(){
 async function loadStaking(addr){
   const body = $('#stk-body');
   if (!DATA) body.innerHTML = '<div class="empty">Loading</div>';
-  try { await load(addr || addrOf()); draw(); }
+  try {
+    await load(addr || addrOf()); draw();
+    // the return and the price arrive on their own and redraw what they touch
+    Promise.all([stakingApr().catch(() => null), luncUsd()]).then(() => { if (DATA) draw(); });
+  }
   catch (e) { body.innerHTML = '<div class="empty">Could not load staking: ' + esc(e.message || e) + '</div>'; }
 }
 
@@ -185,18 +374,19 @@ function sheet(on, title){
 const view = html => { $('#stk-sheet-body').innerHTML = html; };
 
 $('#stk-sheet-x').addEventListener('click', () => { FLOW = null; sheet(false); });
+$('#stk-sheet').addEventListener('click', e => { if (e.target.id === 'stk-sheet') { FLOW = null; sheet(false); } });
 
 // Validators to choose from: active, not jailed, with a search box. Sorted
-// smallest voting power first by default - the largest few already decide too
-// much, and a wallet that lists them on top keeps it that way.
+// Largest first by default, the order people expect; "smaller first" is one
+// tap away, and the top ten stay marked either way.
 function startPick(kind, from){
   FLOW = { kind: kind, from: from || null };
   sheet(true, kind === 'redelegate' ? 'Move to which validator?' : 'Stake with which validator?');
   view('<input type="search" id="stk-q" placeholder="Search validators" autocomplete="off">' +
-    '<div class="stk-sort"><button class="dust on" data-sort="small">Smaller first</button>' +
-    '<button class="dust" data-sort="big">Largest first</button><button class="dust" data-sort="fee">Lowest commission</button></div>' +
+    '<div class="stk-sort"><button class="dust on" data-sort="big">Largest first</button>' +
+    '<button class="dust" data-sort="small">Smaller first</button><button class="dust" data-sort="fee">Lowest commission</button></div>' +
     '<div id="stk-vals" class="stk-vals"><div class="empty"><span class="spin"></span>Loading validators</div></div>');
-  let sort = 'small';
+  let sort = 'big';
   const paint = () => {
     const q = ($('#stk-q').value || '').trim().toLowerCase();
     const total = DATA.bondedTotal || 1n;
@@ -210,11 +400,12 @@ function startPick(kind, from){
       const share = Number(v.tokens * 10000n / total) / 100;
       const top = ranked.indexOf(v.addr) < 10;
       return '<button class="row stk-val" data-val="' + esc(v.addr) + '" type="button">' +
-        '<span class="sym stk-ico">' + esc(v.name.slice(0, 1).toUpperCase()) + '</span>' +
+        ico(v) +
         '<div class="row-main"><div class="row-name">' + esc(v.name) + (top ? ' <span class="stk-flag">top 10</span>' : '') + '</div>' +
         '<div class="row-amt">' + share.toFixed(2) + '% of votes</div></div>' +
         '<div class="row-val"><div class="row-fiat">' + (v.rate * 100).toFixed(1) + '%</div><div class="row-sub">commission</div></div></button>';
     }).join('') || '<div class="empty">No validator matches.</div>';
+    fillLogos($('#stk-vals'));
     document.querySelectorAll('#stk-vals .stk-val').forEach(b => b.addEventListener('click', () => {
       const val = b.getAttribute('data-val');
       if (FLOW.kind === 'redelegate') startAmount({ kind: 'redelegate', from: FLOW.from, to: val });
@@ -273,23 +464,53 @@ function startAmount(f){
   });
 }
 
-function startClaim(){
-  const owed = DATA.dels.filter(r => r.reward >= 1n);
-  FLOW = { kind: 'claim', validators: owed.map(r => r.val), amount: owed.reduce((a, r) => a + r.reward, 0n).toString() };
-  sheet(true, 'Claim rewards');
+// Claim takes rewards to the balance; Restake takes them and stakes each one
+// straight back with the validator that paid it, in the same transaction
+// (withdraw runs first, so the delegate has the funds). Validators owing less
+// than 1 LUNC are left out: each message adds gas, and a wallet spread thin
+// could otherwise pay more in fee than it claims.
+function startClaim(kind){
+  if (kind === 'restake' && !DATA.restakeOk) return;
+  const owed = DATA.dels.filter(r => r.reward >= REWARD_MIN);
+  if (!owed.length) return;
+  // Restake stakes each reward back with the validator that paid it - but
+  // never into a jailed or inactive one, which would put rewards into stake
+  // that earns nothing. Those are claimed to the balance instead.
+  const ok = r => { const v = DATA.byAddr[r.val]; return v && !v.jailed && v.bonded; };
+  const back = kind === 'restake' ? owed.filter(ok) : [];
+  if (kind === 'restake' && !back.length) return;
+  const only = kind === 'restake' ? owed.filter(r => !ok(r)) : owed;
+  const sum = xs => xs.reduce((a, r) => a + r.reward, 0n);
+  FLOW = { kind: kind,
+           back: back.map(r => ({ val: r.val, amount: r.reward.toString() })),
+           only: only.map(r => ({ val: r.val, amount: r.reward.toString() })),
+           amount: sum(owed).toString(), backAmount: sum(back).toString(), onlyAmount: sum(only).toString() };
+  sheet(true, kind === 'restake' ? 'Restake rewards' : 'Claim rewards');
   review();
 }
 
 function msgsOf(f){
-  if (f.kind === 'claim') return f.validators.map(v => ({ kind: 'claim', validator: v }));
+  if (f.kind === 'claim') return f.only.map(o => ({ kind: 'claim', validator: o.val }));
+  if (f.kind === 'restake') {
+    const m = [];
+    f.back.forEach(o => { m.push({ kind: 'claim', validator: o.val }); m.push({ kind: 'delegate', validator: o.val, amount: o.amount }); });
+    f.only.forEach(o => m.push({ kind: 'claim', validator: o.val }));
+    return m;
+  }
   if (f.kind === 'redelegate') return [{ kind: 'redelegate', from: f.from, to: f.to, amount: f.amount }];
   return [{ kind: f.kind, validator: f.validator, amount: f.amount }];
 }
 
 function reviewLines(f){
   const a = L(f.amount) + ' LUNC';
-  if (f.kind === 'claim') return [['Action', 'Claim rewards'], ['Amount', 'about ' + a],
-    ['From', f.validators.length + ' validator' + (f.validators.length > 1 ? 's' : '')]];
+  const cnt = xs => xs.length + ' validator' + (xs.length > 1 ? 's' : '');
+  const dest = DATA.withdrawTo && DATA.withdrawTo !== addrOf() ? shortVal(DATA.withdrawTo) + ' (your withdraw address)' : 'this wallet';
+  if (f.kind === 'claim') return [['Action', 'Claim rewards'], ['Amount', 'about ' + a], ['From', cnt(f.only)], ['Paid to', dest]];
+  if (f.kind === 'restake') {
+    const l = [['Action', 'Restake rewards'], ['Back into stake', L(f.backAmount) + ' LUNC with ' + cnt(f.back) + ', each its own']];
+    if (f.only.length) l.push(['To balance', L(f.onlyAmount) + ' LUNC from ' + cnt(f.only) + ' not earning (jailed or inactive)']);
+    return l;
+  }
   if (f.kind === 'delegate') return [['Action', 'Stake ' + a], ['Validator', nameOf(f.validator)],
     ['Commission', ((DATA.byAddr[f.validator] || {}).rate * 100 || 0).toFixed(1) + '% of rewards']];
   if (f.kind === 'undelegate') return [['Action', 'Unstake ' + a], ['Validator', nameOf(f.validator)],
@@ -306,6 +527,7 @@ function warningOf(f){
   if (f.kind === 'redelegate') return 'The move is instant and keeps earning. For ' + UNBOND_DAYS +
     ' days this stake cannot be moved again from the new validator.';
   if (f.kind === 'delegate') return 'Staked LUNC earns rewards and can be moved at any time. Taking it back out takes ' + UNBOND_DAYS + ' days.';
+  if (f.kind === 'restake') return 'Rewards go straight back into stake with the validator that paid them, and start earning too. A jailed or inactive validator\'s rewards are only claimed, not staked back. Rewards under 1 LUNC per validator are left for later.';
   return '';
 }
 
@@ -334,9 +556,12 @@ async function review(){
     const need = (f.kind === 'delegate' ? BigInt(f.amount) : 0n) + BigInt(est.gasFee);
     if (need > BigInt(Math.floor(luncRaw() || 0))) throw new Error('Not enough LUNC to cover this and its fee.');
     $('#stk-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
+    if ((f.kind === 'claim' || f.kind === 'restake') && BigInt(est.gasFee) >= BigInt(f.amount)) {
+      $('#stk-out').innerHTML = '<div class="sbad">The fee is more than the rewards. Waiting until they grow is cheaper.</div>';
+    }
     const go_ = $('#stk-go');
     go_.disabled = false;
-    go_.textContent = f.kind === 'claim' ? 'Claim' : f.kind === 'delegate' ? 'Stake' : f.kind === 'undelegate' ? 'Unstake' : 'Move';
+    go_.textContent = ({ claim: 'Claim', restake: 'Restake', delegate: 'Stake', undelegate: 'Unstake' })[f.kind] || 'Move';
     go_.addEventListener('click', () => confirm(go_, f));
   } catch (e) {
     if (FLOW !== f) return;
@@ -400,4 +625,4 @@ if (addrOf() && S.MNEMONIC) loadStaking();
 // The wallet opening is the signal to read; tokens.js fires it.
 document.addEventListener('frontier:wallet', e => { DATA = null; loadStaking(e.detail && e.detail.addr); });
 
-export { loadStaking, plain };
+export { loadStaking, plain, stakingApr };
