@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=98e88b34">
+<link rel="stylesheet" href="assets/css/app.css?v=dcf814d1">
 </head>
 <body>
 <div id="rt"></div>
@@ -517,6 +517,14 @@
 <section class="step wpad" id="st-stake">
   <div class="head" style="margin:6px 4px 14px"><h2>Staking</h2><span id="stk-count"></span></div>
   <div id="stk-body"><div class="empty">Loading</div></div>
+
+  <div class="sw-sheet" id="stk-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span id="stk-sheet-title">Staking</span>
+        <button class="sw-x" id="stk-sheet-x" type="button">Close</button></div>
+      <div id="stk-sheet-body"></div>
+    </div>
+  </div>
 </section>
 
 <section class="step wpad" id="st-activity">
@@ -584,11 +592,12 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=98e88b34"></script>
-<script src="assets/js/ads.js?v=98e88b34"></script>
-<script type="module" src="assets/js/swap.js?v=98e88b34"></script>
-<script type="module" src="assets/js/activity.js?v=98e88b34"></script>
-<script type="module" src="assets/js/nft.js?v=98e88b34"></script>
-<script type="module" src="assets/js/p2p.js?v=98e88b34"></script>
+<script type="module" src="assets/js/app.js?v=dcf814d1"></script>
+<script src="assets/js/ads.js?v=dcf814d1"></script>
+<script type="module" src="assets/js/swap.js?v=dcf814d1"></script>
+<script type="module" src="assets/js/activity.js?v=dcf814d1"></script>
+<script type="module" src="assets/js/nft.js?v=dcf814d1"></script>
+<script type="module" src="assets/js/p2p.js?v=dcf814d1"></script>
+<script type="module" src="assets/js/stake.js?v=dcf814d1"></script>
 </body>
 </html>

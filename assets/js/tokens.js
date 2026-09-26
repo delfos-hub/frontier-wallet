@@ -1,6 +1,6 @@
-import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=98e88b34';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=98e88b34';
-import { $, go } from './shell.js?v=98e88b34';
+import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=dcf814d1';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=dcf814d1';
+import { $, go } from './shell.js?v=dcf814d1';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -717,39 +717,6 @@ async function loadBalances(addr, force){
   }
 }
 
-async function loadStaking(addr){
-  const body = $('#stk-body');
-  try {
-    const [dels, rew] = await Promise.all([
-      getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + addr),
-      getJSON(LCD + '/cosmos/distribution/v1beta1/delegators/' + addr + '/rewards').catch(() => ({}))
-    ]);
-    const rows = dels.delegation_responses || [];
-    $('#stk-count').textContent = rows.length ? rows.length + ' validator' + (rows.length > 1 ? 's' : '') : '';
-    if (!rows.length) {
-      body.innerHTML = '<div class="empty">Nothing staked yet. Delegating LUNC earns rewards and gives your address weight in governance votes.</div>';
-      return;
-    }
-    const staked = rows.reduce((a, r) => a + amt(r.balance && r.balance.amount, 6), 0);
-    let pending = 0;
-    (rew.total || []).forEach(t => { if (t.denom === 'uluna') pending += amt(t.amount, 6); });
-
-    body.innerHTML =
-      '<div class="bal" style="margin-bottom:14px"><div class="bal-label">Staked</div>' +
-      '<div class="bal-value" style="font-size:32px">' + fmt(staked) + ' <span style="font-size:18px;color:var(--muted)">LUNC</span></div>' +
-      '<div class="row-sub" style="margin-top:8px">Rewards ' + fmt(pending) + ' LUNC</div></div>' +
-      rows.map(r =>
-        '<div class="row"><span class="sym" style="background:var(--surface2);color:var(--muted)">\u25c8</span>' +
-        '<div class="row-main"><div class="row-name" style="font-size:13px;word-break:break-all">' +
-        r.delegation.validator_address.slice(0,20) + '\u2026</div></div>' +
-        '<div class="row-val"><div class="row-fiat">' + fmt(amt(r.balance.amount, 6)) + '</div></div></div>'
-      ).join('') +
-      '<p class="tiny">Unstaking takes 21 days. Sending and claiming are not wired up in this build.</p>';
-  } catch (e) {
-    body.innerHTML = '<div class="empty">Could not load staking: ' + (e.message || e) + '</div>';
-  }
-}
-
 // Which address the screen is showing, so anything can ask for a fresh read
 // without carrying the address around.
 // Two sessions each kept the address under their own name. One of them had
@@ -779,7 +746,8 @@ function openWallet(addr){
   $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
   go('home');
   loadBalances(addr);
-  loadStaking(addr);
+  // staking lives in stake.js now; it reads on this signal
+  document.dispatchEvent(new CustomEvent('frontier:wallet', { detail: { addr: addr } }));
 }
 
 // The swap screen needs the same rows the list is drawn from, priced and all.
