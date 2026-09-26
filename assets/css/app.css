@@ -859,3 +859,4 @@ button.row.stk-val{width:100%;font:inherit;color:inherit;text-align:left;cursor:
 .stk-steps span{width:24px;height:24px;border-radius:50%;background:var(--border);color:#B9A8FF;font-family:'Rajdhani',sans-serif;
   font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
 .stk-steps b{font-size:14px}.stk-steps small{font-size:12px;color:var(--muted)}
+.stk-wd{text-align:left;margin:10px 4px 0;color:var(--gold)}

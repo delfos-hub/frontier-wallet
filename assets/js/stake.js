@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=7d535191';
-import { $, buzz } from './shell.js?v=7d535191';
-import { S } from './state.js?v=7d535191';
-import { luncRaw, refreshBalances } from './tokens.js?v=7d535191';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=7d535191';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=409a4100';
+import { $, buzz } from './shell.js?v=409a4100';
+import { S } from './state.js?v=409a4100';
+import { luncRaw, refreshBalances } from './tokens.js?v=409a4100';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=409a4100';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -61,7 +61,10 @@ function fillLogos(root){
           } catch (e) { return; }
         } else u = logoCached(id).u;
         if (!u) return;
-        document.querySelectorAll('.stk-ico[data-ident="' + id + '"]').forEach(el => {
+        // the identity is operator-chosen text: escaped, or one quote in it
+        // breaks the selector and stops every logo after it
+        const sel = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(id) : id.replace(/["\\]/g, '\\$&');
+        document.querySelectorAll('.stk-ico[data-ident="' + sel + '"]').forEach(el => {
           el.removeAttribute('data-ident');
           el.innerHTML = '<img src="' + esc(u) + '" alt="" loading="lazy" referrerpolicy="no-referrer">';
         });
@@ -104,11 +107,15 @@ async function one(addr){
 }
 
 async function load(addr){
-  const [dels, rew, unb, vals] = await Promise.all([
+  const [dels, rew, unb, vals, wd] = await Promise.all([
     getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + addr),
     getJSON(LCD + '/cosmos/distribution/v1beta1/delegators/' + addr + '/rewards').catch(() => ({})),
     getJSON(LCD + '/cosmos/staking/v1beta1/delegators/' + addr + '/unbonding_delegations').catch(() => ({})),
-    validators()
+    validators(),
+    // Rewards may be set to go to another address (MsgSetWithdrawAddress is
+    // enabled on mainnet). Restake has to know: it stakes what the withdraw
+    // brought in, and if it went elsewhere it would stake the free balance.
+    getJSON(LCD + '/cosmos/distribution/v1beta1/delegators/' + addr + '/withdraw_address').catch(() => null)
   ]);
   const byAddr = {};
   vals.forEach(v => { byAddr[v.addr] = v; });
@@ -132,7 +139,10 @@ async function load(addr){
     val: u.validator_address, amount: BigInt(e.balance || '0'), at: new Date(e.completion_time)
   })));
   unbonding.sort((a, b) => a.at - b.at);
-  DATA = { dels: rows, unbonding: unbonding, vals: vals, byAddr: byAddr, bondedTotal: bondedTotal };
+  // null = the node would not say; Restake stays off until it can be sure
+  const withdrawTo = wd && wd.withdraw_address ? wd.withdraw_address : null;
+  DATA = { dels: rows, unbonding: unbonding, vals: vals, byAddr: byAddr, bondedTotal: bondedTotal,
+           withdrawTo: withdrawTo, restakeOk: withdrawTo === addr };
   return DATA;
 }
 
@@ -226,6 +236,8 @@ function draw(){
   const staked = d.dels.reduce((a, r) => a + r.amount, 0n);
   const reward = d.dels.reduce((a, r) => a + r.reward, 0n);
   const claimable = d.dels.filter(r => r.reward >= REWARD_MIN).reduce((a, r) => a + r.reward, 0n);
+  const earning = r => { const v = d.byAddr[r.val]; return v && !v.jailed && v.bonded; };
+  const restakable = d.dels.filter(r => r.reward >= REWARD_MIN && earning(r)).reduce((a, r) => a + r.reward, 0n);
   const leaving = d.unbonding.reduce((a, u) => a + u.amount, 0n);
   const free = BigInt(Math.floor(luncRaw() || 0));
   const usd = raw => PX ? '\u2248 $' + (amt(String(raw), 6) * PX).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '';
@@ -271,9 +283,13 @@ function draw(){
   h += '<div class="stk-bigacts">' +
     '<button class="stk-bigact main" id="stk-new" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><b>Stake</b></button>' +
     '<button class="stk-bigact" id="stk-claim" type="button"' + (claimable > 0n ? '' : ' disabled') + '><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><b>Claim</b><small class="g">' + L(claimable) + '</small></button>' +
-    '<button class="stk-bigact" id="stk-restake" type="button"' + (claimable > 0n ? '' : ' disabled') + '><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><b>Restake</b><small>claim + stake</small></button>' +
+    '<button class="stk-bigact" id="stk-restake" type="button"' + (restakable > 0n && d.restakeOk ? '' : ' disabled') + '><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><b>Restake</b><small>claim + stake</small></button>' +
     '</div>';
 
+  if (!d.restakeOk && d.withdrawTo) {
+    h += '<p class="tiny stk-wd">Rewards from this address are set to go to ' + esc(shortVal(d.withdrawTo)) +
+      ', so Restake is off: it would stake your own balance instead of the rewards.</p>';
+  }
   h += '<div class="head" style="margin:18px 4px 10px"><h2>Your validators</h2><span>' + d.dels.length + '</span></div>';
   h += d.dels.map(r => {
     const v = d.byAddr[r.val] || { name: shortVal(r.val), rate: 0 };
@@ -454,19 +470,31 @@ function startAmount(f){
 // than 1 LUNC are left out: each message adds gas, and a wallet spread thin
 // could otherwise pay more in fee than it claims.
 function startClaim(kind){
+  if (kind === 'restake' && !DATA.restakeOk) return;
   const owed = DATA.dels.filter(r => r.reward >= REWARD_MIN);
   if (!owed.length) return;
-  FLOW = { kind: kind, owed: owed.map(r => ({ val: r.val, amount: r.reward.toString() })),
-           amount: owed.reduce((a, r) => a + r.reward, 0n).toString() };
+  // Restake stakes each reward back with the validator that paid it - but
+  // never into a jailed or inactive one, which would put rewards into stake
+  // that earns nothing. Those are claimed to the balance instead.
+  const ok = r => { const v = DATA.byAddr[r.val]; return v && !v.jailed && v.bonded; };
+  const back = kind === 'restake' ? owed.filter(ok) : [];
+  if (kind === 'restake' && !back.length) return;
+  const only = kind === 'restake' ? owed.filter(r => !ok(r)) : owed;
+  const sum = xs => xs.reduce((a, r) => a + r.reward, 0n);
+  FLOW = { kind: kind,
+           back: back.map(r => ({ val: r.val, amount: r.reward.toString() })),
+           only: only.map(r => ({ val: r.val, amount: r.reward.toString() })),
+           amount: sum(owed).toString(), backAmount: sum(back).toString(), onlyAmount: sum(only).toString() };
   sheet(true, kind === 'restake' ? 'Restake rewards' : 'Claim rewards');
   review();
 }
 
 function msgsOf(f){
-  if (f.kind === 'claim') return f.owed.map(o => ({ kind: 'claim', validator: o.val }));
+  if (f.kind === 'claim') return f.only.map(o => ({ kind: 'claim', validator: o.val }));
   if (f.kind === 'restake') {
     const m = [];
-    f.owed.forEach(o => { m.push({ kind: 'claim', validator: o.val }); m.push({ kind: 'delegate', validator: o.val, amount: o.amount }); });
+    f.back.forEach(o => { m.push({ kind: 'claim', validator: o.val }); m.push({ kind: 'delegate', validator: o.val, amount: o.amount }); });
+    f.only.forEach(o => m.push({ kind: 'claim', validator: o.val }));
     return m;
   }
   if (f.kind === 'redelegate') return [{ kind: 'redelegate', from: f.from, to: f.to, amount: f.amount }];
@@ -475,9 +503,14 @@ function msgsOf(f){
 
 function reviewLines(f){
   const a = L(f.amount) + ' LUNC';
-  const n = f.owed ? f.owed.length + ' validator' + (f.owed.length > 1 ? 's' : '') : '';
-  if (f.kind === 'claim') return [['Action', 'Claim rewards'], ['Amount', 'about ' + a], ['From', n]];
-  if (f.kind === 'restake') return [['Action', 'Restake rewards'], ['Amount', a + ' back into stake'], ['With', n + ', each its own']];
+  const cnt = xs => xs.length + ' validator' + (xs.length > 1 ? 's' : '');
+  const dest = DATA.withdrawTo && DATA.withdrawTo !== addrOf() ? shortVal(DATA.withdrawTo) + ' (your withdraw address)' : 'this wallet';
+  if (f.kind === 'claim') return [['Action', 'Claim rewards'], ['Amount', 'about ' + a], ['From', cnt(f.only)], ['Paid to', dest]];
+  if (f.kind === 'restake') {
+    const l = [['Action', 'Restake rewards'], ['Back into stake', L(f.backAmount) + ' LUNC with ' + cnt(f.back) + ', each its own']];
+    if (f.only.length) l.push(['To balance', L(f.onlyAmount) + ' LUNC from ' + cnt(f.only) + ' not earning (jailed or inactive)']);
+    return l;
+  }
   if (f.kind === 'delegate') return [['Action', 'Stake ' + a], ['Validator', nameOf(f.validator)],
     ['Commission', ((DATA.byAddr[f.validator] || {}).rate * 100 || 0).toFixed(1) + '% of rewards']];
   if (f.kind === 'undelegate') return [['Action', 'Unstake ' + a], ['Validator', nameOf(f.validator)],
@@ -494,7 +527,7 @@ function warningOf(f){
   if (f.kind === 'redelegate') return 'The move is instant and keeps earning. For ' + UNBOND_DAYS +
     ' days this stake cannot be moved again from the new validator.';
   if (f.kind === 'delegate') return 'Staked LUNC earns rewards and can be moved at any time. Taking it back out takes ' + UNBOND_DAYS + ' days.';
-  if (f.kind === 'restake') return 'Rewards go straight back into stake with the validator that paid them, and start earning too. Rewards under 1 LUNC per validator are left for later.';
+  if (f.kind === 'restake') return 'Rewards go straight back into stake with the validator that paid them, and start earning too. A jailed or inactive validator\'s rewards are only claimed, not staked back. Rewards under 1 LUNC per validator are left for later.';
   return '';
 }
 
