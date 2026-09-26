@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=409a4100';
-import { S } from './state.js?v=409a4100';
+import { $, report, tg } from './shell.js?v=fbe47268';
+import { S } from './state.js?v=fbe47268';
 
 /* ---------------- storage ----------------
    SecureStorage is backed by the iOS Keychain and the Android Keystore,
