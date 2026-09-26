@@ -73,7 +73,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); dropKeyboard(); }
 });
 
-const WALLET_TABS = ['home','stake','activity','settings'];
+const WALLET_TABS = ['home','stake','gov','activity','settings'];
 function go(name){
   tap();
   const t = $('#tabs');

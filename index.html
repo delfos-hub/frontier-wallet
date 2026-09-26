@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=01122e5f">
+<link rel="stylesheet" href="assets/css/app.css?v=3aed2ea0">
 </head>
 <body>
 <div id="rt"></div>
@@ -498,6 +498,15 @@
   <div class="p2p-frame" id="p2p-frame"><div class="empty"><span class="spin"></span>Loading</div></div>
 </section>
 
+<!-- Top level, like the staking sheet: inside a .step the tab bar covers it. -->
+<div class="sw-sheet" id="gov-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span id="gov-sheet-title">Proposal</span>
+        <button class="sw-x" id="gov-sheet-x" type="button">Close</button></div>
+      <div id="gov-sheet-body"></div>
+    </div>
+  </div>
+
 <div class="sw-sheet" id="p2p-sheet" hidden>
   <div class="sw-sheet-in">
     <div class="sw-sheet-top"><span>Confirm in Frontier</span><span id="p2p-left"></span></div>
@@ -513,6 +522,13 @@
     <button class="btn quiet" id="p2p-reject" type="button">Reject</button>
   </div>
 </div>
+
+<!-- ================= GOVERNANCE ================= -->
+<section class="step wpad" id="st-gov">
+  <div class="head" style="margin-top:6px"><h2>Governance</h2><span>Terra Classic</span></div>
+  <div id="gov-body"><div class="empty">Loading</div></div>
+
+</section>
 
 <section class="step wpad" id="st-stake">
   <div class="head" style="margin:6px 4px 14px"><h2>Staking</h2><span id="stk-count"></span></div>
@@ -569,6 +585,7 @@
 <nav class="tabs" id="tabs">
   <button class="tab sel" data-tab="home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 21v-8h6v8"/></svg>Home</button>
   <button class="tab" data-tab="stake"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/></svg>Stake</button>
+  <button class="tab" data-tab="gov"><svg viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><path d="M5 7h14v13H5z"/><path d="M8 3h8v4H8z"/></svg><span class="tab-badge" id="gov-badge" hidden></span>Vote</button>
   <button class="tab" data-tab="activity"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Activity</button>
   <button class="tab" data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.1-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.1 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.4 1Z"/></svg>Settings</button>
 </nav>
@@ -592,12 +609,13 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=01122e5f"></script>
-<script src="assets/js/ads.js?v=01122e5f"></script>
-<script type="module" src="assets/js/swap.js?v=01122e5f"></script>
-<script type="module" src="assets/js/activity.js?v=01122e5f"></script>
-<script type="module" src="assets/js/nft.js?v=01122e5f"></script>
-<script type="module" src="assets/js/p2p.js?v=01122e5f"></script>
-<script type="module" src="assets/js/stake.js?v=01122e5f"></script>
+<script type="module" src="assets/js/app.js?v=3aed2ea0"></script>
+<script src="assets/js/ads.js?v=3aed2ea0"></script>
+<script type="module" src="assets/js/swap.js?v=3aed2ea0"></script>
+<script type="module" src="assets/js/activity.js?v=3aed2ea0"></script>
+<script type="module" src="assets/js/nft.js?v=3aed2ea0"></script>
+<script type="module" src="assets/js/p2p.js?v=3aed2ea0"></script>
+<script type="module" src="assets/js/gov.js?v=0"></script>
+<script type="module" src="assets/js/stake.js?v=3aed2ea0"></script>
 </body>
 </html>
