@@ -25,6 +25,8 @@ const ORDERS = {
        offer_remaining: '400000000000', ask: { cw20: { address: TOKEN } }, ask_total: '10000000', fee_bps: 10 },
   8: { id: 8, seller: SOMEONE, offer: { cw20: { address: TOKEN } }, offer_total: '5000000',
        offer_remaining: '5000000', ask: { native: { denom: 'uluna' } }, ask_total: '100000000000', fee_bps: 10 },
+  10: { id: 10, seller: SOMEONE, offer: { native: { denom: 'uluna' } }, offer_total: '500000000000',
+       offer_remaining: '500000000000', ask: { cw20: { address: TOKEN } }, ask_total: '10000000', fee_bps: 10 },
   9: { id: 9, seller: ME, offer: { native: { denom: 'uluna' } }, offer_total: '2000000',
        offer_remaining: '1500000', ask: { native: { denom: 'uusd' } }, ask_total: '30000', fee_bps: 10 },
 };
@@ -157,6 +159,45 @@ await expect('a look-alike IBC denom is not called USDC', async () => {
 await expect('own cancel allowed and described', async () => {
   const p = await m.understand({ contract: P2P, msg: { cancel_order: { order_id: 9 } }, funds: [] });
   if (!/^1\.5 LUNC/.test(lineOf(p, 'Returned to you'))) throw new Error(lineOf(p, 'Returned to you'));
+});
+
+const fillMsg = (id, amount, min) => ({ contract: TOKEN, funds: [],
+  msg: { send: { contract: P2P, amount: amount, msg: hook({ fill_order: { order_id: id, min_offer_out: min } }) } } });
+const refusedBatch = async (mod, msgs, re) => {
+  let got = null;
+  try { await mod.understandBatch(msgs); } catch (e) { got = e.message; }
+  if (!got) throw new Error('was allowed');
+  if (re && !re.test(got)) throw new Error('refused for the wrong reason: ' + got);
+};
+
+console.log('\nexecute-batch');
+await expect('no contract configured: batch refused', () =>
+  refusedBatch(empty, [fillMsg(7, '1', '1'), fillMsg(10, '1', '1')], /not deployed/));
+await expect('a single fill is not a batch', () =>
+  refusedBatch(m, [fillMsg(7, '2000000', '1')], /2 to 10/));
+await expect('more than 10 fills refused', () =>
+  refusedBatch(m, Array.from({ length: 11 }, (_, i) => fillMsg(7, '1', '1')), /2 to 10/));
+await expect('a fill without min_offer_out refused', () =>
+  refusedBatch(m, [fillMsg(7, '2000000', '1'), fillMsg(10, '5000000', null)], /needs min_offer_out/));
+await expect('the same order twice refused', () =>
+  refusedBatch(m, [fillMsg(7, '2000000', '1'), fillMsg(7, '1000000', '1')], /appears twice/));
+await expect('fills on two different pairs refused', () =>
+  refusedBatch(m, [fillMsg(7, '2000000', '1'), { contract: P2P, funds: [{ denom: 'uluna', amount: '20000000000' }], msg: { fill_order: { order_id: 8, min_offer_out: '1' } } }], /one pair|different payment/));
+await expect('a cancel inside a batch refused', () =>
+  refusedBatch(m, [fillMsg(7, '2000000', '1'), { contract: P2P, funds: [], msg: { cancel_order: { order_id: 9 } } }], /only fill orders/));
+await expect('a CW20 transfer smuggled into a batch refused', () =>
+  refusedBatch(m, [fillMsg(7, '2000000', '1'), { contract: TOKEN, funds: [], msg: { transfer: { recipient: SOMEONE, amount: '5' } } }], /only a CW20 send/));
+await expect('sweep of two orders summed as one trade', async () => {
+  // #7: 2 TUSD buys 200,000 LUNC; #10 (twice the price): 5 TUSD buys 250,000.
+  // Net of 0.1%: 199,800 + 249,750 = 449,550 LUNC for 7 TUSD.
+  const p = await m.understandBatch([fillMsg(7, '2000000', '199000000000'), fillMsg(10, '5000000', '249000000000')]);
+  if (p.steps.length !== 2) throw new Error('steps: ' + p.steps.length);
+  if (!/^Buy from 2 orders \(#7, #10\)$/.test(lineOf(p, 'Action'))) throw new Error(lineOf(p, 'Action'));
+  if (!/^7 TUSD/.test(lineOf(p, 'You pay'))) throw new Error(lineOf(p, 'You pay'));
+  if (!/about 449,550 LUNC/.test(lineOf(p, 'You get'))) throw new Error(lineOf(p, 'You get'));
+  if (!/^448,000 LUNC in total/.test(lineOf(p, 'Minimum'))) throw new Error(lineOf(p, 'Minimum'));
+  if (!/^0\.00002 TUSD/.test(lineOf(p, 'Worst price'))) throw new Error(lineOf(p, 'Worst price'));
+  if (!/^0\.000016 TUSD/.test(lineOf(p, 'Average price'))) throw new Error(lineOf(p, 'Average price'));
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
