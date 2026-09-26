@@ -1,8 +1,8 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=5e7bb797';
-import { $, buzz, go, tap } from './shell.js?v=5e7bb797';
-import { S } from './state.js?v=5e7bb797';
-import { iconHTML, paintIcons } from './chain.js?v=5e7bb797';
-import { heldTokens, refreshBalances } from './tokens.js?v=5e7bb797';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=01122e5f';
+import { $, buzz, go, tap } from './shell.js?v=01122e5f';
+import { S } from './state.js?v=01122e5f';
+import { iconHTML, paintIcons } from './chain.js?v=01122e5f';
+import { heldTokens, refreshBalances } from './tokens.js?v=01122e5f';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -609,3 +609,64 @@ async function sendSwap(from, steps, mnemonic){
   return { hash: hash, gas: p.gas, gasFee: p.gasFee, wait: function(){ return waitFor(hash); } };
 }
 export { dryRunSwap, sendSwap };
+
+/* ---------------- staking ----------------
+   Four messages, all plain Cosmos SDK, all built by hand like MsgSend above.
+   Field numbers from cosmos-sdk proto (staking/v1beta1/tx.proto,
+   distribution/v1beta1/tx.proto), and each encoder is checked byte for byte
+   against cosmjs-types in tests/stake.mjs:
+     MsgDelegate / MsgUndelegate   delegator 1, validator 2, amount 3
+     MsgBeginRedelegate            delegator 1, src 2, dst 3, amount 4
+     MsgWithdrawDelegatorReward    delegator 1, validator 2
+   The fee is measured by simulation, the same way a send is: on this chain the
+   node counts any tax as gas, so the simulator already includes it. */
+const STAKE_URLS = {
+  delegate:   '/cosmos.staking.v1beta1.MsgDelegate',
+  undelegate: '/cosmos.staking.v1beta1.MsgUndelegate',
+  redelegate: '/cosmos.staking.v1beta1.MsgBeginRedelegate',
+  claim:      '/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward'
+};
+const lunc = raw => ({ denom: 'uluna', amount: String(raw) });
+
+function stakeAny(from, m){
+  const url = STAKE_URLS[m.kind];
+  if (!url) throw new Error('unknown staking action ' + m.kind);
+  if (m.kind === 'claim') return any(url, cat([fStr(1, from), fStr(2, m.validator)]));
+  if (!/^\d+$/.test(String(m.amount)) || String(m.amount) === '0') throw new Error('amount must be greater than zero');
+  if (m.kind === 'redelegate') {
+    return any(url, cat([fStr(1, from), fStr(2, m.from), fStr(3, m.to), fBytes(4, coin(lunc(m.amount)))]));
+  }
+  return any(url, cat([fStr(1, from), fStr(2, m.validator), fBytes(3, coin(lunc(m.amount)))]));
+}
+
+function stakeTx(from, msgs, key, seq, feeCoins, gas){
+  const body = txBody(msgs.map(m => stakeAny(from, m)), '');
+  return { body: body, auth: authInfo(key, seq, feeCoins, gas) };
+}
+
+async function stakePlan(from, msgs, mnemonic){
+  if (!msgs.length) throw new Error('nothing to do');
+  const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
+  const probe = stakeTx(from, msgs, key.pub, acc.seq,
+    [{ denom: 'uluna', amount: '1000000' }], 400000 * msgs.length);
+  const used = await simulateGas(probe.body, probe.auth);
+  const gas = Math.ceil(used * GAS_SAFETY);
+  return { acc: acc, key: key, used: used, gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
+}
+
+// Everything a real staking transaction would do, stopping short of signing.
+async function dryRunStake(from, msgs, mnemonic){
+  const p = await stakePlan(from, msgs, mnemonic);
+  return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee };
+}
+
+// Rebuilt from scratch at send time: the sequence may have moved since review.
+async function sendStake(from, msgs, mnemonic){
+  const p = await stakePlan(from, msgs, mnemonic);
+  const real = stakeTx(from, msgs, p.key.pub, p.acc.seq,
+    [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
+  const sig = p.key.node.sign(p.key.sha256(signDoc(real.body, real.auth, CHAIN, p.acc.num)));
+  const hash = await broadcast(txRaw(real.body, real.auth, [sig]));
+  return { hash: hash, gasFee: p.gasFee, wait: function(){ return waitFor(hash); } };
+}
+export { STAKE_URLS, dryRunStake, sendStake, stakeAny };
