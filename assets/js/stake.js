@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=a0316039';
-import { $, buzz } from './shell.js?v=a0316039';
-import { S } from './state.js?v=a0316039';
-import { luncRaw, refreshBalances } from './tokens.js?v=a0316039';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=a0316039';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=7d535191';
+import { $, buzz } from './shell.js?v=7d535191';
+import { S } from './state.js?v=7d535191';
+import { luncRaw, refreshBalances } from './tokens.js?v=7d535191';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=7d535191';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -137,31 +137,43 @@ async function load(addr){
 }
 
 /* ---------------- staking return, from the chain ----------------
-   Staking rewards on Terra Classic come from the oracle reward pool, which
-   pays out 1/window of its balance every block, plus inflation if the mint
-   module has any. Both are read from the node, the block time is measured
-   from two real blocks, and the community tax comes off the top:
+   Staking rewards on Terra Classic come mostly from the oracle reward pool,
+   which pays 1/window of its balance every block straight to the validators
+   (not through the fee collector, so the 50% community tax does not touch
+   it). The pool holds LUNC and a large amount of USTC - about a quarter of
+   its value - so USTC is counted at its market price against LUNC. The other
+   old stable denoms in it are worth next to nothing and are left out. Mint
+   provisions, if any, do go through the fee collector and are taxed.
 
-     APR = (pool / window * blocks per year + annual provisions)
-           * (1 - community tax) / bonded LUNC
+     APR = (pool LUNC + pool USTC in LUNC) / window * blocks per year
+           / bonded  +  provisions * (1 - community tax) / bonded
 
-   That is before a validator's commission; a validator's own row shows it
-   after. The pool's other denoms are ignored - LUNC is nearly all of it. */
+   Checked on 26 Sep 2026: 3.06% here against 3.23% on the official site;
+   the gap is gas fees, which are not modelled. Before commission. */
 let APR = null, APR_AT = 0;
 async function stakingApr(){
   if (APR !== null && Date.now() - APR_AT < 30 * 60000) return APR;
   const one = (u, t) => getJSON(LCD + u, 12000, t || 2).catch(() => null);
-  const [op, mod, dist, pool, mint, latest] = await Promise.all([
+  const [op, mod, dist, pool, mint, latest, px] = await Promise.all([
     one('/terra/oracle/v1beta1/params'), one('/cosmos/auth/v1beta1/module_accounts/oracle'),
     one('/cosmos/distribution/v1beta1/params'), one('/cosmos/staking/v1beta1/pool'),
-    one('/cosmos/mint/v1beta1/annual_provisions', 1), one('/cosmos/base/tendermint/v1beta1/blocks/latest')
+    one('/cosmos/mint/v1beta1/annual_provisions', 1), one('/cosmos/base/tendermint/v1beta1/blocks/latest'),
+    marketPrices()
   ]);
   const win = Number(op && op.params && op.params.reward_distribution_window);
   const acc = mod && mod.account && (mod.account.base_account ? mod.account.base_account.address : mod.account.address);
   const bonded = Number(pool && pool.pool && pool.pool.bonded_tokens);
   if (!win || !acc || !bonded) return null;
-  const bal = await one('/cosmos/bank/v1beta1/balances/' + acc + '/by_denom?denom=uluna');
-  const inPool = Number(bal && bal.balance && bal.balance.amount || 0);
+  const [bl, bu] = await Promise.all([
+    one('/cosmos/bank/v1beta1/balances/' + acc + '/by_denom?denom=uluna'),
+    one('/cosmos/bank/v1beta1/balances/' + acc + '/by_denom?denom=uusd')
+  ]);
+  const luna = Number(bl && bl.balance && bl.balance.amount || 0);
+  const ustc = Number(bu && bu.balance && bu.balance.amount || 0);
+  // USTC in LUNC at market; without prices the USTC share is left out and the
+  // figure reads low rather than made up
+  const ratio = px && px.LUNC && px.USTC ? px.USTC / px.LUNC : 0;
+  const inPool = luna + ustc * ratio;
   // seconds per block, measured over the last 20,000 blocks; 6 s if that
   // block is already pruned from this node
   let spb = 6;
@@ -174,18 +186,19 @@ async function stakingApr(){
   const perYear = 31557600 / spb;
   const provisions = Number(mint && mint.annual_provisions || 0);
   const ctax = Number(dist && dist.params && dist.params.community_tax || 0);
-  APR = ((inPool / win) * perYear + provisions) * (1 - ctax) / bonded;
+  APR = ((inPool / win) * perYear + provisions * (1 - ctax)) / bonded;
   APR_AT = Date.now();
   return APR;
 }
 const pctTxt = x => (x == null || !isFinite(x)) ? '\u2014' : (x * 100).toFixed(x < 0.1 ? 2 : 1) + '%';
 
-let PX = null;
-async function luncUsd(){
-  if (PX) return PX;
-  try { const p = await prices(); if (p && p.LUNC) PX = p.LUNC; } catch (e) {}
-  return PX;
+let PX = null, PRICES = null;
+async function marketPrices(){
+  if (PRICES) return PRICES;
+  try { const p = await prices(); if (p && p.LUNC) { PRICES = p; PX = p.LUNC; } } catch (e) {}
+  return PRICES;
 }
+const luncUsd = () => marketPrices().then(() => PX);
 
 /* ---------------- the screen ---------------- */
 let OPEN_ROW = null;
