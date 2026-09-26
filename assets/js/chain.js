@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=08f78cf6';
+import { $ } from './shell.js?v=88173ba7';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -241,6 +241,19 @@ async function getJSON(url, ms = 12000, tries = 3){
         // three times only made it three refusals.
         err.final = (r.status >= 400 && r.status < 500 && r.status !== 429) ||
                     r.status === 501;
+        // A contract asked something it does not understand - a balance{}
+        // sent to a pool or an NFT - comes back from publicnode as a 500 with
+        // a parse error in the body. That is the contract answering "not me",
+        // not the node struggling: no retry, and callers can tell it apart.
+        if (r.status >= 500) {
+          let body = '';
+          try { body = (await r.text()).slice(0, 400); } catch (x) {}
+          err.body = body;
+          if (/unknown variant|Error parsing into type|missing field|expected one of/i.test(body)) {
+            err.final = true;
+            err.refused = true;
+          }
+        }
         throw err;
       }
       return await r.json();

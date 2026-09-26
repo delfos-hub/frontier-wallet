@@ -1,6 +1,6 @@
-import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=08f78cf6';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=08f78cf6';
-import { $, go } from './shell.js?v=08f78cf6';
+import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=88173ba7';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=88173ba7';
+import { $, go } from './shell.js?v=88173ba7';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -673,7 +673,8 @@ async function loadBalances(addr, force){
         const chunk = cands.slice(i, i + 40).filter(c => !have(c));
         const bals = await mapLimit(chunk, 8, async c => {
           try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
-          catch (e) { return null; }
+          // "not a token" is an answer, and it is zero; only silence is a failure
+          catch (e) { return e && e.refused ? '0' : null; }
         });
         const hits = [];
         chunk.forEach((c, k) => {
@@ -715,7 +716,7 @@ async function loadBalances(addr, force){
       await nap(1500);
       const bals = await mapLimit(again, 3, async c => {
         try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
-        catch (e) { failed.push(c); return '0'; }
+        catch (e) { if (!(e && e.refused)) failed.push(c); return '0'; }
       });
       const hits = [];
       again.forEach((c, k) => { if (Number(bals[k]) > 0) hits.push({ c: c, bal: bals[k] }); });
