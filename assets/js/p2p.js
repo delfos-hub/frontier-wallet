@@ -21,13 +21,15 @@
      out  { channel, type:'address', id, address } | { ..., type:'error', id, message }
      in   { channel, type:'execute', id, contract, msg, funds }
      out  { channel, type:'execute-result', id, txHash } | { ..., type:'error', id, message }
+     in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
+     out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=01122e5f';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=01122e5f';
-import { $, buzz, go, libs, report } from './shell.js?v=01122e5f';
-import { S } from './state.js?v=01122e5f';
-import { decryptSeed } from './storage.js?v=01122e5f';
-import { dryRunSwap, sendSwap } from './tx.js?v=01122e5f';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=dcf814d1';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=dcf814d1';
+import { $, buzz, go, libs, report } from './shell.js?v=dcf814d1';
+import { S } from './state.js?v=dcf814d1';
+import { decryptSeed } from './storage.js?v=dcf814d1';
+import { dryRunSwap, sendSwap } from './tx.js?v=dcf814d1';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -147,7 +149,9 @@ function coinsOk(funds){
 /* ---------------- rule 4, and rule 3 from what passed it ----------------
    Returns { steps, lines } or throws with the reason the call is refused.
    `steps` is exactly what gets signed; `lines` describe exactly that. */
-async function understand(req){
+// Rule 4 alone: is this one message allowed at all, and what does it spend.
+// Shared by a single execute and by every message of a batch.
+async function gate(req){
   if (!P2P_CONTRACT) throw new Error('P2P contract is not deployed yet');
   const contract = req.contract, msg = req.msg, funds = req.funds || [];
   if (typeof contract !== 'string' || !msg || typeof msg !== 'object') throw new Error('malformed request');
@@ -183,6 +187,26 @@ async function understand(req){
     if (action !== 'create_order' && action !== 'fill_order') throw new Error('this CW20 hook is not allowed: ' + (action || 'unknown'));
     pay = { asset: { cw20: { address: contract } }, amount: s.amount };
   }
+  return { contract: contract, msg: msg, funds: funds, action: action, body: body, pay: pay };
+}
+
+// What the contract does with one fill: payment buys proportionally, capped at
+// what is left, the fee comes out of what the buyer receives, the rest is
+// refunded. Same ceil/floor as fill_order.
+function fillMath(o, payAmount){
+  const P = BigInt(payAmount), OT = BigInt(o.offer_total), AT = BigInt(o.ask_total), R = BigInt(o.offer_remaining);
+  let gross = AT > 0n ? P * OT / AT : 0n;
+  let used = P;
+  if (gross > R) { gross = R; used = (R * AT + OT - 1n) / OT; }
+  const fee = gross * BigInt(o.fee_bps || 0) / 10000n;
+  return { sent: P, used: used, gross: gross, net: gross - fee };
+}
+
+const sameAsset = (a, b) => !!assetKind(a) && JSON.stringify(assetKind(a)) === JSON.stringify(assetKind(b));
+
+async function understand(req){
+  const g = await gate(req);
+  const contract = g.contract, msg = g.msg, funds = g.funds, action = g.action, body = g.body, pay = g.pay;
 
   const lines = [];
   if (action === 'create_order') {
@@ -198,18 +222,12 @@ async function understand(req){
     if (!body || !isId(body.order_id)) throw new Error('bad order id');
     if (body.min_offer_out != null && !isUint(body.min_offer_out)) throw new Error('bad minimum');
     const o = await orderOf(body.order_id);
-    if (!assetKind(o.ask) || JSON.stringify(assetKind(o.ask)) !== JSON.stringify(assetKind(pay.asset))) {
+    if (!sameAsset(o.ask, pay.asset)) {
       throw new Error('order ' + body.order_id + ' asks for a different payment asset');
     }
     const [om, am] = await Promise.all([metaOf(o.offer), metaOf(o.ask)]);
-    // What the contract does: payment buys proportionally, capped at what is
-    // left, the fee comes out of what the buyer receives, the rest is refunded.
-    const P = BigInt(pay.amount), OT = BigInt(o.offer_total), AT = BigInt(o.ask_total), R = BigInt(o.offer_remaining);
-    let gross = AT > 0n ? P * OT / AT : 0n;
-    let used = P;
-    if (gross > R) { gross = R; used = (R * AT + OT - 1n) / OT; }
-    const fee = gross * BigInt(o.fee_bps || 0) / 10000n;
-    const net = gross - fee;
+    const f = fillMath(o, pay.amount);
+    const P = f.sent, used = f.used, net = f.net;
     lines.push(['Action', 'Buy from order #' + body.order_id]);
     lines.push(['You pay', show(used.toString(), am) + (used < P ? ' (the rest of ' + show(pay.amount, am) + ' comes back)' : '')]);
     lines.push(['You get', 'about ' + show(net.toString(), om) + (om.native ? ', before the chain burn tax' : '')]);
@@ -233,6 +251,62 @@ async function understand(req){
   }
   lines.push(['Contract', short(P2P_CONTRACT)]);
   return { steps: [{ contract: contract, msg: msg, funds: funds }], lines: lines };
+}
+
+/* ---------------- a market sweep: several fills, one signature ----------------
+   Issue delfos-hub/widgets#7. Only fill_order, 2 to 10 of them, all on one
+   pair, each with its own min_offer_out, so the contract itself enforces the
+   worst price of every leg. One transaction: all of it lands or none of it.
+   The sheet shows the sweep as one trade, built from the orders on chain. */
+const BATCH_MAX = 10;
+
+async function understandBatch(msgs){
+  if (!Array.isArray(msgs) || msgs.length < 2 || msgs.length > BATCH_MAX) {
+    throw new Error('a batch holds 2 to ' + BATCH_MAX + ' fills');
+  }
+  const gs = [];
+  for (const m of msgs) {
+    if (!m || typeof m !== 'object') throw new Error('malformed request');
+    gs.push(await gate({ contract: m.contract, msg: m.msg, funds: m.funds }));
+  }
+  const ids = new Set();
+  for (const g of gs) {
+    if (g.action !== 'fill_order') throw new Error('a batch may only fill orders, not ' + g.action);
+    if (!g.body || !isId(g.body.order_id)) throw new Error('bad order id');
+    if (ids.has(g.body.order_id)) throw new Error('order ' + g.body.order_id + ' appears twice');
+    ids.add(g.body.order_id);
+    if (!isUint(g.body.min_offer_out) || g.body.min_offer_out === '0') {
+      throw new Error('every fill in a batch needs min_offer_out');
+    }
+  }
+  const orders = await Promise.all(gs.map(g => orderOf(g.body.order_id)));
+  const o0 = orders[0];
+  orders.forEach(function (o, i) {
+    if (!sameAsset(o.offer, o0.offer) || !sameAsset(o.ask, o0.ask)) throw new Error('all fills in a batch must be on one pair');
+    if (!sameAsset(o.ask, gs[i].pay.asset)) throw new Error('order ' + gs[i].body.order_id + ' asks for a different payment asset');
+  });
+  const [om, am] = await Promise.all([metaOf(o0.offer), metaOf(o0.ask)]);
+
+  let sent = 0n, used = 0n, net = 0n, floor = 0n, worst = 0;
+  orders.forEach(function (o, i) {
+    const f = fillMath(o, gs[i].pay.amount);
+    sent += f.sent; used += f.used; net += f.net;
+    floor += BigInt(gs[i].body.min_offer_out);
+    const px = amt(o.ask_total, am.dec) / amt(o.offer_total, om.dec);
+    if (px > worst) worst = px;
+  });
+  const avg = net > 0n ? amt(used.toString(), am.dec) / amt(net.toString(), om.dec) : 0;
+  const list = orders.map(o => '#' + o.id).join(', ');
+
+  const lines = [];
+  lines.push(['Action', 'Buy from ' + orders.length + ' orders (' + list + ')']);
+  lines.push(['You pay', show(used.toString(), am) + (used < sent ? ' (the rest of ' + show(sent.toString(), am) + ' comes back)' : '')]);
+  lines.push(['You get', 'about ' + show(net.toString(), om) + (om.native ? ', before the chain burn tax' : '')]);
+  lines.push(['Minimum', show(floor.toString(), om) + ' in total, or the whole sweep is cancelled']);
+  lines.push(['Average price', fmt(avg) + ' ' + am.sym + ' per ' + om.sym + ', fee included']);
+  lines.push(['Worst price', fmt(worst) + ' ' + am.sym + ' per ' + om.sym]);
+  lines.push(['Contract', short(P2P_CONTRACT)]);
+  return { steps: gs.map(g => ({ contract: g.contract, msg: g.msg, funds: g.funds })), lines: lines };
 }
 
 /* ---------------- rule 2: the confirmation sheet ---------------- */
@@ -281,7 +355,7 @@ function tick(){
   $('#p2p-left').textContent = 'expires in ' + left + ' s';
 }
 
-async function ask(id, req){
+async function ask(id, build){
   PENDING = { id: id, steps: null, deadline: Date.now() + APPROVE_MS, timer: null, tries: 0, busy: false };
   PENDING.timer = setInterval(tick, 1000);
   $('#p2p-lines').innerHTML = '<div class="empty"><span class="spin"></span>Reading the order</div>';
@@ -293,7 +367,7 @@ async function ask(id, req){
   buzz('warning');
 
   let plan;
-  try { plan = await understand(req); }
+  try { plan = await build(); }
   catch (e) { finish({ error: e && e.message || e }); return; }
   if (!PENDING || PENDING.id !== id) return;
   PENDING.steps = plan.steps;
@@ -384,11 +458,18 @@ window.addEventListener('message', function (ev) {
     if (!S.MNEMONIC || !S.SAVED || !S.SAVED.blob) { refuse(d.id, 'wallet is locked'); return; }
     if (!$('#st-p2p').classList.contains('on')) { refuse(d.id, 'the P2P screen is not open'); return; }
     if (PENDING) { refuse(d.id, 'another request is waiting for approval'); return; }
-    ask(d.id, { contract: d.contract, msg: d.msg, funds: d.funds });
+    ask(d.id, () => understand({ contract: d.contract, msg: d.msg, funds: d.funds }));
+    return;
+  }
+  if (d.type === 'execute-batch') {
+    if (!S.MNEMONIC || !S.SAVED || !S.SAVED.blob) { refuse(d.id, 'wallet is locked'); return; }
+    if (!$('#st-p2p').classList.contains('on')) { refuse(d.id, 'the P2P screen is not open'); return; }
+    if (PENDING) { refuse(d.id, 'another request is waiting for approval'); return; }
+    ask(d.id, () => understandBatch(d.msgs));
     return;
   }
 });
 
 dots('p2p-pinrow', 0);
 
-export { openMarket, understand };
+export { openMarket, understand, understandBatch };
