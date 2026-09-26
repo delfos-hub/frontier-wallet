@@ -1,6 +1,6 @@
-import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=01122e5f';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=01122e5f';
-import { $, go } from './shell.js?v=01122e5f';
+import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=X';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=X';
+import { $, go } from './shell.js?v=X';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -211,6 +211,13 @@ let SWEEPING = false, TOTAL_SHOWN = null;
 // set by the button; makes the next load do a full sweep regardless of when
 // the last one ran
 let FORCE_SWEEP = false;
+const nap = ms => new Promise(r => setTimeout(r, ms));
+// The find new button doubles as the progress line while a sweep runs.
+function scanProgress(done, total){
+  const b = document.getElementById('tok-scan');
+  if (!b || !b.dataset.busy) return;
+  b.textContent = total ? 'looking ' + done + '/' + total : 'looking...';
+}
 // the address the visible list belongs to
 let LAST_ADDR = null;
 // One pass at a time, and not more often than the chain produces blocks.
@@ -649,42 +656,80 @@ async function loadBalances(addr, force){
     const sweptAt = Number(cacheGetStale('swept:' + addr) || 0);
     const skipSweep = !FORCE_SWEEP && Date.now() - sweptAt < SWEEP_EVERY;
     FORCE_SWEEP = false;
+    // Contracts a previous sweep could not get an answer from. An error is not
+    // a zero balance: they are asked again on every open until they answer,
+    // which costs a handful of reads instead of a whole sweep.
+    const failedBefore = (cacheGetStale('sweepfail:' + addr) || []).filter(c => !seed[c]);
+    const failed = [];
+    let asked = 0, total = 0;
+    const have = c => found.some(r => r.contract === c);
+
+    // Asks a batch at a time and puts every hit on screen as soon as its batch
+    // is in. The old sweep asked all six hundred first and drew nothing until
+    // the end, two minutes later - on a phone the mini app was usually closed
+    // by then, and nothing it had found was kept.
+    async function probe(cands){
+      for (let i = 0; i < cands.length; i += 40) {
+        const chunk = cands.slice(i, i + 40).filter(c => !have(c));
+        const bals = await mapLimit(chunk, 8, async c => {
+          try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
+          // "not a token" is an answer, and it is zero; only silence is a failure
+          catch (e) { return e && e.refused ? '0' : null; }
+        });
+        const hits = [];
+        chunk.forEach((c, k) => {
+          if (bals[k] === null) failed.push(c);
+          else if (Number(bals[k]) > 0) hits.push({ c: c, bal: bals[k] });
+        });
+        asked += chunk.length;
+        scanProgress(asked, total);
+        if (!hits.length) continue;
+        SWEEPING = true;
+        const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
+        for (const r of rows) if (r && !have(r.contract)) found.push(r);
+        // kept at once, so a sweep cut short still remembers what it found
+        remember(addr, hits.map(h => h.c));
+        renderTokens(list, found, px, 'Found ' + found.filter(r => r.contract).length + ' tokens so far.');
+        priceRows(list, found, px).catch(() => null);
+      }
+    }
+
+    if (failedBefore.length) { total += failedBefore.length; await probe(failedBefore); }
     if (!skipSweep) {
       renderTokens(list, found, px, 'Looking for tokens this address has not seen before.');
+      // history first: sixty contracts, and the likeliest to be held
+      const txc = await txCandidates(addr).catch(() => []);
+      const hist = txc.filter((c, i, a) => !seed[c] && a.indexOf(c) === i && failedBefore.indexOf(c) < 0);
+      total += hist.length;
+      await probe(hist);
+      // then everything that trades anywhere - the graph is a thousand reads
+      // and only built when something is actually going to be done with it
+      const g = await graph().catch(() => ({ tokens: [] }));
+      const mkt = g.tokens.filter((c, i, a) => !seed[c] && a.indexOf(c) === i &&
+        hist.indexOf(c) < 0 && failedBefore.indexOf(c) < 0);
+      total += mkt.length;
+      await probe(mkt);
     }
-    // The graph is a thousand reads. It is only built when something is
-    // actually going to be done with it.
-    const [g, txc] = skipSweep
-      ? [{ tokens: [] }, []]
-      : await Promise.all([graph(), txCandidates(addr).catch(() => [])]);
-    const rest = skipSweep ? [] : g.tokens.concat(txc)
-      .filter((c, i, a) => !seed[c] && a.indexOf(c) === i);
+    // one slower pass over whatever did not answer, then write down the rest
+    if (failed.length) {
+      const again = failed.splice(0);
+      await nap(1500);
+      const bals = await mapLimit(again, 3, async c => {
+        try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
+        catch (e) { if (!(e && e.refused)) failed.push(c); return '0'; }
+      });
+      const hits = [];
+      again.forEach((c, k) => { if (Number(bals[k]) > 0) hits.push({ c: c, bal: bals[k] }); });
+      const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
+      for (const r of rows) if (r && !have(r.contract)) found.push(r);
+      remember(addr, hits.map(h => h.c));
+    }
+    cacheSet('sweepfail:' + addr, failed);
+    // Written at the end, not the start. Written first, a sweep the phone cut
+    // off half way counted as done, and the next one was a day away.
     if (!skipSweep) cacheSet('swept:' + addr, Date.now());
-
-    const bals = await mapLimit(rest, 14, async c => {
-      try { const r = await smart(c, { balance: { address: addr } }); return (r.data && r.data.balance) || '0'; }
-      catch (e) { return '0'; }
-    });
-    const hits = [];
-    rest.forEach((c, i) => { if (Number(bals[i]) > 0) hits.push({ c: c, bal: bals[i] }); });
-    // Only now is the total actually incomplete: rows are about to join the
-    // list. A sweep that finds nothing - which is nearly every sweep - never
-    // makes the figure provisional at all.
-    if (hits.length) SWEEPING = true;
-
-    const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
-    for (const r of rows) if (r) found.push(r);
-
-    // remember the CW20 contracts that came back with something, so the next
-    // open starts from the answer. A token spent down to zero simply drops out
-    // of the list next time, because this is rewritten from the full sweep.
-    // Only ever add. A sweep that came back short would otherwise erase a real
-    // holding from the list, and the next open would not look for it at all -
-    // which is exactly how UST1 disappeared instead of merely arriving late.
-    // A token spent to zero costs one wasted query per open, which is cheap
-    // next to forgetting one you still own.
-    // anything the sweep turned up joins the list for good
-    remember(addr, found.map(r => r.contract).concat(hits.map(h => h.c)));
+    scanProgress(0, 0);
+    remember(addr, found.map(r => r.contract));
     await opening;
     await priceRows(list, found, px);
     // everything that could be found has been found and priced; from here the
@@ -765,6 +810,9 @@ export { fiatOf, forget, registry, remember, heldTokens, luncRaw, openWallet, re
     b.dataset.busy = '1';
     const was = b.textContent;
     b.textContent = 'looking...';
+    // A load already in progress used to swallow the press: loadBalances
+    // returned at once, the button flipped back, and nothing was looked for.
+    while (RUNNING) await nap(300);
     FORCE_SWEEP = true;
     try { await loadBalances(LAST_ADDR, true); } catch (e) { /* the banner reports it */ }
     b.textContent = was;
@@ -787,5 +835,41 @@ export { fiatOf, forget, registry, remember, heldTokens, luncRaw, openWallet, re
     const url = more.getAttribute('href');
     if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink) Telegram.WebApp.openLink(url);
     else window.open(url, '_blank', 'noopener');
+  });
+})();
+
+// Add a token by its contract address. Some tokens reach an address in ways
+// nothing can find again: an airdrop older than the node's history, a token
+// with no pool anywhere. The address is checked (it has to answer token_info
+// like a CW20) and then joins this wallet's own list for good.
+(function wireAdd(){
+  const open = $('#tok-add'), sheet = $('#tok-add-sheet');
+  if (!open || !sheet) return;
+  const out = $('#tok-add-out'), inp = $('#tok-add-in'), go_ = $('#tok-add-go');
+  const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  open.addEventListener('click', () => { out.innerHTML = ''; inp.value = ''; sheet.hidden = false; });
+  $('#tok-add-x').addEventListener('click', () => { sheet.hidden = true; });
+  go_.addEventListener('click', async () => {
+    const c = inp.value.trim();
+    if (!/^terra1[02-9ac-hj-np-z]{38}([02-9ac-hj-np-z]{20})?$/.test(c)) {
+      out.innerHTML = '<div class="sbad">That is not a Terra contract address.</div>';
+      return;
+    }
+    if (!LAST_ADDR) return;
+    go_.disabled = true; go_.textContent = 'Checking\u2026';
+    try {
+      const r = await smart(c, { token_info: {} }, 2);
+      const t = r && r.data;
+      if (!t || typeof t.decimals !== 'number') throw new Error('no token_info');
+      remember(LAST_ADDR, [c]);
+      out.innerHTML = '<div class="sline strong"><span>Added</span><b>' + esc(t.symbol) + ' \u00b7 ' + esc(t.name || '') + '</b></div>';
+      while (RUNNING) await nap(300);
+      loadBalances(LAST_ADDR, true);
+      setTimeout(() => { sheet.hidden = true; }, 1200);
+    } catch (e) {
+      out.innerHTML = '<div class="sbad">This address does not answer like a CW20 token.</div>';
+    } finally {
+      go_.disabled = false; go_.textContent = 'Check and add';
+    }
   });
 })();

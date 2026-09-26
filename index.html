@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=01122e5f">
+<link rel="stylesheet" href="assets/css/app.css?v=X">
 </head>
 <body>
 <div id="rt"></div>
@@ -327,8 +327,18 @@
     <button class="hm-seg-b" data-pane="nft" type="button">NFT<span class="hm-seg-n" id="nft-count"></span></button>
   </div>
   <div id="pane-tok">
-  <div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="tok-scan" type="button">find new</button><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
+  <div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="tok-add" type="button">add</button><button class="dust" id="tok-scan" type="button">find new</button><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
   <ul class="rows" id="tok-list"><li class="empty">Loading balances</li></ul>
+  <div class="sw-sheet" id="tok-add-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Add a token</span>
+        <button class="sw-x" id="tok-add-x" type="button">Close</button></div>
+      <p class="tiny" style="text-align:left;margin:0 0 10px">For a CW20 token the wallet does not find on its own. Paste the token's contract address - it is kept for this wallet from now on.</p>
+      <div class="field"><input id="tok-add-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="terra1..."></div>
+      <div id="tok-add-out"></div>
+      <button class="btn solid" id="tok-add-go" type="button">Check and add</button>
+    </div>
+  </div>
   <p class="tiny" id="home-note"></p>
   </div>
   <div id="pane-nft" hidden>
@@ -592,12 +602,12 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=01122e5f"></script>
-<script src="assets/js/ads.js?v=01122e5f"></script>
-<script type="module" src="assets/js/swap.js?v=01122e5f"></script>
-<script type="module" src="assets/js/activity.js?v=01122e5f"></script>
-<script type="module" src="assets/js/nft.js?v=01122e5f"></script>
-<script type="module" src="assets/js/p2p.js?v=01122e5f"></script>
-<script type="module" src="assets/js/stake.js?v=01122e5f"></script>
+<script type="module" src="assets/js/app.js?v=X"></script>
+<script src="assets/js/ads.js?v=X"></script>
+<script type="module" src="assets/js/swap.js?v=X"></script>
+<script type="module" src="assets/js/activity.js?v=X"></script>
+<script type="module" src="assets/js/nft.js?v=X"></script>
+<script type="module" src="assets/js/p2p.js?v=X"></script>
+<script type="module" src="assets/js/stake.js?v=X"></script>
 </body>
 </html>
