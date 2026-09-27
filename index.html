@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=c1b7627b">
+<link rel="stylesheet" href="assets/css/app.css?v=a2c782e1">
 </head>
 <body>
 <div id="rt"></div>
@@ -508,6 +508,17 @@
   <div class="p2p-frame" id="p2p-frame"><div class="empty"><span class="spin"></span>Loading</div></div>
 </section>
 
+<!-- Outside #st-stake on purpose: a .step is its own stacking context
+     (z-index 1), so a sheet inside it sat under the tab bar, which cut off
+     the bottom of the list. -->
+<div class="sw-sheet" id="stk-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span id="stk-sheet-title">Staking</span>
+        <button class="sw-x" id="stk-sheet-x" type="button">Close</button></div>
+      <div id="stk-sheet-body"></div>
+    </div>
+  </div>
+
 <!-- Top level, like the staking sheet: inside a .step the tab bar covers it. -->
 <div class="sw-sheet" id="gov-sheet" hidden>
     <div class="sw-sheet-in">
@@ -544,13 +555,6 @@
   <div class="head" style="margin:6px 4px 14px"><h2>Staking</h2><span id="stk-count"></span></div>
   <div id="stk-body"><div class="empty">Loading</div></div>
 
-  <div class="sw-sheet" id="stk-sheet" hidden>
-    <div class="sw-sheet-in">
-      <div class="sw-sheet-top"><span id="stk-sheet-title">Staking</span>
-        <button class="sw-x" id="stk-sheet-x" type="button">Close</button></div>
-      <div id="stk-sheet-body"></div>
-    </div>
-  </div>
 </section>
 
 <section class="step wpad" id="st-activity">
@@ -619,13 +623,13 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=c1b7627b"></script>
-<script src="assets/js/ads.js?v=c1b7627b"></script>
-<script type="module" src="assets/js/swap.js?v=c1b7627b"></script>
-<script type="module" src="assets/js/activity.js?v=c1b7627b"></script>
-<script type="module" src="assets/js/nft.js?v=c1b7627b"></script>
-<script type="module" src="assets/js/p2p.js?v=c1b7627b"></script>
-<script type="module" src="assets/js/gov.js?v=c1b7627b"></script>
-<script type="module" src="assets/js/stake.js?v=c1b7627b"></script>
+<script type="module" src="assets/js/app.js?v=a2c782e1"></script>
+<script src="assets/js/ads.js?v=a2c782e1"></script>
+<script type="module" src="assets/js/swap.js?v=a2c782e1"></script>
+<script type="module" src="assets/js/activity.js?v=a2c782e1"></script>
+<script type="module" src="assets/js/nft.js?v=a2c782e1"></script>
+<script type="module" src="assets/js/p2p.js?v=a2c782e1"></script>
+<script type="module" src="assets/js/gov.js?v=a2c782e1"></script>
+<script type="module" src="assets/js/stake.js?v=a2c782e1"></script>
 </body>
 </html>
