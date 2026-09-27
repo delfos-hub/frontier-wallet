@@ -111,3 +111,16 @@ function libs(){
 // Live bindings, so an importer sees the value libs() assigned, not the
 // undefined it started as.
 export { $, $$, base, bip32, bip39, buzz, dropKeyboard, go, libs, report, ripe, sha, tap, tg };
+
+// A sheet open anywhere hides the tab bar. Most sheets live inside a screen,
+// and a screen is its own layer under the bar, so the bar covered the bottom
+// of the sheet - the add-token button, the transaction details. Hiding the bar
+// while one is open fixes every sheet at once, the ones to come included.
+(function sheetsOverTabs(){
+  const sheets = [...document.querySelectorAll('.sw-sheet')];
+  if (!sheets.length || typeof MutationObserver === 'undefined') return;
+  const sync = () => document.body.classList.toggle('sheet-open', sheets.some(s => !s.hidden));
+  const mo = new MutationObserver(sync);
+  sheets.forEach(s => mo.observe(s, { attributes: true, attributeFilter: ['hidden'] }));
+  sync();
+})();

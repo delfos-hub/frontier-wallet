@@ -4,10 +4,10 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=a2c782e1';
-import { DEC, knownAsset } from './market.js?v=a2c782e1';
-import { $ } from './shell.js?v=a2c782e1';
-import { S } from './state.js?v=a2c782e1';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=40e740fe';
+import { DEC, knownAsset } from './market.js?v=40e740fe';
+import { $ } from './shell.js?v=40e740fe';
+import { S } from './state.js?v=40e740fe';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -25,7 +25,9 @@ function clock(ts){
   const s = Math.max(0, (Date.now() - t.getTime()) / 1000);
   if (s < 90) return 'just now';
   if (s < 3600) return Math.round(s / 60) + 'm ago';
-  return t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // the wallet speaks English; the phone's own locale (a Russian month name
+  // under an English heading) is not asked
+  return t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
 // midnight to midnight, in the reader's own timezone rather than the chain's
@@ -41,7 +43,7 @@ function dayName(ts){
   if (same) return 'Today';
   if (dayKey(ts) === dayKey(y)) return 'Yesterday';
   const within = (now - d) / 86400000 < 300;
-  return d.toLocaleDateString([], within
+  return d.toLocaleDateString('en-GB', within
     ? { day: 'numeric', month: 'long' }
     : { day: 'numeric', month: 'long', year: 'numeric' });
 }
@@ -255,6 +257,8 @@ function describe(t, me){
 
    The explorer stays, for the questions this does not answer. */
 const TXS = {};
+// cosmos fee_collector module account: sha256("fee_collector")[:20], checked
+const FEE_COLLECTOR = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
 
 function transfersIn(t, me){
   const out = [];
@@ -268,6 +272,9 @@ function transfersIn(t, me){
         if (a.key === 'amount') what = a.value;
       }
       if (!what || (to !== me && from !== me)) continue;
+      // the fee is paid as a transfer to the fee collector; it has its own
+      // line below and is not something the transaction sent anywhere
+      if (to === FEE_COLLECTOR) continue;
       // several coins arrive comma separated, and each is digits then a denom
       for (const part of what.split(',')) {
         const mm = /^(\d+)(.+)$/.exec(part.trim());
@@ -307,7 +314,7 @@ function openTx(hash){
   let html =
     '<div class="tx-head"><div class="ac-mark ' + d.kind + (failed ? ' fail' : '') + '">' +
       '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.code) + '</svg></div>' +
-      '<div><b>' + d.title + '</b><i>' + new Date(t.timestamp).toLocaleString() + '</i></div></div>';
+      '<div><b>' + d.title + '</b><i>' + new Date(t.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</i></div></div>';
 
   if (failed) {
     html += '<div class="tx-fail">The chain rejected this one. Nothing moved.' +
