@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=40e740fe';
-import { $, buzz, go } from './shell.js?v=40e740fe';
-import { S } from './state.js?v=40e740fe';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=40e740fe';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=4f505e44';
+import { $, buzz, go } from './shell.js?v=4f505e44';
+import { S } from './state.js?v=4f505e44';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=4f505e44';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -248,7 +248,12 @@ let FLOW = null;
 
 function sheet(on){ $('#gov-sheet').hidden = !on; }
 $('#gov-sheet-x').addEventListener('click', () => { FLOW = null; sheet(false); });
-$('#gov-sheet').addEventListener('click', e => { if (e.target.id === 'gov-sheet') { FLOW = null; sheet(false); } });
+// the press has to start on the backdrop too (see the staking sheet)
+let DOWN_ON = null;
+$('#gov-sheet').addEventListener('pointerdown', e => { DOWN_ON = e.target; });
+$('#gov-sheet').addEventListener('click', e => {
+  if (e.target.id === 'gov-sheet' && DOWN_ON && DOWN_ON.id === 'gov-sheet') { FLOW = null; sheet(false); }
+});
 
 function open(id){
   const p = DATA.live.find(x => String(x.id) === String(id)) || DATA.recent.find(x => String(x.id) === String(id));
