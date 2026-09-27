@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=a2c782e1';
-import { $, buzz } from './shell.js?v=a2c782e1';
-import { S } from './state.js?v=a2c782e1';
-import { luncRaw, refreshBalances } from './tokens.js?v=a2c782e1';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=a2c782e1';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=4f505e44';
+import { $, buzz } from './shell.js?v=4f505e44';
+import { S } from './state.js?v=4f505e44';
+import { luncRaw, refreshBalances } from './tokens.js?v=4f505e44';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=4f505e44';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -215,19 +215,21 @@ let OPEN_ROW = null;
 
 const REWARD_MIN = 1000000n;   // 1 LUNC: below this a claim costs more gas than it brings
 
-function donut(parts){
-  // parts: [[value, color], ...]; a ring drawn with stroke dash offsets
-  const total = parts.reduce((a, p) => a + p[0], 0) || 1;
+// parts: [[value, color], ...] drawn as arcs of a ring; `whole` is what the
+// full circle stands for. It used to be the sum of the parts - staked plus
+// unstaking - so any stake at all filled the ring, even 150 LUNC out of 1.7M.
+function donut(parts, whole){
+  const total = whole || parts.reduce((a, p) => a + p[0], 0) || 1;
   const C = 2 * Math.PI * 46;
   let off = 0, arcs = '';
   parts.forEach(p => {
     const len = C * p[0] / total;
-    if (len > 0.5) arcs += '<circle cx="56" cy="56" r="46" fill="none" stroke="' + p[1] + '" stroke-width="12" stroke-dasharray="' +
+    if (len > 0.5) arcs += '<circle cx="56" cy="56" r="46" fill="none" style="stroke:' + p[1] + '" stroke-width="12" stroke-dasharray="' +
       Math.max(0, len - 2).toFixed(1) + ' ' + C.toFixed(1) + '" stroke-dashoffset="' + (-off).toFixed(1) + '" transform="rotate(-90 56 56)"/>';
     off += len;
   });
   return '<svg class="stk-donut" width="112" height="112" viewBox="0 0 112 112" aria-hidden="true">' +
-    '<circle cx="56" cy="56" r="46" fill="none" stroke="var(--border)" stroke-width="12"/>' + arcs + '</svg>';
+    '<circle cx="56" cy="56" r="46" fill="none" style="stroke:var(--border)" stroke-width="12"/>' + arcs + '</svg>';
 }
 
 function draw(){
@@ -266,9 +268,11 @@ function draw(){
   }
 
   const whole = Number(staked) + Number(free) + Number(leaving) || 1;
-  const share = Math.round(Number(staked) * 100 / whole);
+  const pct = Number(staked) * 100 / whole;
+  // a sliver of stake reads "<1%", not a flat 0
+  const share = staked > 0n && pct < 1 ? '&lt;1' : String(Math.round(pct));
   let h = '<section class="stk-hero"><div class="stk-hero-top">' +
-    '<div class="stk-ring">' + donut([[Number(staked), 'var(--accent)'], [Number(leaving), 'var(--accent2)']]) +
+    '<div class="stk-ring">' + donut([[Number(staked), 'var(--accent)'], [Number(leaving), 'var(--accent2)']], whole) +
     '<div class="stk-ring-in"><b>' + share + '%</b><small>staked</small></div></div>' +
     '<div class="stk-hero-num"><span class="stk-cap">Total staked</span><div class="stk-big">' + L(staked) + '</div>' +
     '<small>LUNC ' + usd(staked) + '</small></div></div>' +
@@ -319,7 +323,7 @@ function draw(){
       const days = Math.ceil(leftMs / 86400000);
       const done = Math.min(UNBOND_DAYS, Math.max(0, UNBOND_DAYS - leftMs / 86400000));
       return '<div class="stk-unb"><div class="stk-unb-top"><b>' + L(u.amount) + ' LUNC</b><small>back on ' +
-        u.at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' \u00b7 ' + (days ? days + ' day' + (days > 1 ? 's' : '') : 'today') + '</small></div>' +
+        u.at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' \u00b7 ' + (days ? days + ' day' + (days > 1 ? 's' : '') : 'today') + '</small></div>' +
         '<div class="stk-bar c"><i style="width:' + (done * 100 / UNBOND_DAYS).toFixed(1) + '%"></i></div>' +
         '<small>from ' + esc(v.name) + ' \u00b7 ' + Math.floor(done) + ' of ' + UNBOND_DAYS + ' days</small></div>';
     }).join('');
@@ -374,7 +378,15 @@ function sheet(on, title){
 const view = html => { $('#stk-sheet-body').innerHTML = html; };
 
 $('#stk-sheet-x').addEventListener('click', () => { FLOW = null; sheet(false); });
-$('#stk-sheet').addEventListener('click', e => { if (e.target.id === 'stk-sheet') { FLOW = null; sheet(false); } });
+// Closing on the dimmed backdrop needs the press to START there too. With the
+// search keyboard up, tapping a validator hides the keyboard, the sheet jumps,
+// and the click lands on the backdrop - the sheet closed instead of opening
+// the amount step.
+let DOWN_ON = null;
+$('#stk-sheet').addEventListener('pointerdown', e => { DOWN_ON = e.target; });
+$('#stk-sheet').addEventListener('click', e => {
+  if (e.target.id === 'stk-sheet' && DOWN_ON && DOWN_ON.id === 'stk-sheet') { FLOW = null; sheet(false); }
+});
 
 // Validators to choose from: active, not jailed, with a search box. Sorted
 // Largest first by default, the order people expect; "smaller first" is one
@@ -406,11 +418,27 @@ function startPick(kind, from){
         '<div class="row-val"><div class="row-fiat">' + (v.rate * 100).toFixed(1) + '%</div><div class="row-sub">commission</div></div></button>';
     }).join('') || '<div class="empty">No validator matches.</div>';
     fillLogos($('#stk-vals'));
-    document.querySelectorAll('#stk-vals .stk-val').forEach(b => b.addEventListener('click', () => {
-      const val = b.getAttribute('data-val');
+    // Chosen on the touch itself as well as on click: when the keyboard
+    // closes under the finger the click can land somewhere else, but a touch
+    // always ends on the element it started on. A drag (scrolling the list)
+    // is not a choice.
+    const choose = val => {
+      if (!FLOW || FLOW.chosen) return;
+      FLOW.chosen = true;
+      const s = $('#stk-q'); if (s) s.blur();
       if (FLOW.kind === 'redelegate') startAmount({ kind: 'redelegate', from: FLOW.from, to: val });
       else startAmount({ kind: 'delegate', validator: val });
-    }));
+    };
+    document.querySelectorAll('#stk-vals .stk-val').forEach(b => {
+      let y0 = null;
+      b.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; }, { passive: true });
+      b.addEventListener('touchend', e => {
+        const y1 = e.changedTouches[0].clientY;
+        if (y0 !== null && Math.abs(y1 - y0) < 10) { e.preventDefault(); choose(b.getAttribute('data-val')); }
+        y0 = null;
+      });
+      b.addEventListener('click', () => choose(b.getAttribute('data-val')));
+    });
   };
   $('#stk-q').addEventListener('input', paint);
   document.querySelectorAll('#stk-sheet-body [data-sort]').forEach(b => b.addEventListener('click', () => {
@@ -514,7 +542,7 @@ function reviewLines(f){
   if (f.kind === 'delegate') return [['Action', 'Stake ' + a], ['Validator', nameOf(f.validator)],
     ['Commission', ((DATA.byAddr[f.validator] || {}).rate * 100 || 0).toFixed(1) + '% of rewards']];
   if (f.kind === 'undelegate') return [['Action', 'Unstake ' + a], ['Validator', nameOf(f.validator)],
-    ['Back on', new Date(Date.now() + UNBOND_DAYS * 86400000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })]];
+    ['Back on', new Date(Date.now() + UNBOND_DAYS * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })]];
   return [['Action', 'Move ' + a], ['From', nameOf(f.from)], ['To', nameOf(f.to)]];
 }
 

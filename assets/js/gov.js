@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=a2c782e1';
-import { $, buzz, go } from './shell.js?v=a2c782e1';
-import { S } from './state.js?v=a2c782e1';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=a2c782e1';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=4f505e44';
+import { $, buzz, go } from './shell.js?v=4f505e44';
+import { S } from './state.js?v=4f505e44';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=4f505e44';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -248,7 +248,12 @@ let FLOW = null;
 
 function sheet(on){ $('#gov-sheet').hidden = !on; }
 $('#gov-sheet-x').addEventListener('click', () => { FLOW = null; sheet(false); });
-$('#gov-sheet').addEventListener('click', e => { if (e.target.id === 'gov-sheet') { FLOW = null; sheet(false); } });
+// the press has to start on the backdrop too (see the staking sheet)
+let DOWN_ON = null;
+$('#gov-sheet').addEventListener('pointerdown', e => { DOWN_ON = e.target; });
+$('#gov-sheet').addEventListener('click', e => {
+  if (e.target.id === 'gov-sheet' && DOWN_ON && DOWN_ON.id === 'gov-sheet') { FLOW = null; sheet(false); }
+});
 
 function open(id){
   const p = DATA.live.find(x => String(x.id) === String(id)) || DATA.recent.find(x => String(x.id) === String(id));
@@ -263,7 +268,7 @@ function open(id){
     '<div class="p2p-lines">' +
     '<div class="p2p-line"><span>Type</span><b>' + esc(kindOf(p)) + (p.expedited ? ' \u00b7 expedited, passes at ' + (DATA.rules.expedited * 100).toFixed(1) + '%' : '') + '</b></div>' +
     '<div class="p2p-line"><span>Status</span><b>' + esc(STATUS[p.status] || p.status) + (live ? ' \u00b7 ' + left(p.voting_end_time) : '') + '</b></div>' +
-    (live ? '<div class="p2p-line"><span>Ends</span><b>' + new Date(p.voting_end_time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</b></div>' : '') +
+    (live ? '<div class="p2p-line"><span>Ends</span><b>' + new Date(p.voting_end_time).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</b></div>' : '') +
     (s ? '<div class="p2p-line"><span>Turnout</span><b>' + s.turnout.toFixed(1) + '% (quorum ' + (DATA.rules.quorum * 100).toFixed(0) + '%)</b></div>' : '') +
     (mine ? '<div class="p2p-line"><span>Your vote</span><b>' + esc(mine) + '</b></div>' : '') +
     '</div>';
