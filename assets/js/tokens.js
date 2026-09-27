@@ -1,6 +1,6 @@
-import { CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=4f505e44';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=4f505e44';
-import { $, go } from './shell.js?v=4f505e44';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=1e938880';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=1e938880';
+import { $, go } from './shell.js?v=1e938880';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -37,9 +37,11 @@ async function tokenRow(c, addr, known, keep){
        everyone; a name published tomorrow would have waited for the record to
        expire before it appeared. */
     const pub = knownAsset('cw20:' + c);
-    const d = { symbol: (pub && pub.sym) || fixed.sym,
-                decimals: fixed.dec, name: fixed.note };
-    if (pub && pub.logo && !fixed.logo) fixed = Object.assign({}, fixed, { logo: pub.logo });
+    const own = KNOWN_CW20[c];   // our own naming wins over any list
+    const d = { symbol: (own && own.sym) || (pub && pub.sym) || fixed.sym,
+                decimals: fixed.dec, name: (own && own.note) || fixed.note };
+    if (own && own.logo) fixed = Object.assign({}, fixed, { logo: own.logo });
+    else if (pub && pub.logo && !fixed.logo) fixed = Object.assign({}, fixed, { logo: pub.logo });
     DEC['cw20:' + c] = d.decimals;
     const v = amt(bal.data && bal.data.balance, d.decimals);
     if (!(v > 0) && !keep) return null;
@@ -101,6 +103,11 @@ function fillDeferred(list, found, px){
 
 let PRICING = 0;
 async function priceRows(list, found, px){
+  // tokens priced by definition (bridged stablecoins) before any market read
+  for (const r of found) {
+    const k = r.contract && KNOWN_CW20[r.contract];
+    if (k && k.usd && !px[r.sym]) px[r.sym] = k.usd;
+  }
   const mine = ++PRICING;
   // Three things disqualify a row, not one. `tried` means it was asked and the
   // market had no answer; asking again in the same load produces the same
