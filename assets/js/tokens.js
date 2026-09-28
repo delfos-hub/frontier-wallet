@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=1e938880';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=1e938880';
-import { $, go } from './shell.js?v=1e938880';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=da8d4119';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=da8d4119';
+import { $, go } from './shell.js?v=da8d4119';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -50,7 +50,9 @@ async function tokenRow(c, addr, known, keep){
     // dec travels with the row. It was used to compute v and then thrown away,
     // and every reader downstream had to assume six.
     return { sym: d.symbol, v: v, dec: d.decimals, note: d.name,
-             logo: fixed.logo, pool: null, contract: c };
+             logo: fixed.logo, pool: null, contract: c,
+             // fixed price only for the exact contract in KNOWN_CW20
+             usd: own && own.usd != null ? own.usd : undefined };
   } catch (e) { return null; }   // a dead contract must not take the screen down
 }
 
@@ -103,11 +105,6 @@ function fillDeferred(list, found, px){
 
 let PRICING = 0;
 async function priceRows(list, found, px){
-  // tokens priced by definition (bridged stablecoins) before any market read
-  for (const r of found) {
-    const k = r.contract && KNOWN_CW20[r.contract];
-    if (k && k.usd && !px[r.sym]) px[r.sym] = k.usd;
-  }
   const mine = ++PRICING;
   // Three things disqualify a row, not one. `tried` means it was asked and the
   // market had no answer; asking again in the same load produces the same
@@ -127,7 +124,7 @@ async function priceRows(list, found, px){
   // whether the market can be asked about it, not which shape of address it
   // happens to have. uluna and uusd stay out: their price comes from the feed.
   const todo = found.filter(r => (r.contract || (r.denom && r.denom.slice(0, 4) === 'ibc/')) &&
-    !r.pool && !r.asking && !px[r.sym] &&
+    !r.pool && !r.asking && unitOf(r, px) == null &&
     (!r.tried || (r.deferred && ready)));
   if (!todo.length) return;
   todo.forEach(r => { r.asking = true; r.deferred = false; });
@@ -191,11 +188,27 @@ async function priceRows(list, found, px){
   renderTokens(list, found, px, LAST.hint);
 }
 
+/* A row's dollar price, looked up by what the row IS, never by its symbol.
+   Anyone can deploy a CW20 called USDT, LUNC or USDC.n and airdrop it; keyed
+   by symbol, it would borrow the real token's price and show a believable
+   dollar balance - a common scam. So:
+     - a fixed price (usd) set on the row from our own maps, which match the
+       full contract address or IBC denom;
+     - the price feed only for the two native denoms it is about;
+     - anything else is priced from its own pool, or not at all. */
+const FEED = { uluna: 'LUNC', uusd: 'USTC' };
+function unitOf(t, px){
+  if (t.usd != null) return t.usd;
+  if (t.denom && FEED[t.denom] && px[FEED[t.denom]]) return px[FEED[t.denom]];
+  return null;
+}
+
 // What a row is worth, or null. Same inputs, same arithmetic as the list.
 function fiatOf(t){
   const px = (LAST && LAST.px) || {};
   if (!t) return null;
-  if (px[t.sym]) return (t.v || 0) * px[t.sym];
+  const u = unitOf(t, px);
+  if (u != null) return (t.v || 0) * u;
   if (t.pool && px.LUNC) return (t.v || 0) * t.pool.inLunc * px.LUNC;
   return null;
 }
@@ -382,8 +395,9 @@ function renderTokens(list, found, px, hint){
 
   const rows = found.map(t => {
     let fiat = null, sub = 'no price';
-    if (px[t.sym]) {
-      fiat = t.v * px[t.sym];
+    const u = unitOf(t, px);
+    if (u != null) {
+      fiat = t.v * u;
       sub = '';
     } else if (t.pool && px.LUNC) {
       fiat = t.v * t.pool.inLunc * px.LUNC;
@@ -575,8 +589,8 @@ async function loadBalances(addr, force){
         // named here, ahead of the market map: two different USDCs must never
         // show under the same name, and one of them is being retired
         const k = KNOWN_IBC[b.denom];
-        found.push({ sym: k.sym, v: amt(b.amount, k.dec), note: k.note, denom: b.denom, dec: k.dec, logo: k.logo });
-        if (k.usd) px[k.sym] = k.usd;
+        // the dollar price rides on the row, matched by the full denom above
+        found.push({ sym: k.sym, v: amt(b.amount, k.dec), note: k.note, denom: b.denom, dec: k.dec, logo: k.logo, usd: k.usd });
       } else if (b.denom.startsWith('ibc/')) {
         let sym = 'IBC', note = b.denom.slice(4, 12) + '\u2026';
         // The market map names the denoms that actually trade, which is the set
