@@ -1,11 +1,11 @@
-import { amt, fmt } from './chain.js?v=da8d4119';
-import { finish } from './crypto.js?v=da8d4119';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=da8d4119';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=da8d4119';
-import { S } from './state.js?v=da8d4119';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=da8d4119';
-import { paintSendTok } from './tx.js?v=da8d4119';
-import { luncRaw, openWallet } from './tokens.js?v=da8d4119';
+import { amt, fmt } from './chain.js?v=56417fb3';
+import { finish } from './crypto.js?v=56417fb3';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=56417fb3';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=56417fb3';
+import { S } from './state.js?v=56417fb3';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=56417fb3';
+import { paintSendTok } from './tx.js?v=56417fb3';
+import { luncRaw, openWallet } from './tokens.js?v=56417fb3';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;

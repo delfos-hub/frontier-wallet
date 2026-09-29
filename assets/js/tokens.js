@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=da8d4119';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=da8d4119';
-import { $, go } from './shell.js?v=da8d4119';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=56417fb3';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=56417fb3';
+import { $, go } from './shell.js?v=56417fb3';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -199,6 +199,13 @@ async function priceRows(list, found, px){
 const FEED = { uluna: 'LUNC', uusd: 'USTC' };
 function unitOf(t, px){
   if (t.usd != null) return t.usd;
+  // Straight from the maps as well, by the same full address or denom, so a
+  // row built elsewhere (the swap screen's receive side, a snapshot saved
+  // before rows carried usd) is priced the same as a fresh one.
+  const kc = t.contract && KNOWN_CW20[t.contract];
+  if (kc && kc.usd != null) return kc.usd;
+  const ki = t.denom && KNOWN_IBC[t.denom];
+  if (ki && ki.usd != null) return ki.usd;
   if (t.denom && FEED[t.denom] && px[FEED[t.denom]]) return px[FEED[t.denom]];
   return null;
 }
