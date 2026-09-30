@@ -25,6 +25,8 @@ const ORDERS = {
        offer_remaining: '400000000000', ask: { cw20: { address: TOKEN } }, ask_total: '10000000', fee_bps: 10 },
   8: { id: 8, seller: SOMEONE, offer: { cw20: { address: TOKEN } }, offer_total: '5000000',
        offer_remaining: '5000000', ask: { native: { denom: 'uluna' } }, ask_total: '100000000000', fee_bps: 10 },
+  11: { id: 11, seller: SOMEONE, offer: { native: { denom: 'ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5' } }, offer_total: '2000000000',
+       offer_remaining: '2000000000', ask: { native: { denom: 'ibc/F52112392095A6D6D1B17EF1FE19BE0B39B2A79B8A2B2F55CD721FC7DBF5081F' } }, ask_total: '1996000000', fee_bps: 10 },
   10: { id: 10, seller: SOMEONE, offer: { native: { denom: 'uluna' } }, offer_total: '500000000000',
        offer_remaining: '500000000000', ask: { cw20: { address: TOKEN } }, ask_total: '10000000', fee_bps: 10 },
   9: { id: 9, seller: ME, offer: { native: { denom: 'uluna' } }, offer_total: '2000000',
@@ -155,6 +157,12 @@ await expect('a look-alike IBC denom is not called USDC', async () => {
   const p = await m.understand({ contract: P2P, msg: { create_order: { ask: { native: { denom: 'ibc/0BB9D85000000000000000000000000000000000000000000000000000000000' } }, ask_total: '1000000', ttl: null } },
     funds: [{ denom: 'uluna', amount: '1000000' }] });
   if (/USDC/.test(lineOf(p, 'For'))) throw new Error(lineOf(p, 'For'));
+});
+await expect('USDC payout carries no burn-tax note', async () => {
+  const p = await m.understand({ contract: P2P, msg: { fill_order: { order_id: 11, min_offer_out: null } },
+    funds: [{ denom: 'ibc/F52112392095A6D6D1B17EF1FE19BE0B39B2A79B8A2B2F55CD721FC7DBF5081F', amount: '998000000' }] });
+  if (/burn tax/.test(lineOf(p, 'You get'))) throw new Error(lineOf(p, 'You get'));
+  if (!/USDC\.n/.test(lineOf(p, 'You get'))) throw new Error(lineOf(p, 'You get'));
 });
 await expect('own cancel allowed and described', async () => {
   const p = await m.understand({ contract: P2P, msg: { cancel_order: { order_id: 9 } }, funds: [] });
