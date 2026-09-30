@@ -6,15 +6,44 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=4f505e44';
-import { $, buzz, go } from './shell.js?v=4f505e44';
-import { S } from './state.js?v=4f505e44';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=4f505e44';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=2fcf26f8';
+import { $, buzz, go } from './shell.js?v=2fcf26f8';
+import { S } from './state.js?v=2fcf26f8';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=2fcf26f8';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const L = raw => fmt(amt(String(raw), 6));
+
+/* Links in a proposal's own text, made tappable - safely. The text is written
+   by whoever submitted the proposal, so:
+     - only https:// is turned into a link (no http:, javascript:, data:);
+     - the link shows the full address it goes to, never other text;
+     - the text is split on links first and every piece escaped on its own,
+       so nothing in the proposal can become markup;
+     - it opens outside the wallet (Telegram's own browser prompt), never
+       inside the mini app.
+   Voter comments stay plain text: anyone can write one for the cost of a
+   vote, and a tappable link there is an easy phishing lure. */
+const URL_RE = /https:\/\/[^\s<>"'`]+/g;
+function linkify(text){
+  let out = '', last = 0;
+  String(text).replace(URL_RE, (m, at) => {
+    // sentence punctuation right after a link is not part of it
+    const url = m.replace(/[.,;:!?)\]]+$/, '');
+    out += esc(text.slice(last, at)) +
+      '<a class="gov-link" href="' + esc(url) + '" rel="noopener noreferrer" target="_blank">' + esc(url) + '</a>';
+    last = at + url.length;
+    return m;
+  });
+  return out + esc(text.slice(last));
+}
+function openOutside(url){
+  if (!/^https:\/\//.test(url)) return;
+  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink) Telegram.WebApp.openLink(url);
+  else window.open(url, '_blank', 'noopener');
+}
 const G = LCD + '/cosmos/gov/v1';
 const UNKNOWN = { unknown: true };
 
@@ -277,7 +306,7 @@ function open(id){
     '<div class="row-sub ' + (s.verdict.ok ? 'gov-ok' : 'gov-bad') + '" style="margin:6px 0 10px">' + esc(s.verdict.text) + '</div>';
   if (text) {
     const long = text.length > 700;
-    h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + esc(text) + '</div>' +
+    h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + linkify(text) + '</div>' +
       (long ? '<button class="dust" id="gov-more" type="button">Show all</button>' : '');
   }
   if (live) {
@@ -292,6 +321,13 @@ function open(id){
   showVoters(String(p.id));
   const more = $('#gov-more');
   if (more) more.addEventListener('click', () => { $('#gov-text').classList.remove('clip'); more.remove(); });
+  const gt = $('#gov-text');
+  if (gt) gt.addEventListener('click', e => {
+    const a = e.target.closest('a.gov-link');
+    if (!a) return;
+    e.preventDefault();
+    openOutside(a.getAttribute('href'));
+  });
   document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(x => x.classList.toggle('on', x === b));
     review(b.getAttribute('data-opt'));
@@ -454,4 +490,4 @@ setInterval(badge, 10 * 60000);
   }).observe(st, { attributes: true, attributeFilter: ['class'] });
 })();
 
-export { loadGov, standing, kindOf, rewrap, APP_TAG };
+export { loadGov, standing, kindOf, rewrap, APP_TAG, linkify };

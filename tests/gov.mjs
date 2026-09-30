@@ -67,5 +67,22 @@ check('"Vote with BiNodes Finder" skipped', APP_TAG.test('Vote with BiNodes Find
 check('"Voted via Station" skipped', APP_TAG.test('Voted via Station'), true);
 check('a real reason kept', APP_TAG.test('Voting YES to fund the security audit. Much needed.'), false);
 check('"Scammer proposal..." kept', APP_TAG.test('Scammer proposal to take 21 percent of lunc from CP'), false);
+
+// linkify: lifted with its escaper, run on hostile and ordinary text
+const escSrc = gsrc.slice(gsrc.indexOf('const esc ='), gsrc.indexOf('const L ='));
+const linkSrc = gsrc.slice(gsrc.indexOf('const URL_RE'), gsrc.indexOf('function openOutside'));
+const linkify = new Function(escSrc + '\n' + linkSrc + '; return linkify;')();
+console.log('\nlinks in proposal text');
+check('https link becomes a link showing its own address',
+  linkify('Details: https://discourse.luncgoblins.com/t/x/536'),
+  'Details: <a class="gov-link" href="https://discourse.luncgoblins.com/t/x/536" rel="noopener noreferrer" target="_blank">https://discourse.luncgoblins.com/t/x/536</a>');
+check('trailing full stop stays outside the link',
+  linkify('see https://a.io/p.').endsWith('</a>.'), true);
+check('http:// is not linked', linkify('http://a.io/x').includes('<a'), false);
+check('javascript: is not linked', linkify('javascript:alert(1)').includes('<a'), false);
+check('a quote ends the link and is escaped, no attribute injection',
+  linkify('https://a.io/"onmouseover="x').includes('href="https://a.io/"') && linkify('https://a.io/"onmouseover="x').includes('&quot;onmouseover'), true);
+check('markup in the text is escaped', linkify('<img src=x onerror=1> https://a.io').startsWith('&lt;img'), true);
+check('& in a link is escaped in the href', linkify('https://a.io/?a=1&b=2').includes('href="https://a.io/?a=1&amp;b=2"'), true);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
