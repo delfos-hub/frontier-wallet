@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=20b8906a';
-import { $, buzz, go } from './shell.js?v=20b8906a';
-import { S } from './state.js?v=20b8906a';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=20b8906a';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=bc5bb023';
+import { $, buzz, go } from './shell.js?v=bc5bb023';
+import { S } from './state.js?v=bc5bb023';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=bc5bb023';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -19,21 +19,44 @@ const L = raw => fmt(amt(String(raw), 6));
 /* Links in a proposal's own text, made tappable - safely. The text is written
    by whoever submitted the proposal, so:
      - only https:// is turned into a link (no http:, javascript:, data:);
-     - the link shows the full address it goes to, never other text;
+     - the link shows the address the browser will really open: the text and
+       the href are both new URL(...).href, so a look-alike host written with
+       Cyrillic or Greek letters shows as its punycode (xn--...);
+     - invisible and direction-control characters end a link, so they can't
+       make the shown address read differently from where it goes;
      - the text is split on links first and every piece escaped on its own,
        so nothing in the proposal can become markup;
      - it opens outside the wallet (Telegram's own browser prompt), never
-       inside the mini app.
+       inside the mini app;
+     - a proposal still in its deposit period gets no links at all: posting
+       one costs little, so it is as easy a phishing lure as a comment.
    Voter comments stay plain text: anyone can write one for the cost of a
    vote, and a tappable link there is an easy phishing lure. */
-const URL_RE = /https:\/\/[^\s<>"'`]+/g;
-function linkify(text){
+const URL_RE = /https:\/\/[^\s<>"'`\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+/g;
+const count = (s, c) => s.split(c).length - 1;
+// Sentence punctuation right after a link is not part of it. A closing
+// bracket stays when the link opened one itself (Wikipedia style).
+function trimUrl(m){
+  let u = m;
+  for (;;) {
+    const c = u.slice(-1);
+    if (/[.,;:!?]/.test(c)) u = u.slice(0, -1);
+    else if (c === ')' && count(u, '(') < count(u, ')')) u = u.slice(0, -1);
+    else if (c === ']' && count(u, '[') < count(u, ']')) u = u.slice(0, -1);
+    else return u;
+  }
+}
+function linkify(text, links = true){
+  text = String(text);
+  if (!links) return esc(text);
   let out = '', last = 0;
-  String(text).replace(URL_RE, (m, at) => {
-    // sentence punctuation right after a link is not part of it
-    const url = m.replace(/[.,;:!?)\]]+$/, '');
+  text.replace(URL_RE, (m, at) => {
+    const url = trimUrl(m);
+    let href = '';
+    try { href = new URL(url).href; } catch (e) { href = ''; }
+    if (!/^https:\/\//.test(href)) return m;   // stays in the plain text
     out += esc(text.slice(last, at)) +
-      '<a class="gov-link" href="' + esc(url) + '" rel="noopener noreferrer" target="_blank">' + esc(url) + '</a>';
+      '<a class="gov-link" href="' + esc(href) + '" rel="noopener noreferrer" target="_blank">' + esc(href) + '</a>';
     last = at + url.length;
     return m;
   });
@@ -306,7 +329,7 @@ function open(id){
     '<div class="row-sub ' + (s.verdict.ok ? 'gov-ok' : 'gov-bad') + '" style="margin:6px 0 10px">' + esc(s.verdict.text) + '</div>';
   if (text) {
     const long = text.length > 700;
-    h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + linkify(text) + '</div>' +
+    h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + linkify(text, p.status !== 'PROPOSAL_STATUS_DEPOSIT_PERIOD') + '</div>' +
       (long ? '<button class="dust" id="gov-more" type="button">Show all</button>' : '');
   }
   if (live) {

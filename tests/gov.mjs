@@ -84,5 +84,20 @@ check('a quote ends the link and is escaped, no attribute injection',
   linkify('https://a.io/"onmouseover="x').includes('href="https://a.io/"') && linkify('https://a.io/"onmouseover="x').includes('&quot;onmouseover'), true);
 check('markup in the text is escaped', linkify('<img src=x onerror=1> https://a.io').startsWith('&lt;img'), true);
 check('& in a link is escaped in the href', linkify('https://a.io/?a=1&b=2').includes('href="https://a.io/?a=1&amp;b=2"'), true);
+check('look-alike host (Cyrillic e) is shown and opened as punycode',
+  linkify('claim at https://t\u0435rra-classic.io/claim now'),
+  'claim at <a class="gov-link" href="https://xn--trra-classic-sck.io/claim" rel="noopener noreferrer" target="_blank">https://xn--trra-classic-sck.io/claim</a> now');
+check('a right-to-left override ends the link',
+  linkify('https://evil.com/\u202emoc.elgoog').includes('href="https://evil.com/"'), true);
+check('a zero-width space ends the link',
+  linkify('https://evil.com\u200b.google.com').includes('href="https://evil.com/"'), true);
+check('a closing bracket opened inside the link stays in it',
+  linkify('https://en.wikipedia.org/wiki/Terra_(blockchain)').includes('href="https://en.wikipedia.org/wiki/Terra_(blockchain)"'), true);
+check('a closing bracket around the link stays outside',
+  linkify('(see https://a.io/x)').endsWith('</a>)'), true);
+check('no links while in the deposit period',
+  linkify('https://a.io/x <b>', false), 'https://a.io/x &lt;b&gt;');
+check('an address the URL parser rejects stays plain text',
+  linkify('https://[bad').includes('<a'), false);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
