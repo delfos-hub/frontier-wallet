@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=4f505e44';
+import { $ } from './shell.js?v=56417fb3';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -11,8 +11,19 @@ const CW20 = [
   'terra1ex0hjv3wurhj4wgup4jzlzaqj4av6xqd8le4etml7rg9rs207y4s8cdvrp',
   'terra12f3f5fzfzxckc0qlv3rmwwkjfhzevpwmx77345n0zuu2678vxf0sm6vvcw',
   'terra1mm8tdp40r2slzwqxk8jsz66ayc4zp69muxeateq37x2xquttzsaqy7275a',
-  'terra1ljyvgw50u67r3ep7pp7qexgnsgy96fl57q0suut325ehed7eal8qwdtdq4'
+  'terra1ljyvgw50u67r3ep7pp7qexgnsgy96fl57q0suut325ehed7eal8qwdtdq4',
+  'terra1z0xe7t5ymmltg4vju8tghkq0pewy4et548ta23nlu9zxtl950uyqkv8mv4'    // USDT (CL8Y bridge)
 ];
+// CW20 tokens the wallet names and prices itself, by full address.
+//   USDT: Tether brought over by the CL8Y bridge, 18 decimals (BNB Chain's
+//   USDT). Minted by an account, not a contract (terra1zlmv2...hep7, also the
+//   admin), with no mint cap: it is worth a dollar while the bridge's signers
+//   keep it backed, which the note says.
+// The usd price here is applied by address only; see unitOf in tokens.js.
+const KNOWN_CW20 = {
+  'terra1z0xe7t5ymmltg4vju8tghkq0pewy4et548ta23nlu9zxtl950uyqkv8mv4':
+    { sym: 'USDT', note: 'Tether \u00b7 bridged by CL8Y', logo: 'assets/tokens/USDT.png', usd: 1 },
+};
 const NATIVE = { uluna:{sym:'LUNC',dec:6}, uusd:{sym:'USTC',dec:6} };
 // IBC denoms the wallet names itself, by full hash only - a prefix match could
 // put a USDC label on some other token. Each hash checked by recomputing
@@ -292,4 +303,4 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, dbg, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
+export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, dbg, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };

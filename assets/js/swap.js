@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=4f505e44';
-import { $, go, tap } from './shell.js?v=4f505e44';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=4f505e44';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=4f505e44';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=4f505e44';
-import { S } from './state.js?v=4f505e44';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=56417fb3';
+import { $, go, tap } from './shell.js?v=56417fb3';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=56417fb3';
+import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=56417fb3';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=56417fb3';
+import { S } from './state.js?v=56417fb3';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -867,7 +867,8 @@ async function learnPrice(t){
   // mapPrice reads the pools themselves, one hop or two, and is the same
   // arithmetic behind every number on the token list - so the two screens
   // cannot disagree about what something is worth.
-  const lunc = fiatOf({ sym: 'LUNC', v: 1 });
+  // by identity: a bare { sym: 'LUNC' } is priced like any unknown token now
+  const lunc = fiatOf(Object.assign({}, LUNC, { v: 1 }));
   if (lunc === null) return;
   const p = await mapPrice(k).catch(() => null);
   if (!p || !p.inLunc) { dbg('[swap] no route to price', k); return; }
