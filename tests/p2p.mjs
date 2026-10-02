@@ -29,6 +29,8 @@ const ORDERS = {
        offer_remaining: '2000000000', ask: { native: { denom: 'ibc/F52112392095A6D6D1B17EF1FE19BE0B39B2A79B8A2B2F55CD721FC7DBF5081F' } }, ask_total: '1996000000', fee_bps: 10 },
   10: { id: 10, seller: SOMEONE, offer: { native: { denom: 'uluna' } }, offer_total: '500000000000',
        offer_remaining: '500000000000', ask: { cw20: { address: TOKEN } }, ask_total: '10000000', fee_bps: 10 },
+  12: { id: 12, seller: SOMEONE, offer: { native: { denom: 'uusd' } }, offer_total: '100000000',
+       offer_remaining: '100000000', ask: { cw20: { address: TOKEN } }, ask_total: '10000000', fee_bps: 10 },
   9: { id: 9, seller: ME, offer: { native: { denom: 'uluna' } }, offer_total: '2000000',
        offer_remaining: '1500000', ask: { native: { denom: 'uusd' } }, ask_total: '30000', fee_bps: 10 },
 };
@@ -163,6 +165,11 @@ await expect('USDC payout carries no burn-tax note', async () => {
     funds: [{ denom: 'ibc/F52112392095A6D6D1B17EF1FE19BE0B39B2A79B8A2B2F55CD721FC7DBF5081F', amount: '998000000' }] });
   if (/burn tax/.test(lineOf(p, 'You get'))) throw new Error(lineOf(p, 'You get'));
   if (!/USDC\.n/.test(lineOf(p, 'You get'))) throw new Error(lineOf(p, 'You get'));
+});
+await expect('USTC payout carries the burn-tax note too', async () => {
+  // order 12: 100 USTC for 10 TUSD. 1 TUSD buys 10 USTC, minus 0.1%.
+  const p = await m.understand({ contract: TOKEN, msg: { send: { contract: P2P, amount: '1000000', msg: hook({ fill_order: { order_id: 12, min_offer_out: null } }) } }, funds: [] });
+  if (!/about 9\.99 USTC, before the chain burn tax/.test(lineOf(p, 'You get'))) throw new Error(lineOf(p, 'You get'));
 });
 await expect('own cancel allowed and described', async () => {
   const p = await m.understand({ contract: P2P, msg: { cancel_order: { order_id: 9 } }, funds: [] });
