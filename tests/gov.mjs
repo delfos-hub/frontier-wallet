@@ -99,5 +99,9 @@ check('no links while in the deposit period',
   linkify('https://a.io/x <b>', false), 'https://a.io/x &lt;b&gt;');
 check('an address the URL parser rejects stays plain text',
   linkify('https://[bad').includes('<a'), false);
+check('an address with a user name before the host stays plain text',
+  linkify('https://terra-classic.io@evil.com/claim').includes('<a'), false);
+check('an address with a user name and password stays plain text',
+  linkify('https://user:pass@evil.com/x').includes('<a'), false);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

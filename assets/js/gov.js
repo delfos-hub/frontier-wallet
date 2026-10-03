@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=b6a2ede8';
-import { $, buzz, go } from './shell.js?v=b6a2ede8';
-import { S } from './state.js?v=b6a2ede8';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=b6a2ede8';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=0c0f62e7';
+import { $, buzz, go } from './shell.js?v=0c0f62e7';
+import { S } from './state.js?v=0c0f62e7';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=0c0f62e7';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -24,6 +24,9 @@ const L = raw => fmt(amt(String(raw), 6));
        Cyrillic or Greek letters shows as its punycode (xn--...);
      - invisible and direction-control characters end a link, so they can't
        make the shown address read differently from where it goes;
+     - an address with a user name or password before the host
+       (https://name@host) stays plain text: the part before the @ would read
+       like the host while the browser goes to what follows it;
      - the text is split on links first and every piece escaped on its own,
        so nothing in the proposal can become markup;
      - it opens outside the wallet (Telegram's own browser prompt), never
@@ -53,7 +56,10 @@ function linkify(text, links = true){
   text.replace(URL_RE, (m, at) => {
     const url = trimUrl(m);
     let href = '';
-    try { href = new URL(url).href; } catch (e) { href = ''; }
+    try {
+      const u = new URL(url);
+      href = (u.username || u.password) ? '' : u.href;
+    } catch (e) { href = ''; }
     if (!/^https:\/\//.test(href)) return m;   // stays in the plain text
     out += esc(text.slice(last, at)) +
       '<a class="gov-link" href="' + esc(href) + '" rel="noopener noreferrer" target="_blank">' + esc(href) + '</a>';
