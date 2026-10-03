@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=56417fb3';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=56417fb3';
-import { $, buzz, go, libs, report } from './shell.js?v=56417fb3';
-import { S } from './state.js?v=56417fb3';
-import { decryptSeed } from './storage.js?v=56417fb3';
-import { dryRunSwap, sendSwap } from './tx.js?v=56417fb3';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=51a961d3';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=51a961d3';
+import { $, buzz, go, libs, report } from './shell.js?v=51a961d3';
+import { S } from './state.js?v=51a961d3';
+import { decryptSeed } from './storage.js?v=51a961d3';
+import { dryRunSwap, sendSwap } from './tx.js?v=51a961d3';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -107,15 +107,19 @@ async function metaOf(a){
   if (k.native) {
     const d = k.native;
     // Full denoms only (KNOWN_IBC in chain.js): USDC.n, USDC.inj.
-    if (KNOWN_IBC[d]) return { sym: KNOWN_IBC[d].sym, dec: KNOWN_IBC[d].dec, native: true };
-    return { sym: NATIVE_SYM[d] || (d.indexOf('ibc/') === 0 ? 'IBC ' + d.slice(4, 10) : d), dec: 6, native: true };
+    // The burn tax falls on LUNC and USTC bank transfers only. IBC denoms are
+    // native too but untaxed (USDC checked on mainnet), so "native" alone
+    // does not decide whether a payout loses the tax on the way out.
+    const taxed = d === 'uluna' || d === 'uusd';
+    if (KNOWN_IBC[d]) return { sym: KNOWN_IBC[d].sym, dec: KNOWN_IBC[d].dec, native: true, taxed: false };
+    return { sym: NATIVE_SYM[d] || (d.indexOf('ibc/') === 0 ? 'IBC ' + d.slice(4, 10) : d), dec: 6, native: true, taxed: taxed };
   }
   if (META[k.cw20]) return META[k.cw20];
   const r = await smart(k.cw20, { token_info: {} }, 2);
   const t = r && r.data;
   if (!t || typeof t.decimals !== 'number') throw new Error('not a CW20 token: ' + k.cw20);
   // The address goes next to the symbol: any token may call itself USDC.
-  const m = { sym: String(t.symbol || '?').slice(0, 12) + ' (' + short(k.cw20) + ')', dec: t.decimals, native: false };
+  const m = { sym: String(t.symbol || '?').slice(0, 12) + ' (' + short(k.cw20) + ')', dec: t.decimals, native: false, taxed: false };
   META[k.cw20] = m;
   return m;
 }
@@ -230,7 +234,7 @@ async function understand(req){
     const P = f.sent, used = f.used, net = f.net;
     lines.push(['Action', 'Buy from order #' + body.order_id]);
     lines.push(['You pay', show(used.toString(), am) + (used < P ? ' (the rest of ' + show(pay.amount, am) + ' comes back)' : '')]);
-    lines.push(['You get', 'about ' + show(net.toString(), om) + (om.native ? ', before the chain burn tax' : '')]);
+    lines.push(['You get', 'about ' + show(net.toString(), om) + (om.taxed ? ', before the chain burn tax' : '')]);
     if (body.min_offer_out) lines.push(['Minimum', show(body.min_offer_out, om) + ' or the trade is cancelled']);
     lines.push(['Price', fmt(amt(o.ask_total, am.dec) / amt(o.offer_total, om.dec)) + ' ' + am.sym + ' per ' + om.sym]);
     lines.push(['Seller', short(String(o.seller || ''))]);
@@ -240,7 +244,7 @@ async function understand(req){
     if (o.seller !== addrOf()) throw new Error('order ' + body.order_id + ' is not yours');
     const om = await metaOf(o.offer);
     lines.push(['Action', 'Cancel order #' + body.order_id]);
-    lines.push(['Returned to you', show(o.offer_remaining, om) + (om.native ? ', before the chain burn tax' : '')]);
+    lines.push(['Returned to you', show(o.offer_remaining, om) + (om.taxed ? ', before the chain burn tax' : '')]);
   } else {
     if (!body || !isId(body.order_id)) throw new Error('bad order id');
     const o = await orderOf(body.order_id);
@@ -301,7 +305,7 @@ async function understandBatch(msgs){
   const lines = [];
   lines.push(['Action', 'Buy from ' + orders.length + ' orders (' + list + ')']);
   lines.push(['You pay', show(used.toString(), am) + (used < sent ? ' (the rest of ' + show(sent.toString(), am) + ' comes back)' : '')]);
-  lines.push(['You get', 'about ' + show(net.toString(), om) + (om.native ? ', before the chain burn tax' : '')]);
+  lines.push(['You get', 'about ' + show(net.toString(), om) + (om.taxed ? ', before the chain burn tax' : '')]);
   lines.push(['Minimum', show(floor.toString(), om) + ' in total, or the whole sweep is cancelled']);
   lines.push(['Average price', fmt(avg) + ' ' + am.sym + ' per ' + om.sym + ', fee included']);
   lines.push(['Worst price', fmt(worst) + ' ' + am.sym + ' per ' + om.sym]);
