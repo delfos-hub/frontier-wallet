@@ -906,3 +906,4 @@ button.row.gov-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:
 .gov-memo{margin-top:6px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 #gov-memo{width:100%;box-sizing:border-box;resize:vertical;font:inherit}
 body.sheet-open .tabs{visibility:hidden}
+.gov-link{color:var(--accent);text-decoration:underline;word-break:break-all}
