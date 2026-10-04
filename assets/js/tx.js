@@ -1,8 +1,8 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=51a961d3';
-import { $, buzz, go, tap } from './shell.js?v=51a961d3';
-import { S } from './state.js?v=51a961d3';
-import { iconHTML, paintIcons } from './chain.js?v=51a961d3';
-import { heldTokens, refreshBalances } from './tokens.js?v=51a961d3';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=0c0f62e7';
+import { $, buzz, go, tap } from './shell.js?v=0c0f62e7';
+import { S } from './state.js?v=0c0f62e7';
+import { iconHTML, paintIcons } from './chain.js?v=0c0f62e7';
+import { heldTokens, refreshBalances } from './tokens.js?v=0c0f62e7';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is

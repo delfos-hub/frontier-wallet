@@ -6,15 +6,73 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=51a961d3';
-import { $, buzz, go } from './shell.js?v=51a961d3';
-import { S } from './state.js?v=51a961d3';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=51a961d3';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=0c0f62e7';
+import { $, buzz, go } from './shell.js?v=0c0f62e7';
+import { S } from './state.js?v=0c0f62e7';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=0c0f62e7';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const L = raw => fmt(amt(String(raw), 6));
+
+/* Links in a proposal's own text, made tappable - safely. The text is written
+   by whoever submitted the proposal, so:
+     - only https:// is turned into a link (no http:, javascript:, data:);
+     - the link shows the address the browser will really open: the text and
+       the href are both new URL(...).href, so a look-alike host written with
+       Cyrillic or Greek letters shows as its punycode (xn--...);
+     - invisible and direction-control characters end a link, so they can't
+       make the shown address read differently from where it goes;
+     - an address with a user name or password before the host
+       (https://name@host) stays plain text: the part before the @ would read
+       like the host while the browser goes to what follows it;
+     - the text is split on links first and every piece escaped on its own,
+       so nothing in the proposal can become markup;
+     - it opens outside the wallet (Telegram's own browser prompt), never
+       inside the mini app;
+     - a proposal still in its deposit period gets no links at all: posting
+       one costs little, so it is as easy a phishing lure as a comment.
+   Voter comments stay plain text: anyone can write one for the cost of a
+   vote, and a tappable link there is an easy phishing lure. */
+const URL_RE = /https:\/\/[^\s<>"'`\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+/g;
+const count = (s, c) => s.split(c).length - 1;
+// Sentence punctuation right after a link is not part of it. A closing
+// bracket stays when the link opened one itself (Wikipedia style).
+function trimUrl(m){
+  let u = m;
+  for (;;) {
+    const c = u.slice(-1);
+    if (/[.,;:!?]/.test(c)) u = u.slice(0, -1);
+    else if (c === ')' && count(u, '(') < count(u, ')')) u = u.slice(0, -1);
+    else if (c === ']' && count(u, '[') < count(u, ']')) u = u.slice(0, -1);
+    else return u;
+  }
+}
+function linkify(text, links = true){
+  text = String(text);
+  if (!links) return esc(text);
+  let out = '', last = 0;
+  text.replace(URL_RE, (m, at) => {
+    const url = trimUrl(m);
+    let href = '';
+    try {
+      const u = new URL(url);
+      href = (u.username || u.password) ? '' : u.href;
+    } catch (e) { href = ''; }
+    if (!/^https:\/\//.test(href)) return m;   // stays in the plain text
+    out += esc(text.slice(last, at)) +
+      '<a class="gov-link" href="' + esc(href) + '" rel="noopener noreferrer" target="_blank">' + esc(href) + '</a>';
+    last = at + url.length;
+    return m;
+  });
+  return out + esc(text.slice(last));
+}
+function openOutside(url){
+  if (!/^https:\/\//.test(url)) return;
+  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink) Telegram.WebApp.openLink(url);
+  else window.open(url, '_blank', 'noopener');
+}
 const G = LCD + '/cosmos/gov/v1';
 const UNKNOWN = { unknown: true };
 
@@ -277,7 +335,7 @@ function open(id){
     '<div class="row-sub ' + (s.verdict.ok ? 'gov-ok' : 'gov-bad') + '" style="margin:6px 0 10px">' + esc(s.verdict.text) + '</div>';
   if (text) {
     const long = text.length > 700;
-    h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + esc(text) + '</div>' +
+    h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + linkify(text, p.status !== 'PROPOSAL_STATUS_DEPOSIT_PERIOD') + '</div>' +
       (long ? '<button class="dust" id="gov-more" type="button">Show all</button>' : '');
   }
   if (live) {
@@ -292,6 +350,13 @@ function open(id){
   showVoters(String(p.id));
   const more = $('#gov-more');
   if (more) more.addEventListener('click', () => { $('#gov-text').classList.remove('clip'); more.remove(); });
+  const gt = $('#gov-text');
+  if (gt) gt.addEventListener('click', e => {
+    const a = e.target.closest('a.gov-link');
+    if (!a) return;
+    e.preventDefault();
+    openOutside(a.getAttribute('href'));
+  });
   document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(x => x.classList.toggle('on', x === b));
     review(b.getAttribute('data-opt'));
@@ -454,4 +519,4 @@ setInterval(badge, 10 * 60000);
   }).observe(st, { attributes: true, attributeFilter: ['class'] });
 })();
 
-export { loadGov, standing, kindOf, rewrap, APP_TAG };
+export { loadGov, standing, kindOf, rewrap, APP_TAG, linkify };

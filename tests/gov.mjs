@@ -67,5 +67,41 @@ check('"Vote with BiNodes Finder" skipped', APP_TAG.test('Vote with BiNodes Find
 check('"Voted via Station" skipped', APP_TAG.test('Voted via Station'), true);
 check('a real reason kept', APP_TAG.test('Voting YES to fund the security audit. Much needed.'), false);
 check('"Scammer proposal..." kept', APP_TAG.test('Scammer proposal to take 21 percent of lunc from CP'), false);
+
+// linkify: lifted with its escaper, run on hostile and ordinary text
+const escSrc = gsrc.slice(gsrc.indexOf('const esc ='), gsrc.indexOf('const L ='));
+const linkSrc = gsrc.slice(gsrc.indexOf('const URL_RE'), gsrc.indexOf('function openOutside'));
+const linkify = new Function(escSrc + '\n' + linkSrc + '; return linkify;')();
+console.log('\nlinks in proposal text');
+check('https link becomes a link showing its own address',
+  linkify('Details: https://discourse.luncgoblins.com/t/x/536'),
+  'Details: <a class="gov-link" href="https://discourse.luncgoblins.com/t/x/536" rel="noopener noreferrer" target="_blank">https://discourse.luncgoblins.com/t/x/536</a>');
+check('trailing full stop stays outside the link',
+  linkify('see https://a.io/p.').endsWith('</a>.'), true);
+check('http:// is not linked', linkify('http://a.io/x').includes('<a'), false);
+check('javascript: is not linked', linkify('javascript:alert(1)').includes('<a'), false);
+check('a quote ends the link and is escaped, no attribute injection',
+  linkify('https://a.io/"onmouseover="x').includes('href="https://a.io/"') && linkify('https://a.io/"onmouseover="x').includes('&quot;onmouseover'), true);
+check('markup in the text is escaped', linkify('<img src=x onerror=1> https://a.io').startsWith('&lt;img'), true);
+check('& in a link is escaped in the href', linkify('https://a.io/?a=1&b=2').includes('href="https://a.io/?a=1&amp;b=2"'), true);
+check('look-alike host (Cyrillic e) is shown and opened as punycode',
+  linkify('claim at https://t\u0435rra-classic.io/claim now'),
+  'claim at <a class="gov-link" href="https://xn--trra-classic-sck.io/claim" rel="noopener noreferrer" target="_blank">https://xn--trra-classic-sck.io/claim</a> now');
+check('a right-to-left override ends the link',
+  linkify('https://evil.com/\u202emoc.elgoog').includes('href="https://evil.com/"'), true);
+check('a zero-width space ends the link',
+  linkify('https://evil.com\u200b.google.com').includes('href="https://evil.com/"'), true);
+check('a closing bracket opened inside the link stays in it',
+  linkify('https://en.wikipedia.org/wiki/Terra_(blockchain)').includes('href="https://en.wikipedia.org/wiki/Terra_(blockchain)"'), true);
+check('a closing bracket around the link stays outside',
+  linkify('(see https://a.io/x)').endsWith('</a>)'), true);
+check('no links while in the deposit period',
+  linkify('https://a.io/x <b>', false), 'https://a.io/x &lt;b&gt;');
+check('an address the URL parser rejects stays plain text',
+  linkify('https://[bad').includes('<a'), false);
+check('an address with a user name before the host stays plain text',
+  linkify('https://terra-classic.io@evil.com/claim').includes('<a'), false);
+check('an address with a user name and password stays plain text',
+  linkify('https://user:pass@evil.com/x').includes('<a'), false);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
