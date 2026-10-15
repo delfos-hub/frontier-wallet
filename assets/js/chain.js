@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=0c0f62e7';
+import { $ } from './shell.js?v=c31e5e5f';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -102,6 +102,13 @@ const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').repla
 const ICON_KEY = 'fw:icons';
 let ICON_SEEN = {};
 try { ICON_SEEN = JSON.parse(localStorage.getItem(ICON_KEY) || '{}') || {}; } catch (e) {}
+// A miss is stored as minus the time it happened and believed for 3 days;
+// the old plain 0 meant "never again" and is dropped.
+const ICON_MISS_TTL = 3 * 86400000;
+for (const k in ICON_SEEN) {
+  const v = ICON_SEEN[k];
+  if (v === 0 || (typeof v === 'number' && Date.now() + v > ICON_MISS_TTL)) delete ICON_SEEN[k];
+}
 let ICON_T = null;
 function iconRemember(sym, val){
   if (!sym || ICON_SEEN[sym] === val) return;
@@ -148,7 +155,7 @@ function iconHTML(t){
   if (t.logo && !ICON_DEAD[t.logo]) cands.push(t.logo);
   if (typeof known === 'string') {
     cands.push(known);                       // уже знаем, какой файл есть
-  } else if (known !== 0) {
+  } else if (typeof known !== 'number') {
     const base = localIcon(sym);             // ещё не искали
     cands.push(base + '.png', base + '.svg', base + '.webp');
   }                                          // known === 0 - файла нет, не ищем
@@ -168,7 +175,7 @@ function paintIcons(root){
     (function next(){
       if (i >= cands.length) {
         // every candidate failed, and that will still be true next time
-        if (sym) iconRemember(sym, 0);
+        if (sym) iconRemember(sym, -Date.now());
         return;
       }
       const img = new Image();
