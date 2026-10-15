@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=c31e5e5f';
-import { $, buzz } from './shell.js?v=c31e5e5f';
-import { S } from './state.js?v=c31e5e5f';
-import { luncRaw, refreshBalances } from './tokens.js?v=c31e5e5f';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=c31e5e5f';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=4594f16b';
+import { $, buzz } from './shell.js?v=4594f16b';
+import { S } from './state.js?v=4594f16b';
+import { luncRaw, refreshBalances } from './tokens.js?v=4594f16b';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=4594f16b';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -32,9 +32,11 @@ const shortVal = v => v.slice(0, 16) + '\u2026' + v.slice(-4);
    explorer does. Only the URL is kept, for a week, and a validator with no
    key or no picture keeps its letter. */
 const LOGO_TTL = 7 * 86400000;
+// "no picture" can change (a validator sets one up), so it is kept shorter
+const LOGO_MISS_TTL = 86400000;
 function logoCached(id){
   if (!id) return null;
-  try { const c = JSON.parse(localStorage.getItem('vlogo:' + id) || 'null'); if (c && Date.now() - c.t < LOGO_TTL) return c; } catch (e) {}
+  try { const c = JSON.parse(localStorage.getItem('vlogo2:' + id) || 'null'); if (c && Date.now() - c.t < (c.u ? LOGO_TTL : LOGO_MISS_TTL)) return c; } catch (e) {}
   return null;
 }
 function ico(v){
@@ -54,10 +56,14 @@ function fillLogos(root){
         if (!logoCached(id)) {
           try {
             const r = await fetch('https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=' + encodeURIComponent(id) + '&fields=pictures');
+            if (!r.ok) return;
             const j = await r.json();
+            // only a clean answer is remembered: a rate limit or an error
+            // reply must not read as "this validator has no picture"
+            if (!j || !j.status || j.status.code !== 0 || !Array.isArray(j.them)) return;
             u = (j.them && j.them[0] && j.them[0].pictures && j.them[0].pictures.primary && j.them[0].pictures.primary.url) || '';
             if (!/^https:\/\//.test(u)) u = '';
-            try { localStorage.setItem('vlogo:' + id, JSON.stringify({ u: u, t: Date.now() })); } catch (e) {}
+            try { localStorage.setItem('vlogo2:' + id, JSON.stringify({ u: u, t: Date.now() })); } catch (e) {}
           } catch (e) { return; }
         } else u = logoCached(id).u;
         if (!u) return;
