@@ -329,7 +329,7 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 
 /* ══ patch47: реклама ══ */
 .ads{position:relative;border:1px solid #1E2A42;border-radius:16px;overflow:hidden;
-  background:#161E30;margin:0 0 22px}
+  background:#161E30;margin:0 -10px 22px}
 .ads[hidden]{display:none}
 .ads-track{display:flex;transition:transform .55s cubic-bezier(.4,.14,.2,1)}
 .ad{flex:0 0 100%;min-height:104px;padding:15px 16px 17px;display:flex;flex-direction:column;
@@ -763,6 +763,7 @@ body{width:100%;max-width:100vw;margin:0 auto}
 #p2p-sheet .sw-sheet-in{overflow-y:auto}
 
 /* Noble USDC notice on the home screen */
+.warn.sunset[hidden]{display:none}
 .warn.sunset{position:relative;display:flex;flex-direction:column;gap:4px;padding-right:34px;margin:12px 0}
 .warn.sunset b{font-weight:600}
 .warn.sunset span{line-height:1.5}

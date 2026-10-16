@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=0c0f62e7';
-import { $, buzz } from './shell.js?v=0c0f62e7';
-import { S } from './state.js?v=0c0f62e7';
-import { luncRaw, refreshBalances } from './tokens.js?v=0c0f62e7';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=0c0f62e7';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=64734d16';
+import { $, buzz } from './shell.js?v=64734d16';
+import { S } from './state.js?v=64734d16';
+import { luncRaw, refreshBalances } from './tokens.js?v=64734d16';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=64734d16';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -32,9 +32,11 @@ const shortVal = v => v.slice(0, 16) + '\u2026' + v.slice(-4);
    explorer does. Only the URL is kept, for a week, and a validator with no
    key or no picture keeps its letter. */
 const LOGO_TTL = 7 * 86400000;
+// "no picture" can change (a validator sets one up), so it is kept shorter
+const LOGO_MISS_TTL = 86400000;
 function logoCached(id){
   if (!id) return null;
-  try { const c = JSON.parse(localStorage.getItem('vlogo:' + id) || 'null'); if (c && Date.now() - c.t < LOGO_TTL) return c; } catch (e) {}
+  try { const c = JSON.parse(localStorage.getItem('vlogo2:' + id) || 'null'); if (c && Date.now() - c.t < (c.u ? LOGO_TTL : LOGO_MISS_TTL)) return c; } catch (e) {}
   return null;
 }
 function ico(v){
@@ -43,6 +45,10 @@ function ico(v){
   return '<span class="sym stk-ico"' + (v.ident && !c ? ' data-ident="' + esc(v.ident) + '"' : '') + '>' + esc(v.name.slice(0, 1).toUpperCase()) + '</span>';
 }
 let LOGO_Q = Promise.resolve();
+// After a failed lookup (rate limit, error reply, network) Keybase is left
+// alone for a while instead of being asked again on every render.
+let LOGO_PAUSE = 0;
+const LOGO_BACKOFF = 5 * 60000;
 function fillLogos(root){
   const els = [...root.querySelectorAll('.stk-ico[data-ident]')];
   const ids = [...new Set(els.map(e => e.getAttribute('data-ident')))];
@@ -52,13 +58,18 @@ function fillLogos(root){
       await Promise.all(ids.slice(i, i + 4).map(async id => {
         let u = '';
         if (!logoCached(id)) {
+          if (Date.now() < LOGO_PAUSE) return;
           try {
             const r = await fetch('https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=' + encodeURIComponent(id) + '&fields=pictures');
+            if (!r.ok) { LOGO_PAUSE = Date.now() + LOGO_BACKOFF; return; }
             const j = await r.json();
+            // only a clean answer is remembered: a rate limit or an error
+            // reply must not read as "this validator has no picture"
+            if (!j || !j.status || j.status.code !== 0 || !Array.isArray(j.them)) { LOGO_PAUSE = Date.now() + LOGO_BACKOFF; return; }
             u = (j.them && j.them[0] && j.them[0].pictures && j.them[0].pictures.primary && j.them[0].pictures.primary.url) || '';
             if (!/^https:\/\//.test(u)) u = '';
-            try { localStorage.setItem('vlogo:' + id, JSON.stringify({ u: u, t: Date.now() })); } catch (e) {}
-          } catch (e) { return; }
+            try { localStorage.setItem('vlogo2:' + id, JSON.stringify({ u: u, t: Date.now() })); } catch (e) {}
+          } catch (e) { LOGO_PAUSE = Date.now() + LOGO_BACKOFF; return; }
         } else u = logoCached(id).u;
         if (!u) return;
         // the identity is operator-chosen text: escaped, or one quote in it
