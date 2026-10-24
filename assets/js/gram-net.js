@@ -16,7 +16,7 @@ const NETS = {
     htlc: 'terra16zz7rtpkwurte9srfznaa3ctj35xk8k3rgvpm2n7e6s4lr0sssrssxd34z',
     // contracts/htlc-swap-ton build: a TON lock is trusted only with this code
     tonCodeHash: '39D4C6CCA7AEC5DBEA9FD5BBC5B28CD0BADB04B8E99822FC241075B9FC58172C',
-    tonApi: 'https://testnet.toncenter.com/api/v3',
+    tonApi: 'https://testnet.toncenter.com/api/v2',
     tonExplorer: 'https://testnet.tonviewer.com/',
     terraExplorer: 'https://finder.terraclassic.community/rebel-2/tx/'
   }

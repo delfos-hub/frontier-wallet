@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=eeeb5484">
+<link rel="stylesheet" href="assets/css/app.css?v=6f49adf9">
 </head>
 <body>
 <div id="rt"></div>
@@ -314,7 +314,7 @@
   </div>
 
   <button class="xc" id="xc-gram" type="button" hidden>
-    <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-badge">Testnet</span></span>
+    <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-n" id="xc-gram-n" hidden></span><span class="xc-badge">Testnet</span></span>
     <span class="xc-main"><span class="xc-ico" id="xc-gram-ico"></span>
       <span class="xc-txt"><b>GRAM &#8644; LUNC</b><span>GRAM (formerly TON) &middot; atomic swap, no bridge</span></span>
       <svg class="xc-go" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span>
@@ -563,7 +563,7 @@
 
   <div class="head"><h2>My offers</h2></div>
   <div class="gx-list" id="gx-offers"></div>
-  <div class="head"><h2>Takes</h2></div>
+  <div class="head gx-head"><h2>Active deals</h2><span class="gx-rec" id="gx-record"></span></div>
   <div class="gx-list" id="gx-takes"></div>
 
   <div class="head"><h2>New offer</h2></div>
@@ -608,12 +608,25 @@
   </div>
 </section>
 
+<!-- A buyer is waiting: shown over any screen. -->
+<div class="gx-alert" id="gx-alert" hidden>
+  <div class="gx-alert-in">
+    <div class="gx-alert-top"><span class="gx-alert-ico" id="gx-alert-ico"></span><span class="gx-alert-dot"></span>New buyer &middot; GRAM</div>
+    <b id="gx-alert-what"></b>
+    <p id="gx-alert-left"></p>
+    <div class="gx-alert-btns">
+      <button class="dust" id="gx-alert-later" type="button">Later</button>
+      <button class="btn solid" id="gx-alert-go" type="button">Answer</button>
+    </div>
+  </div>
+</div>
+
 <!-- Top level, like the other sheets: inside a .step the tab bar covers it. -->
 <div class="sw-sheet" id="gx-sheet" hidden>
   <div class="sw-sheet-in">
     <div class="sw-sheet-top"><span id="gx-sheet-title">Confirm</span>
       <button class="sw-x" id="gx-sheet-x" type="button">Cancel</button></div>
-    <p class="tiny" style="text-align:left;margin:0 0 10px">A signed message, not a transaction: it moves no funds. This is exactly what will be signed.</p>
+    <p class="tiny" id="gx-sheet-note" style="text-align:left;margin:0 0 10px">A signed message, not a transaction: it moves no funds. This is exactly what will be signed.</p>
     <div class="p2p-lines" id="gx-lines"></div>
     <details class="gx-raw"><summary>Signed text</summary><pre id="gx-signed"></pre></details>
     <div class="pinbox" id="gx-pinbox" style="margin-top:12px">
@@ -704,14 +717,14 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=eeeb5484"></script>
-<script src="assets/js/ads.js?v=eeeb5484"></script>
-<script type="module" src="assets/js/swap.js?v=eeeb5484"></script>
-<script type="module" src="assets/js/activity.js?v=eeeb5484"></script>
-<script type="module" src="assets/js/nft.js?v=eeeb5484"></script>
-<script type="module" src="assets/js/p2p.js?v=eeeb5484"></script>
-<script type="module" src="assets/js/gram.js?v=eeeb5484"></script>
-<script type="module" src="assets/js/gov.js?v=eeeb5484"></script>
-<script type="module" src="assets/js/stake.js?v=eeeb5484"></script>
+<script type="module" src="assets/js/app.js?v=6f49adf9"></script>
+<script src="assets/js/ads.js?v=6f49adf9"></script>
+<script type="module" src="assets/js/swap.js?v=6f49adf9"></script>
+<script type="module" src="assets/js/activity.js?v=6f49adf9"></script>
+<script type="module" src="assets/js/nft.js?v=6f49adf9"></script>
+<script type="module" src="assets/js/p2p.js?v=6f49adf9"></script>
+<script type="module" src="assets/js/gram.js?v=6f49adf9"></script>
+<script type="module" src="assets/js/gov.js?v=6f49adf9"></script>
+<script type="module" src="assets/js/stake.js?v=6f49adf9"></script>
 </body>
 </html>
