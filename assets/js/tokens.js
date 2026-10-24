@@ -295,10 +295,11 @@ function renderCore(rows){
     const cell = box.querySelector('.core-cell[data-sym="' + sym + '"]');
     if (!cell) return;
     const r = rows.find(x => x.t.sym === sym);
-    // the placeholder dot becomes a real icon exactly once, when a row for this
-    // asset first exists
-    if (r && cell.querySelector('.core-dot')) {
-      cell.querySelector('.core-dot').outerHTML = iconHTML(r.t);
+    // the placeholder dot becomes a real icon exactly once. A core asset shows
+    // its logo even with no balance: the row only adds the contract's own
+    // logo when there is one, the local file is found by the ticker anyway.
+    if (cell.querySelector('.core-dot')) {
+      cell.querySelector('.core-dot').outerHTML = iconHTML(r ? r.t : { sym: sym });
       painted = true;
     }
     const usdEl = cell.querySelector('.core-usd');
