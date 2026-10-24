@@ -908,3 +908,85 @@ button.row.gov-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:
 #gov-memo{width:100%;box-sizing:border-box;resize:vertical;font:inherit}
 body.sheet-open .tabs{visibility:hidden}
 .gov-link{color:var(--accent);text-decoration:underline;word-break:break-all}
+
+/* ══ GRAM swap: Cross-chain card + maker screen ══ */
+.xc{display:block;width:100%;text-align:left;font-family:inherit;color:var(--text);cursor:pointer;
+  background:linear-gradient(135deg,rgba(0,152,234,.14),rgba(123,92,255,.10) 60%,var(--surface));
+  border:1px solid rgba(0,152,234,.35);border-radius:var(--r-card);padding:12px 14px 13px;margin:-8px 0 20px;
+  transition:transform .12s}
+.xc[hidden]{display:none}
+.xc:active{transform:scale(.98)}
+.xc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.xc-label{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.xc-badge{font-size:9px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--gold);
+  border:1px solid rgba(232,200,64,.45);border-radius:999px;padding:2px 8px}
+.p2p-top .xc-badge{margin-left:auto}
+.xc-main{display:flex;align-items:center;gap:12px}
+.xc-ico{display:flex;flex:none}
+.xc-ico .sym{width:30px;height:30px;font-size:13px}
+.xc-ico .sym+.sym{margin-left:-9px;box-shadow:0 0 0 2px var(--surface)}
+.xc-txt{display:flex;flex-direction:column;min-width:0;flex:1}
+.xc-txt b{font-family:'Rajdhani',sans-serif;font-size:17px;color:#fff;line-height:1.2}
+.xc-txt span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xc-go{width:18px;height:18px;flex:none;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
+.gx-intro{font-size:12.5px;color:var(--muted);line-height:1.6;margin:4px 4px 14px}
+.gx-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 4px 6px;font-size:12.5px;color:var(--muted)}
+.gx-bar b{color:var(--text);margin-left:6px}
+.gx-bar i{display:block;font-style:normal;font-size:11px;opacity:.75}
+.gx-list{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.gx-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-row);padding:11px 12px}
+.gx-l{flex:1;min-width:0;font-size:13px;color:var(--muted)}
+.gx-l b{color:var(--text)}
+.gx-l span{display:block;font-size:11.5px;margin-top:2px;line-height:1.5}
+.gx-none{font-size:12.5px;color:var(--muted);margin:0 4px}
+.gx-tag{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;border-radius:999px;padding:2px 8px;
+  border:1px solid var(--border);color:var(--muted);flex:none}
+.gx-tag.pending{color:var(--gold);border-color:rgba(232,200,64,.45)}
+.gx-tag.locked{color:var(--green);border-color:rgba(0,255,176,.35)}
+.gx-tag.unanswered{color:var(--red);border-color:rgba(255,107,107,.4)}
+.gx-rates{display:flex;flex-direction:column;gap:2px;margin:-2px 2px 12px;padding:0 0 12px;border-bottom:1px solid var(--border)}
+.gx-rates b{font-family:'Rajdhani',sans-serif;font-size:17px;color:#fff}
+.gx-rates span{font-size:11.5px;color:var(--muted)}
+.gx-amt{background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:12px 14px}
+.gx-amt:focus-within{border-color:rgba(123,92,255,.6)}
+.gx-amt-top{display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);font-weight:600;min-height:24px}
+.gx-mkt{letter-spacing:0;text-transform:none;font-weight:500;font-size:11.5px}
+.gx-amt-in{display:flex;align-items:center;gap:10px;margin-top:4px}
+.gx-amt-in input[type=text]{flex:1;min-width:0;background:none;border:0;padding:2px 0;font-family:'Rajdhani',sans-serif;
+  font-size:28px;font-weight:700;color:#fff;box-shadow:none}
+.gx-amt-in input[type=text]:focus{box-shadow:none}
+.gx-tok{display:flex;align-items:center;gap:7px;flex:none;font-weight:700;font-size:14px;color:var(--text);
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:999px;padding:5px 11px 5px 5px}
+.gx-tok .sym{width:24px;height:24px;font-size:11px}
+.gx-swap-ico{display:flex;justify-content:center;margin:-7px 0;position:relative;z-index:1}
+.gx-swap-ico svg{width:30px;height:30px;padding:6px;border-radius:50%;background:var(--surface);border:1px solid var(--border);
+  stroke:var(--accent2);fill:none;stroke-width:2;stroke-linecap:round}
+.gx-chips{display:flex;gap:6px;margin-top:10px}
+.gx-chip{font-family:inherit;font-size:12px;font-weight:600;color:var(--muted);background:transparent;cursor:pointer;
+  border:1px solid var(--border);border-radius:999px;padding:5px 12px}
+.gx-chip.on{color:#fff;border-color:var(--accent);background:rgba(123,92,255,.18)}
+.gx-chip:disabled{opacity:.35;cursor:not-allowed}
+.gx-amt-top .gx-chip{padding:2px 10px;font-size:11px;letter-spacing:.06em}
+.gx-ton{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin:14px 2px 0}
+.gx-ton b{color:var(--text);font-weight:600}
+.gx-ton[hidden],.gx-ton-edit[hidden]{display:none}
+.gx-ton-edit{margin:14px 0 0}
+.gx-link{margin-left:auto;background:none;border:0;color:var(--accent2);font-family:inherit;font-size:12px;cursor:pointer}
+.gx-more{margin-top:14px;font-size:12.5px;color:var(--muted)}
+.gx-more summary{cursor:pointer;list-style:none}
+.gx-more summary::before{content:'+ '}
+.gx-more[open] summary::before{content:'2 '}
+.gx-sum{margin-top:14px;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+.gx-sum[hidden]{display:none}
+.gx-sum div{display:flex;justify-content:space-between;gap:12px;padding:9px 12px;background:var(--surface2);font-size:12.5px}
+.gx-sum span{color:var(--muted);flex:none}
+.gx-sum b{color:var(--text);text-align:right;font-weight:600}
+.gx-form{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:16px 14px 14px;margin-bottom:10px}
+.gx-msg{font-size:12.5px;color:var(--muted);min-height:18px;margin:8px 4px 0;word-break:break-word}
+.gx-msg.bad{color:var(--red)}
+.gx-raw{margin-top:10px;font-size:11.5px;color:var(--muted)}
+.gx-raw summary{cursor:pointer}
+.gx-raw pre{white-space:pre-wrap;word-break:break-all;background:var(--surface2);border-radius:10px;padding:10px;margin-top:6px;
+  font-size:10.5px;color:var(--text)}
