@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=d992801e';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d992801e';
-import { $, buzz, go, libs, report } from './shell.js?v=d992801e';
-import { S } from './state.js?v=d992801e';
-import { decryptSeed } from './storage.js?v=d992801e';
-import { dryRunSwap, sendSwap } from './tx.js?v=d992801e';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=8b1082e1';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=8b1082e1';
+import { $, buzz, go, libs, report } from './shell.js?v=8b1082e1';
+import { S } from './state.js?v=8b1082e1';
+import { decryptSeed } from './storage.js?v=8b1082e1';
+import { dryRunSwap, sendSwap } from './tx.js?v=8b1082e1';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -429,6 +429,14 @@ async function onPin(){
     say('Waiting for a block');
     const done = await res.wait();
     if (!done) { finish({ error: 'sent but not confirmed yet, check Activity: ' + res.hash }); return; }
+    // orders this wallet closed itself are not "sold" for the P2P watcher
+    try {
+      const ids = PENDING.steps.map(st => st.msg && (st.msg.cancel_order || st.msg.reclaim_expired)).filter(Boolean).map(m => String(m.order_id));
+      if (ids.length) {
+        const k = 'fw:p2p:closed', had = JSON.parse(localStorage.getItem(k) || '[]');
+        localStorage.setItem(k, JSON.stringify(had.concat(ids).slice(-300)));
+      }
+    } catch (e) {}
     buzz('success');
     finish({ txHash: res.hash });
   } catch (e) {
@@ -476,4 +484,4 @@ window.addEventListener('message', function (ev) {
 
 dots('p2p-pinrow', 0);
 
-export { openMarket, understand, understandBatch };
+export { P2P_CONTRACT, openMarket, understand, understandBatch };
