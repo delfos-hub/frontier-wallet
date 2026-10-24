@@ -115,7 +115,7 @@ async function readLock(api, address, codeHash, apiKey) {
   const num = i => BigInt(s[i][1]);
   const adr = i => addressOf(b64bytes(s[i][1].bytes));
   return {
-    state: 'active',
+    state: 'active', balance: BigInt(info.balance || 0),
     status: STATUS[Number(num(0))],
     hash: num(1).toString(16).padStart(64, '0'),
     amount: num(2), timeout: Number(num(3)),

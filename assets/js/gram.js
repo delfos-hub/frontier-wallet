@@ -12,14 +12,15 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=6f49adf9';
-import { GRAM_NET } from './gram-net.js?v=6f49adf9';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=6f49adf9';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=6f49adf9';
-import { S } from './state.js?v=6f49adf9';
-import { decryptSeed } from './storage.js?v=6f49adf9';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=6f49adf9';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=6f49adf9';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=bc03c078';
+import { GRAM_NET } from './gram-net.js?v=bc03c078';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=bc03c078';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=bc03c078';
+import { S } from './state.js?v=bc03c078';
+import { decryptSeed } from './storage.js?v=bc03c078';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=bc03c078';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=bc03c078';
+import { buildLock, refundMessage } from './gram-tonlock.js?v=bc03c078';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -127,6 +128,9 @@ async function load(){
     const mine = (book.offers || []).filter(o => o.maker === me);
     MY_LIVE = mine.reduce((a, o) => a + BigInt(o.remaining_lunc), 0n);
     drawOffers(mine);
+    BOOK = (book.offers || []).filter(o => o.maker !== me);
+    drawBook();
+    drawBuys();
     TAKES = takes.takes || [];
     drawTakes(TAKES, takes.stats || {});
     say('#gx-status', '');
@@ -188,7 +192,8 @@ function drawTakes(list, stats){
   const active = list.filter(t => !fin[t.ton_lock] && (
     (t.status === 'pending' && windowLeftOf(t) > 0) ||
     t.status === 'locked' ||
-    (t.status === 'unanswered' && mineFor(t.ton_lock).id)));
+    (t.status === 'unanswered' && mineFor(t.ton_lock).id) ||
+    (t.status === 'pending' && mineFor(t.ton_lock).id)));
   if (!active.length) {
     box.innerHTML = '<div class="gx-none">No active deals. When a buyer takes your offer it shows up here, with a chime.</div>';
     return;
@@ -197,6 +202,12 @@ function drawTakes(list, stats){
     const mine = mineFor(t.ton_lock);
     const head = '<b>' + human(t.lunc, 6) + ' LUNC</b> for ' + human(t.gram, 9) + ' GRAM';
     const pair = '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'GRAM' }) + iconHTML({ sym: 'LUNC' }) + '</span>';
+    if (mine.id && !t.terra_lock_id && mine.timeout && now() >= mine.timeout) {
+      return '<div class="gx-item gx-deal">' + pair +
+        '<div class="gx-l">' + head + '<span>Your LUNC lock #' + mine.id + ' was never taken: it can come back to you now</span></div>' +
+        '<button class="btn solid gx-answer gx-terra-refund" type="button" data-id="' + mine.id + '" data-ton="' + esc(t.ton_lock) + '">Refund</button>' +
+      '</div>';
+    }
     if (t.status === 'pending' || !t.terra_lock_id) {
       return '<div class="gx-item gx-deal">' + pair +
         '<div class="gx-l">' + head + '<span>' + (mine.id ? 'LUNC locked, the answer still has to be reported'
@@ -289,10 +300,15 @@ const usdTxt = (n, price) => price ? ' \u2248 $' + (n * price).toLocaleString('e
 const dec = (n, d) => n.toFixed(d).replace(/\.?0+$/, '');
 
 // what can still be offered: the balance after the burn tax, less my other live offers
+// LUNC kept out of Max for the gas of answering takes (review of #15):
+// a maker who offers everything could not pay for the answer and would get a strike
+const GAS_RESERVE = 50000000n;      // 50 LUNC
 function available(){
   if (BAL === null) return null;
   const tax = BigInt(POLICY ? POLICY.tax_bps || 0 : 0);
-  const a = BAL * (10000n - tax) / 10000n - MY_LIVE;
+  // the Worker counts takes waiting for an answer against the balance too
+  const pending = TAKES.filter(t => t.status === 'pending').reduce((a, t) => a + BigInt(t.lunc), 0n);
+  const a = (BAL - GAS_RESERVE) * (10000n - tax) / 10000n - MY_LIVE - pending;
   return a > 0n ? a : 0n;
 }
 
@@ -327,7 +343,7 @@ function readForm(){
   out.max = out.total;
   out.hours = HOURS;
   const av = available();
-  if (av !== null && out.total > av) out.errs.push('You can offer up to ' + human(av, 6) + ' LUNC (balance after the burn tax, minus your other live offers).');
+  if (av !== null && out.total > av) out.errs.push('You can offer up to ' + human(av, 6) + ' LUNC (balance after the burn tax, minus your other live offers and takes waiting for you, and 50 LUNC kept for gas).');
   return out;
 }
 
@@ -389,7 +405,7 @@ $('#gx-post').addEventListener('click', async function(){
   const f = readForm();
   if (f.errs.length) { say('#gx-msg', f.errs[0], true); buzz('error'); return; }
   try { localStorage.setItem(tonKey(), f.ton); } catch (e) {}
-  const expires = now() + f.hours * 3600;
+  const expires = now() + f.hours * 3600 - 120;     // 2 min under the limit: a phone clock may run ahead
   const payload = JSON.stringify({
     type: 'htlc-offer', v: 1, network: NET.name, maker: addrOf(), maker_ton: f.ton,
     min_lunc: String(f.min), max_lunc: String(f.max), total_lunc: String(f.total),
@@ -461,7 +477,14 @@ function lockIdOf(res){
   return null;
 }
 
+// the Terra lock's timeout, computed from the TON lock's at the moment it is used
+function terraTimeout(n){
+  const p = POLICY;
+  return Math.min(now() + p.t_terra_sec, (n.timeout || 0) - p.terra_gap_sec - MARGIN);
+}
 async function checkTake(t){
+  if (!POLICY) POLICY = (await api('/offers')).policy || null;
+  if (!POLICY) throw new Error('the swap rules (policy) could not be loaded; not answering without them');
   const offer = await api('/offers/' + encodeURIComponent(t.offer_id));
   const n = await readLock(NET.tonApi, t.ton_lock, NET.tonCodeHash);
   const p = POLICY || {};
@@ -474,10 +497,18 @@ async function checkTake(t){
     if (n.recipient !== tonRaw(offer.maker_ton)) problems.push('the TON lock does not pay your TON address');
     if (n.takerRef !== await takeRefOf(t.taker_terra, t.offer_id, t.lunc)) problems.push('the TON lock is committed to another take');
     if (n.amount < gramFor(BigInt(t.lunc), BigInt(offer.price))) problems.push('the TON lock holds too little GRAM');
+    // The status sits in the lock's initial data: the audited code can be
+    // deployed "already open" with no GRAM, never going through Lock. Only a
+    // lock at the address its own terms give (status 0) is the real one, and
+    // it must hold what it promises (review of #16).
+    const real = await buildLock(NET.tonCode, { hash: n.hash, amount: n.amount, tip: n.tip, timeout: n.timeout,
+      takerRef: n.takerRef, recipient: n.recipient, refundTo: n.refundTo, relayer: n.relayer });
+    if (real.raw !== tonRaw(t.ton_lock)) problems.push('the TON lock was not made through Lock (not a genuine lock)');
+    else if (n.balance < n.amount + n.tip) problems.push('the TON lock does not hold the GRAM it claims');
   }
-  const timeout = Math.min(now() + (p.t_terra_sec || 1200), (n.timeout || 0) - (p.terra_gap_sec || 900) - MARGIN);
-  if (!problems.length && timeout < now() + (p.min_terra_left_sec || 900) + 60) problems.push('the TON lock ends too soon to answer safely');
-  const tax = BigInt(p.tax_bps || 0);
+  const timeout = terraTimeout(n);
+  if (!problems.length && timeout < now() + p.min_terra_left_sec + 60) problems.push('the TON lock ends too soon to answer safely');
+  const tax = BigInt(p.tax_bps);
   const gross = ceilDiv(BigInt(t.lunc) * 10000n, 10000n - tax);
   return { offer: offer, n: n, problems: problems, timeout: timeout, gross: gross };
 }
@@ -489,7 +520,21 @@ async function report(t, id, mnemonic){
   remember(t.ton_lock, { reported: true });
 }
 
-$('#gx-takes').addEventListener('click', function(e){
+$('#gx-takes').addEventListener('click', async function(e){
+  const r = e.target.closest('.gx-terra-refund');
+  if (r) {
+    r.disabled = true;
+    const step = { contract: NET.htlc, msg: { refund: { id: Number(r.dataset.id) } }, funds: [] };
+    try {
+      await consent('Refund your LUNC lock', [['Terra lock', '#' + r.dataset.id], ['Goes back to', addrOf()]],
+        JSON.stringify(step.msg), async m => { const s2 = await sendSwap(addrOf(), [step], m, NET); await s2.wait(); },
+        'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired.');
+      setFinal(r.dataset.ton, 'refunded');
+      say('#gx-status', 'Your LUNC came back.');
+      load();
+    } catch (err) { if (err && err.message !== 'cancelled') say('#gx-status', String(err.message || err), true); r.disabled = false; }
+    return;
+  }
   const b = e.target.closest('.gx-answer');
   if (!b || b.disabled) return;
   const t = TAKES.find(x => x.ton_lock === b.dataset.ton);
@@ -508,7 +553,19 @@ async function answerTake(t, b){
       say('#gx-status', 'Reported. The buyer can now claim the LUNC.');
       buzz('success'); load(); return;
     }
-    if (had.tx) { say('#gx-status', 'A lock for this take was already sent (tx ' + had.tx.slice(0, 10) + '\u2026). Refresh in a minute.', true); return; }
+    if (had.tx) {
+      // the lock was sent but its id never came back: look the tx up
+      let res = null;
+      try { res = (await getJSON(NET.lcd + '/cosmos/tx/v1beta1/txs/' + had.tx, 8000, 1)).tx_response; } catch (e) {}
+      if (res && Number(res.code) === 0 && lockIdOf(res)) {
+        remember(t.ton_lock, { id: lockIdOf(res) });
+        if (b) b.disabled = false;
+        return answerTake(t, b);                        // goes straight to Report
+      }
+      if (res && Number(res.code) !== 0) remember(t.ton_lock, { tx: null });   // it failed on chain: a new lock is fine
+      else if (!res && now() - (had.at || 0) > 180) remember(t.ton_lock, { tx: null });   // never landed
+      else { say('#gx-status', 'Your lock for this take is still on its way (tx ' + had.tx.slice(0, 10) + '\u2026). Try again in a minute.', true); return; }
+    }
     say('#gx-status', 'Checking the buyer\u2019s GRAM lock on TON\u2026');
     const c = await checkTake(t);
     if (c.problems.length) { say('#gx-status', 'Not answering: ' + c.problems.join('; ') + '.', true); buzz('error'); return; }
@@ -527,8 +584,11 @@ async function answerTake(t, b){
     ];
     const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you.';
     await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m){
+      // the PIN may have taken a while: the timeout is set again now and checked
+      step.msg.lock.timeout = terraTimeout(c.n);
+      if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now');
       const sent = await sendSwap(addrOf(), [step], m, NET);
-      remember(t.ton_lock, { tx: sent.hash, at: now() });
+      remember(t.ton_lock, { tx: sent.hash, at: now(), timeout: step.msg.lock.timeout });
       say('#gx-sheet-msg', 'Lock sent, waiting for the block');
       const res = await sent.wait();
       if (!res) throw new Error('the lock was sent but is not confirmed yet (tx ' + sent.hash + '). Refresh in a minute, then press Report.');
@@ -600,6 +660,7 @@ $('#gx-alert-go').addEventListener('click', function () {
   $('#gx-alert').hidden = true; ALERTING = null;
   if (!t) return;
   if (!$('#st-gram').classList.contains('on')) { go('gram'); load(); }
+  tab('sell');
   answerTake(t, null);
 });
 
@@ -620,6 +681,377 @@ async function watchTakes(){
 }
 setInterval(watchTakes, 15000);
 setTimeout(watchTakes, 3000);
+
+/* ================= the buyer's side (stage 4) =================
+   Buy LUNC with GRAM from an offer in the book:
+   1. the wallet makes a 32-byte secret and keeps it on the device first;
+   2. it builds the TON lock (gram-tonlock.js) and the buyer pays it from
+      their own TON wallet through TON Connect;
+   3. once the lock is open on TON, the take is announced to the Worker;
+   4. when the seller answers, the wallet checks the seller's Terra lock on
+      the chain (open, same hash, pays me, LUNC, enough after tax, time left)
+      and only then hands the secret to the relayer, which claims the LUNC
+      for me (no gas of my own) and the GRAM for the seller;
+   5. if the seller never answers, after the TON lock's timeout "Get my GRAM
+      back" sends the lock's free refund message.
+   Nothing here needs the Terra key: a watch-only wallet can buy too. */
+let BOOK = [];
+let TC = null, TC_LOADING = null;
+const CLAIM_MARGIN = NET.name === 'testnet' ? 300 : 3600;     // what the relayer needs left on the Terra lock
+const buysKey = () => 'fw:gram:buys:' + addrOf();
+function buys(){ try { return JSON.parse(localStorage.getItem(buysKey()) || '{}'); } catch (e) { return {}; } }
+function saveBuy(id, v){ const b = buys(); b[id] = Object.assign(b[id] || {}, v); try { localStorage.setItem(buysKey(), JSON.stringify(b)); } catch (e) {} return b[id]; }
+const relayerUrl = () => { try { return (localStorage.getItem('fw:gram:relayer') || NET.relayer || '').replace(/\/+$/, ''); } catch (e) { return NET.relayer || ''; } };
+const tipOf = gram => { const p = POLICY || {}; const fee = gram * BigInt(p.fee_bps || 0) / 10000n; const min = BigInt(p.min_tip || 5000000); return fee > min ? fee : min; };
+const RESERVE_NANO = 50000000n;
+
+/* ---------- tabs ---------- */
+function tab(name){
+  document.querySelectorAll('.gx-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  $('#gx-pane-buy').hidden = name !== 'buy';
+  $('#gx-pane-sell').hidden = name !== 'sell';
+  try { localStorage.setItem('fw:gram:tab', name); } catch (e) {}
+}
+document.querySelectorAll('.gx-tab').forEach(b => b.addEventListener('click', () => tab(b.dataset.tab)));
+try { tab(localStorage.getItem('fw:gram:tab') || 'buy'); } catch (e) { tab('buy'); }
+
+/* ---------- TON Connect ---------- */
+function loadTonConnect(){
+  if (TC) return Promise.resolve(TC);
+  if (TC_LOADING) return TC_LOADING;
+  TC_LOADING = new Promise(function (resolve, reject) {
+    const sc = document.createElement('script');
+    sc.src = NET.tonConnectScript;
+    sc.onload = function () {
+      try {
+        const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+        const opts = { manifestUrl: base + 'tonconnect-manifest.json' };
+        if (NET.twaReturnUrl) opts.actionsConfiguration = { twaReturnUrl: NET.twaReturnUrl };
+        TC = new window.TON_CONNECT_UI.TonConnectUI(opts);
+        TC.onStatusChange(showWallet);
+        TC.connectionRestored.then(() => showWallet(TC.wallet));
+        resolve(TC);
+      } catch (e) { reject(e); }
+    };
+    sc.onerror = () => reject(new Error('TON Connect could not be loaded'));
+    document.head.appendChild(sc);
+  });
+  return TC_LOADING;
+}
+function tonAccount(){ return TC && TC.wallet && TC.wallet.account || null; }
+function showWallet(w){
+  const a = w && w.account;
+  $('#gx-tc-name').textContent = a ? ((w.device && w.device.appName) || 'TON wallet') + ' connected' : 'TON wallet';
+  $('#gx-tc-addr').textContent = a ? (a.address.slice(0, 8) + '\u2026' + a.address.slice(-6) +
+    (a.chain !== NET.tonChain ? ' \u00b7 switch it to ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet') : '')) : 'Pays the GRAM. Not connected.';
+  $('#gx-tc-btn').textContent = a ? 'Disconnect' : 'Connect';
+}
+$('#gx-tc-btn').addEventListener('click', async function(){
+  try {
+    const tc = await loadTonConnect();
+    if (tc.wallet) await tc.disconnect(); else await tc.openModal();
+  } catch (e) { say('#gx-status', String(e.message || e), true); }
+});
+// restore a connection made earlier, without loading the library for nobody
+try { if (localStorage.getItem('ton-connect-storage_bridge-connection')) loadTonConnect().catch(() => {}); } catch (e) {}
+
+/* ---------- the book ---------- */
+function drawBook(){
+  const box = $('#gx-book');
+  const list = BOOK.slice().sort((a, b) => (BigInt(a.price) < BigInt(b.price) ? -1 : 1));
+  $('#gx-book-n').textContent = list.length ? list.length + ' live' : '';
+  if (!list.length) { box.innerHTML = '<div class="gx-none">No offers right now. Pull to refresh in a minute, or sell LUNC yourself on the Sell tab.</div>'; return; }
+  box.innerHTML = list.map(function (o) {
+    const st = o.maker_stats || {};
+    const rec = (st.answered || st.unanswered) ? (st.answered || 0) + ' of ' + ((st.answered || 0) + (st.unanswered || 0)) + ' answered' : 'new seller';
+    return '<div class="gx-item gx-offer">' +
+      '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'LUNC' }) + '</span>' +
+      '<div class="gx-l"><b>1 GRAM = ' + Math.round(1e15 / Number(o.price)).toLocaleString('en-US') + ' LUNC</b>' +
+        '<span>' + human(o.max_lunc, 6) + ' LUNC available \u00b7 from ' + human(o.min_lunc, 6) + ' \u00b7 ' + rec + '</span></div>' +
+      '<button class="btn solid gx-answer gx-buy-btn" type="button" data-id="' + esc(o.id) + '">Buy</button>' +
+    '</div>';
+  }).join('');
+  paintIcons(box);
+}
+$('#gx-book').addEventListener('click', function(e){
+  const b = e.target.closest('.gx-buy-btn');
+  if (!b) return;
+  const o = BOOK.find(x => x.id === b.dataset.id);
+  if (o) openBuy(o);
+});
+
+/* ---------- the buy box ---------- */
+let BUYING = null;
+function openBuy(o){
+  BUYING = o;
+  $('#gx-bb-rate').textContent = '1 GRAM = ' + Math.round(1e15 / Number(o.price)).toLocaleString('en-US') + ' LUNC';
+  $('#gx-bb-range').textContent = 'From ' + human(o.min_lunc, 6) + ' to ' + human(o.max_lunc, 6) + ' LUNC';
+  $('#gx-bb-lunc').value = human(o.min_lunc, 6).replace(/,/g, '');
+  $('#gx-buybox').hidden = false;
+  quote();
+  $('#gx-buybox').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+$('#gx-bb-x').addEventListener('click', () => { $('#gx-buybox').hidden = true; BUYING = null; });
+$('#gx-bb-max').addEventListener('click', () => { if (BUYING) { $('#gx-bb-lunc').value = human(BUYING.max_lunc, 6).replace(/,/g, ''); quote(); } });
+$('#gx-bb-lunc').addEventListener('input', quote);
+function buyTerms(){
+  const o = BUYING;
+  if (!o) return null;
+  let lunc; try { lunc = BigInt(toRaw($('#gx-bb-lunc').value.trim().replace(',', '.'), 6)); } catch (e) { lunc = 0n; }
+  const gram = gramFor(lunc, BigInt(o.price));
+  const tip = tipOf(gram);
+  const err = !(lunc > 0n) ? 'Enter how much LUNC you want.'
+    : lunc < BigInt(o.min_lunc) ? 'This seller sells from ' + human(o.min_lunc, 6) + ' LUNC.'
+    : lunc > BigInt(o.max_lunc) ? 'This seller has ' + human(o.max_lunc, 6) + ' LUNC available.' : '';
+  return { o: o, lunc: lunc, gram: gram, tip: tip, err: err };
+}
+function quote(){
+  const q = buyTerms();
+  if (!q) return;
+  $('#gx-bb-sum').innerHTML =
+    '<div><span>You pay</span><b>' + human(q.gram + q.tip + RESERVE_NANO, 9) + ' GRAM</b></div>' +
+    '<div><span>Price</span><b>' + human(q.gram, 9) + ' GRAM</b></div>' +
+    '<div><span>Relayer fee</span><b>' + human(q.tip, 9) + ' GRAM</b></div>' +
+    '<div><span>TON network reserve</span><b>' + human(RESERVE_NANO, 9) + ' GRAM</b></div>' +
+    '<div><span>You receive</span><b>' + (q.lunc > 0n ? human(q.lunc, 6) : '0') + ' LUNC, no gas needed</b></div>';
+  $('#gx-bb-msg').textContent = q.err || (relayerUrl() ? '' : 'No relayer address is set (bottom of the Buy tab).');
+  $('#gx-bb-msg').classList.toggle('bad', !!q.err);
+  $('#gx-bb-pay').disabled = !!q.err || !relayerUrl();
+}
+
+const toHex = u => Array.from(u, b => b.toString(16).padStart(2, '0')).join('');
+async function sha256hex(u){ return toHex(new Uint8Array(await crypto.subtle.digest('SHA-256', u))); }
+
+$('#gx-bb-pay').addEventListener('click', async function(){
+  const q = buyTerms();
+  if (!q || q.err) return;
+  const me = addrOf();
+  if (!me) { say('#gx-bb-msg', 'Open a wallet first.', true); return; }
+  const btn = this; btn.disabled = true;
+  let id = null;
+  try {
+    const tc = await loadTonConnect();
+    if (!tc.wallet) { await tc.openModal(); say('#gx-bb-msg', 'Connect your TON wallet, then press Pay again.'); return; }
+    const acc = tonAccount();
+    if (acc.chain !== NET.tonChain) { say('#gx-bb-msg', 'Your TON wallet is on the wrong network: switch it to ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet') + '.', true); return; }
+    const policy = POLICY || (await api('/offers')).policy;
+    const secret = crypto.getRandomValues(new Uint8Array(32));
+    const hash = await sha256hex(secret);
+    const terms = {
+      hash: hash, amount: q.gram, tip: q.tip,
+      timeout: now() + policy.min_ton_left_sec + 35 * 60,
+      takerRef: await takeRefOf(me, q.o.id, q.lunc),
+      recipient: tonRaw(q.o.maker_ton), refundTo: tonRaw(acc.address), relayer: tonRaw(policy.tip_address)
+    };
+    const lock = await buildLock(NET.tonCode, terms, { testOnly: NET.tonChain === '-3' });
+    if (lock.codeHash !== String(NET.tonCodeHash).toUpperCase()) throw new Error('the lock code in this wallet does not match the audited one');
+    id = lock.raw;
+    // the secret is kept BEFORE any GRAM moves: without it the LUNC could not be claimed
+    saveBuy(id, { offerId: q.o.id, lunc: String(q.lunc), gram: String(q.gram), tip: String(q.tip), secret: toHex(secret), hash: hash,
+                  timeout: terms.timeout, address: lock.address, stage: 'paying', created: now() });
+    say('#gx-bb-msg', 'Confirm the payment in your TON wallet');
+    await tc.sendTransaction({ validUntil: now() + 360, network: NET.tonChain,
+      messages: [{ address: lock.address, amount: String(lock.value), stateInit: lock.stateInit, payload: lock.payload }] });
+    saveBuy(id, { stage: 'sent' });
+    $('#gx-buybox').hidden = true; BUYING = null;
+    say('#gx-status', '');
+    buzz('success');
+    drawBuys();
+    watchBuys();
+    load();
+  } catch (e) {
+    if (id && buys()[id] && buys()[id].stage === 'paying') saveBuy(id, { stage: 'cancelled' });
+    const m = String(e && e.message || e);
+    say('#gx-bb-msg', /reject|declin|cancel/i.test(m) ? 'Payment cancelled in the TON wallet. Nothing was sent.' : m, true);
+  } finally { btn.disabled = false; }
+});
+
+/* ---------- my buys ----------
+   The newest buy in progress gets a large card at the top of the Buy tab:
+   big steps with the current one animated, what is happening now in plain
+   words, and any problem (the relayer not reachable, the seller's lock not
+   passing the check) with what to do. A finished buy shows a final card
+   until it is closed. Other buys in progress are listed below it. */
+const BUY_STEP = { paying: 0, sent: 0, announced: 1, unanswered: 1, claiming: 2, refunding: 1 };
+const STEP_NAMES = ['You lock GRAM', 'Seller locks LUNC', 'You receive LUNC'];
+const LIVE = ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'];
+function buyLine(b){
+  const late = now() >= b.timeout;
+  if (b.stage === 'paying') return 'Confirm the payment in your TON wallet.';
+  if (b.stage === 'sent') return 'Your GRAM is on its way into the lock on TON. Usually under a minute.';
+  if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + ').';
+  if (b.stage === 'claiming') return 'The seller locked your LUNC and this wallet checked it \u2713. The relayer is claiming it for you now.';
+  if (b.stage === 'unanswered') return 'The seller did not answer. Your GRAM can come back ' + (late ? 'now.' : 'in ' + left(b.timeout - now()) + '.');
+  if (b.stage === 'refunding') return 'Refund sent. The GRAM comes back to your TON wallet in a minute.';
+  return b.stage;
+}
+function stepsHtml(step, big){
+  return '<div class="gx-steps' + (big ? ' big' : '') + '">' + STEP_NAMES.map((n, k) =>
+    '<span class="' + (k < step ? 'ok' : k === step ? 'now' : '') + '">' + n + '</span>').join('') + '</div>';
+}
+function problemHtml(b){
+  if (!b.problem) return '';
+  const fix = b.problem.indexOf('relayer') >= 0 ? ' <button class="gx-link gx-relay-fix" type="button">change relayer</button>' : '';
+  return '<div class="gx-problem">' + esc(b.problem) + fix + '</div>';
+}
+function refundBtn(id, b){
+  const late = now() >= b.timeout;
+  return (late && (b.stage === 'unanswered' || b.stage === 'announced' || b.stage === 'sent'))
+    ? '<button class="btn solid gx-refund" type="button" data-id="' + esc(id) + '">Get my GRAM back</button>' : '';
+}
+function drawBuys(){
+  const box = $('#gx-buys'), hero = $('#gx-hero');
+  const all = Object.entries(buys());
+  const live = all.filter(([, b]) => LIVE.includes(b.stage)).sort((a, b) => b[1].created - a[1].created);
+  const doneNew = all.filter(([, b]) => b.stage === 'done' && !b.seen).sort((a, b) => b[1].created - a[1].created)[0];
+  // the hero: a finished buy not yet closed, else the newest one in progress
+  if (doneNew) {
+    const [id, b] = doneNew;
+    hero.className = 'gx-hero done';
+    hero.innerHTML =
+      '<div class="gx-hero-top"><span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'LUNC' }) + '</span><span>Purchase complete</span></div>' +
+      '<b class="gx-hero-big">+' + human(b.lunc, 6) + ' LUNC</b>' +
+      '<p>Received on your Frontier address for ' + human(b.gram, 9) + ' GRAM, with no gas of your own.</p>' +
+      stepsHtml(3, true) +
+      '<div class="gx-hero-links"><a href="' + NET.tonExplorer + esc(b.address) + '" target="_blank" rel="noopener">GRAM lock on TON</a>' +
+      '<a href="' + NET.terraExplorer.replace(/tx\/$/, 'address/') + esc(addrOf()) + '" target="_blank" rel="noopener">Your LUNC on ' + NET.chain + '</a></div>' +
+      '<button class="dust gx-hero-close" type="button" data-id="' + esc(id) + '">Close</button>';
+    hero.hidden = false;
+  } else if (live.length) {
+    const [id, b] = live[0];
+    hero.className = 'gx-hero';
+    hero.innerHTML =
+      '<div class="gx-hero-top"><span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'GRAM' }) + iconHTML({ sym: 'LUNC' }) + '</span><span>Buying</span></div>' +
+      '<b class="gx-hero-big">' + human(b.lunc, 6) + ' LUNC</b>' +
+      '<p class="gx-hero-sub">for ' + human(b.gram, 9) + ' GRAM</p>' +
+      stepsHtml(BUY_STEP[b.stage] ?? 1, true) +
+      '<p>' + buyLine(b) + '</p>' + problemHtml(b) + refundBtn(id, b);
+    hero.hidden = false;
+  } else hero.hidden = true;
+  paintIcons(hero);
+  // the rest of the buys in progress, small
+  const rest = live.slice(doneNew ? 0 : 1);
+  $('#gx-buys-head').hidden = !rest.length;
+  box.innerHTML = rest.map(([id, b]) =>
+    '<div class="gx-item gx-deal">' +
+      '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'GRAM' }) + iconHTML({ sym: 'LUNC' }) + '</span>' +
+      '<div class="gx-l"><b>' + human(b.lunc, 6) + ' LUNC</b> for ' + human(b.gram, 9) + ' GRAM<span>' + buyLine(b) + '</span>' +
+        stepsHtml(BUY_STEP[b.stage] ?? 1) + problemHtml(b) + '</div>' + refundBtn(id, b) +
+    '</div>').join('');
+  paintIcons(box);
+}
+['#gx-buys', '#gx-hero'].forEach(function (sel) {
+  $(sel).addEventListener('click', function (e) {
+    const c = e.target.closest('.gx-hero-close');
+    if (c) { saveBuy(c.dataset.id, { seen: true }); drawBuys(); return; }
+    if (e.target.closest('.gx-relay-fix')) $('#gx-relay-edit').click();
+  });
+});
+
+async function onRefund(e){
+  const b = e.target.closest('.gx-refund');
+  if (!b) return;
+  b.disabled = true;
+  try {
+    const r = await fetch(NET.tonApi + '/sendBoc', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ boc: refundMessage(b.dataset.id) }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error('TON refused the refund: ' + (j.error || r.status));
+    saveBuy(b.dataset.id, { stage: 'refunding' });
+    say('#gx-status', 'Refund sent. The GRAM comes back to your TON wallet in a minute.');
+    drawBuys();
+  } catch (err) { say('#gx-status', String(err.message || err), true); b.disabled = false; }
+}
+$('#gx-buys').addEventListener('click', onRefund);
+$('#gx-hero').addEventListener('click', onRefund);
+
+// check the seller's Terra lock before the secret leaves the device
+async function sellerLockOk(b, take){
+  const q = btoa(JSON.stringify({ lock: { id: Number(take.terra_lock_id) } }));
+  const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 2)).data || {};
+  const p = POLICY || {};
+  const keep = 10000n - BigInt(p.tax_bps || 0);
+  const problems = [];
+  if (l.status !== 'open') problems.push('the seller\u2019s lock is ' + l.status);
+  if (String(l.hash).toLowerCase() !== b.hash) problems.push('another hash');
+  if (l.recipient !== addrOf()) problems.push('it does not pay you');
+  if (JSON.stringify(l.asset) !== JSON.stringify({ native: { denom: 'uluna' } })) problems.push('it is not LUNC');
+  if (BigInt(l.amount || 0) * keep / 10000n < BigInt(b.lunc)) problems.push('too little LUNC after the burn tax');
+  if (Number(l.timeout) - now() < CLAIM_MARGIN) problems.push('it ends too soon to claim safely');
+  if (Number(l.timeout) + (p.terra_gap_sec || 900) > b.timeout) problems.push('it ends too late');
+  return problems;
+}
+
+let WATCHING_BUYS = false;
+async function watchBuys(){
+  if (WATCHING_BUYS || document.hidden) return;
+  const all = buys();
+  const live = Object.entries(all).filter(([, b]) => ['sent', 'announced', 'claiming', 'refunding', 'unanswered'].includes(b.stage));
+  if (!live.length) return;
+  WATCHING_BUYS = true;
+  try {
+    for (const [id, b] of live) {
+      try {
+        if (b.stage === 'sent') {
+          const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
+          if (n.state === 'active' && n.status === 'open') {
+            try {
+              await api('/takes', { offerId: b.offerId, tonLock: id, takerTerra: addrOf(), lunc: b.lunc });
+            } catch (e) {
+              // announced already (by us earlier, or by anyone on our behalf): fine if the record is ours
+              const t = await api('/takes/' + encodeURIComponent(id));
+              if (t.taker_terra !== addrOf() || t.lunc !== b.lunc) throw e;
+            }
+            saveBuy(id, { stage: 'announced' });
+          } else if (now() - b.created > 900) saveBuy(id, { stage: 'cancelled' });   // never paid: nothing locked
+        } else if (b.stage === 'announced') {
+          const t = await api('/takes/' + encodeURIComponent(id));
+          if (t.status === 'locked' && t.terra_lock_id) {
+            const problems = await sellerLockOk(b, t);
+            if (problems.length) { saveBuy(id, { problem: 'The seller\u2019s lock did not pass the check: ' + problems.join('; ') + '. The secret stays on this device; your GRAM comes back after the timeout.' }); continue; }
+            saveBuy(id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null });
+            chime(); buzz('success');
+            b.stage = 'claiming'; b.terraLockId = Number(t.terra_lock_id);
+          } else if (t.status === 'unanswered') saveBuy(id, { stage: 'unanswered' });
+        }
+        if (b.stage === 'claiming') {
+          const q = btoa(JSON.stringify({ lock: { id: b.terraLockId } }));
+          const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 1)).data || {};
+          if (l.status === 'claimed') {
+            saveBuy(id, { stage: 'done', problem: null });
+            say('#gx-status', 'Done: ' + human(b.lunc, 6) + ' LUNC received on your Frontier address.');
+            chime(); buzz('success');
+            load();
+          } else if (l.status === 'open') {
+            // the relayer finishes it; a repeated /claim with the same pair is answered, not doubled
+            let problem = null;
+            try {
+              const r = await fetch(relayerUrl() + '/claim', { method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ terraLockId: b.terraLockId, tonLock: id, secret: b.secret, offerId: b.offerId, lunc: b.lunc }) });
+              if (!r.ok) { let m = ''; try { m = (await r.json()).error || ''; } catch (e) {} if (r.status >= 500 || r.status === 429) problem = 'The relayer is busy (' + r.status + '), trying again.'; else problem = 'The relayer refused: ' + (m || r.status); }
+            } catch (e) { problem = 'The relayer is not reachable at ' + relayerUrl() + '. Check its address (change relayer).'; }
+            if (problem !== (b.problem || null)) saveBuy(id, { problem: problem });
+          }
+        } else if (b.stage === 'refunding') {
+          const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
+          if (n.status === 'refunded' || n.status === 'claimed') saveBuy(id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
+        }
+      } catch (e) { /* the next round tries again */ }
+    }
+  } finally { WATCHING_BUYS = false; drawBuys(); }
+}
+setInterval(watchBuys, 10000);
+setTimeout(watchBuys, 2000);
+
+/* ---------- relayer address (testnet tunnels change) ---------- */
+function showRelayer(){ $('#gx-relay-url').textContent = relayerUrl() || 'not set'; }
+showRelayer();
+$('#gx-relay-edit').addEventListener('click', function(){
+  const v = prompt('Relayer address (https://...)', relayerUrl());
+  if (v === null) return;
+  try { localStorage.setItem('fw:gram:relayer', v.trim()); } catch (e) {}
+  showRelayer(); quote();
+});
 
 /* ---------------- consent: show, PIN, sign ----------------
    Resolves with { payload, pubkey, signature }, rejects on Cancel. The seed
