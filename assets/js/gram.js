@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=533bcd63';
-import { GRAM_NET } from './gram-net.js?v=533bcd63';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=533bcd63';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=533bcd63';
-import { S } from './state.js?v=533bcd63';
-import { decryptSeed } from './storage.js?v=533bcd63';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=533bcd63';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=533bcd63';
-import { buildLock, refundMessage } from './gram-tonlock.js?v=533bcd63';
-import { chime, notify } from './notify.js?v=533bcd63';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=0ac766b9';
+import { GRAM_NET } from './gram-net.js?v=0ac766b9';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=0ac766b9';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=0ac766b9';
+import { S } from './state.js?v=0ac766b9';
+import { decryptSeed } from './storage.js?v=0ac766b9';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=0ac766b9';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=0ac766b9';
+import { buildLock, refundMessage } from './gram-tonlock.js?v=0ac766b9';
+import { chime, notify } from './notify.js?v=0ac766b9';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -831,7 +831,14 @@ const CLAIM_MARGIN = NET.name === 'testnet' ? 300 : 3600;     // what the relaye
 const buysKey = () => 'fw:gram:buys:' + addrOf();
 function buys(){ try { return JSON.parse(localStorage.getItem(buysKey()) || '{}'); } catch (e) { return {}; } }
 function saveBuy(id, v){ const b = buys(); b[id] = Object.assign(b[id] || {}, v); try { localStorage.setItem(buysKey(), JSON.stringify(b)); } catch (e) {} return b[id]; }
-const relayerUrl = () => { try { return (localStorage.getItem('fw:gram:relayer') || NET.relayer || '').replace(/\/+$/, ''); } catch (e) { return NET.relayer || ''; } };
+// The relayer receives the buyer's secret. Only on testnet may a URL saved on
+// this device replace the one pinned in gram-net.js; anywhere else the pinned
+// one is used even if an old value is still in storage.
+const relayerUrl = () => {
+  const pinned = (NET.relayer || '').replace(/\/+$/, '');
+  if (NET.name !== 'testnet') return pinned;
+  try { return (localStorage.getItem('fw:gram:relayer') || pinned).replace(/\/+$/, ''); } catch (e) { return pinned; }
+};
 const tipOf = gram => { const p = POLICY || {}; const fee = gram * BigInt(p.fee_bps || 0) / 10000n; const min = BigInt(p.min_tip || 5000000); return fee > min ? fee : min; };
 const RESERVE_NANO = 50000000n;
 
@@ -1040,7 +1047,7 @@ async function selfClaim(id){
   const step = { contract: NET.htlc, msg: { claim: { id: b.terraLockId, secret: b.secret } }, funds: [] };
   try {
     await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC']],
-      JSON.stringify({ claim: { id: b.terraLockId, secret: '\u2026' } }),
+      JSON.stringify({ claim: { id: b.terraLockId, secret: '(hidden: the secret kept on this device)' } }),
       async function (m, st) {
         st(0);
         const r = await sendSwap(addrOf(), [step], m, NET);
@@ -1229,7 +1236,9 @@ $('#gx-relay-edit').addEventListener('click', function(){
 /* ---------------- consent: show, PIN, sign, see it through ----------------
    One sheet carries an action from the question to its result, so nothing
    happens out of sight:
-     1. what will be signed, line by line (the body scrolls; the PIN does not)
+     1. what will be signed, line by line (the body scrolls; the PIN does not).
+        A secret is never put on screen: where one is part of the message
+        (a claim), the sheet shows it masked and says so.
      2. after the PIN, the steps of the action, each ticked as it completes
      3. the outcome in plain words and what happens next, until Done
    A failure stays on the step where it happened, with the reason.
