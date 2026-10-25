@@ -6,18 +6,22 @@
    It reads the seller's orders from the otc-p2p contract (OrdersBySeller)
    every 20 s and compares them with the last read, kept on the device. The
    first read only takes a snapshot: fills from before are not announced.
-   An order that is gone was bought, unless this wallet cancelled or
-   reclaimed it (p2p.js records those) or it had expired.
+   An order that is no longer listed and that this wallet did not close
+   (p2p.js records those, before signing) is looked up: the tx that closed
+   it says whether it was bought out (fill_order, closed), cancelled
+   elsewhere (cancel_order: nothing to announce) or reclaimed after expiry
+   or a delisting cutoff (reclaim_expired). If it cannot be told, the
+   message says only that the order is closed.
 
    The contract is p2p.js's P2P_CONTRACT (columbus-5). Until it is deployed
    nothing runs. For a test on another network: localStorage
    fw:p2p:watch = {"lcd":"...","contract":"...","seller":"..."}. */
-import { KNOWN_IBC, LCD, getJSON } from './chain.js?v=8b1082e1';
-import { notify, badge } from './notify.js?v=8b1082e1';
-import { P2P_CONTRACT, openMarket } from './p2p.js?v=8b1082e1';
-import { $ } from './shell.js?v=8b1082e1';
-import { S } from './state.js?v=8b1082e1';
-import { diffOrders } from './p2p-orders.js?v=8b1082e1';
+import { KNOWN_IBC, LCD, getJSON } from './chain.js?v=1b1f2a83';
+import { notify, badge } from './notify.js?v=1b1f2a83';
+import { P2P_CONTRACT, openMarket } from './p2p.js?v=1b1f2a83';
+import { $ } from './shell.js?v=1b1f2a83';
+import { S } from './state.js?v=1b1f2a83';
+import { diffOrders } from './p2p-orders.js?v=1b1f2a83';
 
 function target(){
   let o = null;
@@ -49,6 +53,37 @@ function human(raw, dec){
   return BigInt(i).toLocaleString('en-US') + (f ? '.' + f : '');
 }
 
+/* ---------- how an order left the book ----------
+   The newest tx naming this order on this contract, from the LCD's tx
+   search: 'filled' | 'cancelled' | 'reclaimed' | null (cannot be told). */
+const plain = s => { if (s == null) return ''; s = String(s); if (/^[A-Za-z0-9+/=]+$/.test(s) && s.length % 4 === 0) { try { const d = atob(s); if (/^[\x20-\x7e]*$/.test(d)) return d; } catch (e) {} } return s; };
+async function closedBy(t, id){
+  const cond = "wasm._contract_address='" + t.contract + "' AND wasm.order_id='" + id + "'";
+  const urls = [
+    t.lcd + '/cosmos/tx/v1beta1/txs?query=' + encodeURIComponent(cond) + '&order_by=ORDER_BY_DESC&limit=10',
+    t.lcd + '/cosmos/tx/v1beta1/txs?events=' + encodeURIComponent("wasm._contract_address='" + t.contract + "'") +
+      '&events=' + encodeURIComponent("wasm.order_id='" + id + "'") + '&order_by=ORDER_BY_DESC&pagination.limit=10'
+  ];
+  for (const u of urls) {
+    let d;
+    try { d = await getJSON(u, 10000, 1); } catch (e) { continue; }
+    const txs = (d.tx_responses || []).slice().sort((a, b) => Number(b.height) - Number(a.height));
+    for (const tx of txs) {
+      const evs = (tx.events || []).concat(...(tx.logs || []).map(l => l.events || []));
+      for (const e of evs) {
+        if (e.type !== 'wasm') continue;
+        const at = {}; (e.attributes || []).forEach(a => { at[plain(a.key)] = plain(a.value); });
+        if (at._contract_address !== t.contract || String(at.order_id) !== String(id)) continue;
+        if (at.action === 'cancel_order') return 'cancelled';
+        if (at.action === 'reclaim_expired') return 'reclaimed';
+        if (at.action === 'fill_order' && /^(true|1)$/.test(String(at.closed))) return 'filled';
+      }
+    }
+    if (txs.length) return null;
+  }
+  return null;
+}
+
 /* ---------- the snapshot ---------- */
 const seenKey = t => 'fw:p2p:seen:' + t.contract + ':' + t.seller;
 function load(t){
@@ -65,8 +100,14 @@ function save(t, m){
   for (const id in m) { const o = m[id]; raw[id] = Object.assign({}, o, { rem: String(o.rem), total: String(o.total), askTotal: String(o.askTotal) }); }
   try { localStorage.setItem(seenKey(t), JSON.stringify(raw)); } catch (e) {}
 }
+// ids this wallet is closing, recorded before signing as "id@time": honoured
+// for 2 hours, so a cancel that failed on chain does not hide a later fill
 function closedSet(){
-  try { return new Set((JSON.parse(localStorage.getItem('fw:p2p:closed') || '[]')).map(String)); } catch (e) { return new Set(); }
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    return new Set((JSON.parse(localStorage.getItem('fw:p2p:closed') || '[]')).map(String)
+      .filter(x => x.indexOf('@') < 0 || now - Number(x.split('@')[1]) < 7200).map(x => x.split('@')[0]));
+  } catch (e) { return new Set(); }
 }
 
 let BUSY = false, UNSEEN = 0;
@@ -90,8 +131,24 @@ async function watch(){
     const prev = load(t);
     save(t, cur);
     if (!prev) return;                              // the first read is only a snapshot
-    const events = diffOrders(prev, cur, closedSet(), Math.floor(Date.now() / 1000));
+    const events = diffOrders(prev, cur, closedSet());
     for (const ev of events) {
+      if (ev.kind === 'gone') {
+        const how = await closedBy(t, ev.id);
+        if (how === 'cancelled') continue;                  // the seller did it, elsewhere
+        if (how !== 'filled') {
+          notify({
+            key: 'p2p:' + ev.id + ':closed', kind: 'info', label: 'P2P \u00b7 order closed',
+            title: 'Order #' + ev.id + ' is closed',
+            text: how === 'reclaimed'
+              ? 'It ended unsold (expired or its asset was delisted) and what was left went back to you.'
+              : 'It is no longer on the market: bought out, cancelled or reclaimed. Open P2P to see your balance.',
+            actions: [{ label: 'Open P2P', primary: true, run: openMarket }]
+          });
+          continue;
+        }
+        ev.kind = 'filled';
+      }
       const [om, am] = await Promise.all([meta(t, ev.order.offer), meta(t, ev.order.ask)]);
       const pct = Math.round(Number(ev.soldTotal * 100n / ev.total));
       notify({

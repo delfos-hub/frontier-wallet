@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=8b1082e1';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=8b1082e1';
-import { $, buzz, go, libs, report } from './shell.js?v=8b1082e1';
-import { S } from './state.js?v=8b1082e1';
-import { decryptSeed } from './storage.js?v=8b1082e1';
-import { dryRunSwap, sendSwap } from './tx.js?v=8b1082e1';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=1b1f2a83';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=1b1f2a83';
+import { $, buzz, go, libs, report } from './shell.js?v=1b1f2a83';
+import { S } from './state.js?v=1b1f2a83';
+import { decryptSeed } from './storage.js?v=1b1f2a83';
+import { dryRunSwap, sendSwap } from './tx.js?v=1b1f2a83';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -424,19 +424,20 @@ async function onPin(){
   $('#p2p-pinbox').hidden = true;
   say('Signing and sending');
   try {
-    const res = await sendSwap(addrOf(), PENDING.steps, mnemonic);
-    mnemonic = null;
-    say('Waiting for a block');
-    const done = await res.wait();
-    if (!done) { finish({ error: 'sent but not confirmed yet, check Activity: ' + res.hash }); return; }
-    // orders this wallet closed itself are not "sold" for the P2P watcher
+    // recorded before signing: a cancel that confirms late must not read as sold
+    // (if it fails, the order is still listed and nothing is announced)
     try {
-      const ids = PENDING.steps.map(st => st.msg && (st.msg.cancel_order || st.msg.reclaim_expired)).filter(Boolean).map(m => String(m.order_id));
+      const ids = PENDING.steps.map(st => st.msg && (st.msg.cancel_order || st.msg.reclaim_expired)).filter(Boolean).map(m => String(m.order_id) + '@' + Math.floor(Date.now() / 1000));
       if (ids.length) {
         const k = 'fw:p2p:closed', had = JSON.parse(localStorage.getItem(k) || '[]');
         localStorage.setItem(k, JSON.stringify(had.concat(ids).slice(-300)));
       }
     } catch (e) {}
+    const res = await sendSwap(addrOf(), PENDING.steps, mnemonic);
+    mnemonic = null;
+    say('Waiting for a block');
+    const done = await res.wait();
+    if (!done) { finish({ error: 'sent but not confirmed yet, check Activity: ' + res.hash }); return; }
     buzz('success');
     finish({ txHash: res.hash });
   } catch (e) {

@@ -9,8 +9,8 @@
        actions  [{ label, primary, run }]         (a Close is always added)
      chime(kind)   'alert' two tones up, 'done' three
    A card with a key already shown is not shown twice in this session. */
-import { iconHTML, paintIcons } from './chain.js?v=8b1082e1';
-import { $, buzz } from './shell.js?v=8b1082e1';
+import { iconHTML, paintIcons } from './chain.js?v=1b1f2a83';
+import { $, buzz } from './shell.js?v=1b1f2a83';
 
 let AUDIO = null;
 document.addEventListener('pointerdown', function () {
