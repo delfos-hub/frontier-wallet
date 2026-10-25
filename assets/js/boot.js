@@ -1,11 +1,11 @@
-import { amt, fmt } from './chain.js?v=da3f8312';
-import { finish } from './crypto.js?v=da3f8312';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=da3f8312';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=da3f8312';
-import { S } from './state.js?v=da3f8312';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=da3f8312';
-import { paintSendTok } from './tx.js?v=da3f8312';
-import { luncRaw, openWallet } from './tokens.js?v=da3f8312';
+import { amt, fmt } from './chain.js?v=533bcd63';
+import { finish } from './crypto.js?v=533bcd63';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=533bcd63';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=533bcd63';
+import { S } from './state.js?v=533bcd63';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=533bcd63';
+import { paintSendTok } from './tx.js?v=533bcd63';
+import { luncRaw, openWallet } from './tokens.js?v=533bcd63';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -128,8 +128,11 @@ $('#act-send').addEventListener('click', () => {
   go('send');
 });
 
+// pop-ups (notify.js) wait while the wallet is locked or gone
+const locked = () => document.dispatchEvent(new CustomEvent('frontier:locked'));
+
 $('#btn-lock').addEventListener('click', () => {
-  S.MNEMONIC = null; S.PASS = null;
+  S.MNEMONIC = null; S.PASS = null; locked();
   $('#pu').value = ''; dots('pinrowU', 0); $('#umsg').textContent = '';
   go('unlock');
   $('#pu').focus();
@@ -139,6 +142,7 @@ $('#btn-reset').addEventListener('click', async () => {
   if (!confirm('Delete the wallet from this device? Only the recovery phrase can bring it back.')) return;
   await Store.clear();
   S.MNEMONIC = null; S.PASS = null; S.SAVED = null;
+  locked();
   go('welcome');
 });
 
@@ -146,6 +150,7 @@ $('#btn-forget').addEventListener('click', async () => {
   if (!confirm('Forget this wallet? Only the recovery phrase can bring it back.')) return;
   await Store.clear();
   S.SAVED = null;
+  locked();
   go('welcome');
 });
 

@@ -995,20 +995,7 @@ body.sheet-open .tabs{visibility:hidden}
   font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 6px;animation:xcPulse 1.6s ease-in-out infinite}
 .xc-n[hidden]{display:none}
 @keyframes xcPulse{50%{box-shadow:0 0 0 6px rgba(255,107,107,.18)}}
-.gx-alert{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;
-  padding:calc(70px + env(safe-area-inset-top,0px)) 16px 0;background:rgba(5,8,16,.55);backdrop-filter:blur(3px)}
-.gx-alert[hidden]{display:none}
-.gx-alert-in{width:100%;max-width:420px;background:var(--surface);border:1px solid rgba(0,152,234,.5);border-radius:20px;
-  padding:18px 18px 16px;box-shadow:0 18px 50px rgba(0,0,0,.5);animation:gxDrop .28s ease-out}
 @keyframes gxDrop{from{transform:translateY(-14px);opacity:0}}
-.gx-alert-top{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--muted);font-weight:700}
-.gx-alert-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
-.gx-alert-in b{display:block;font-family:'Rajdhani',sans-serif;font-size:24px;color:#fff;margin:10px 0 4px}
-.gx-alert-in p{font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 14px}
-.gx-alert-btns{display:flex;gap:10px}
-.gx-alert-btns .dust{flex:1;padding:12px 0}
-.gx-alert-btns .btn{flex:2;margin:0}
 .gx-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .gx-rec{font-size:11.5px;color:var(--muted)}
 .gx-deal{align-items:flex-start}
@@ -1018,16 +1005,6 @@ body.sheet-open .tabs{visibility:hidden}
 .gx-steps span.ok::before{content:'\2713  '}
 .gx-steps span.now{color:#fff;border-color:var(--accent);background:rgba(123,92,255,.18)}
 .gx-deal .gx-tag.pending{animation:xcPulse 1.6s ease-in-out infinite}
-/* GRAM look: icon, blue frame, a faded mark behind the text */
-.gx-alert-in{position:relative;overflow:hidden;border-color:rgba(51,166,245,.65);
-  background:radial-gradient(120% 90% at 100% 0%,rgba(51,166,245,.20),transparent 60%),var(--surface);
-  box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 0 1px rgba(51,166,245,.15),0 0 36px rgba(51,166,245,.18)}
-.gx-alert-in::after{content:'';position:absolute;right:-46px;top:-38px;width:210px;height:210px;pointer-events:none;
-  background:url('../tokens/GRAM.webp') center/contain no-repeat;opacity:.09;filter:blur(1.5px);transform:rotate(-12deg)}
-.gx-alert-in>*{position:relative;z-index:1}
-.gx-alert-ico{display:flex;flex:none}
-.gx-alert-ico .sym{width:28px;height:28px;font-size:12px}
-.gx-alert-in .btn.solid{background:linear-gradient(135deg,#1F8FE5,#5B6CFF)}
 .gx-deal-ico{margin-top:2px}
 .gx-deal-ico .sym{width:26px;height:26px;font-size:11px}
 .gx-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:6px 0 16px;border-radius:14px;
@@ -1075,7 +1052,6 @@ body.sheet-open .tabs{visibility:hidden}
 .nt-card[hidden]{display:none}
 .nt-in{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:20px;
   padding:18px 18px 16px;box-shadow:0 18px 50px rgba(0,0,0,.5);animation:gxDrop .28s ease-out}
-@keyframes gxDrop{from{transform:translateY(-14px);opacity:0}}
 .nt-in.success{border-color:rgba(0,255,176,.45);background:radial-gradient(120% 90% at 100% 0%,rgba(0,255,176,.14),transparent 60%),var(--surface)}
 .nt-in.warn{border-color:rgba(232,200,64,.5)}
 .nt-in.info{border-color:rgba(123,92,255,.5)}
@@ -1092,3 +1068,107 @@ body.sheet-open .tabs{visibility:hidden}
 .nt-badge{position:absolute;top:6px;right:10px;min-width:18px;height:18px;border-radius:999px;background:var(--red);color:#fff;
   font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 5px}
 .nt-badge[hidden]{display:none}
+
+/* ══ GRAM theme for the wallet-wide card: blue frame, a faded mark behind ══ */
+.nt-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);
+  animation:ntLive 1.6s ease-in-out infinite}
+.nt-dot[hidden]{display:none}
+@keyframes ntLive{50%{opacity:.35}}
+.nt-in.gram{position:relative;overflow:hidden;border-color:rgba(51,166,245,.65);
+  background:radial-gradient(120% 90% at 100% 0%,rgba(51,166,245,.20),transparent 60%),var(--surface);
+  box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 0 1px rgba(51,166,245,.15),0 0 36px rgba(51,166,245,.18)}
+.nt-in.gram::after{content:'';position:absolute;right:-46px;top:-38px;width:210px;height:210px;pointer-events:none;
+  background:url('../tokens/GRAM.webp') center/contain no-repeat;opacity:.09;filter:blur(1.5px);transform:rotate(-12deg)}
+.nt-in.gram>*{position:relative;z-index:1}
+.nt-in.gram .nt-ico .sym{width:28px;height:28px;font-size:12px}
+.nt-in.gram .btn.solid{background:linear-gradient(135deg,#1F8FE5,#5B6CFF)}
+
+/* ══ Telegram alerts: a setting with a switch, not a sentence ══ */
+.gx-alerts{display:flex;align-items:center;gap:14px;margin:0 0 6px;padding:12px 14px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-row);transition:border-color .2s}
+.gx-alerts[hidden]{display:none}
+.gx-alerts.on{border-color:rgba(0,212,255,.28)}
+.gx-alerts-l{flex:1;min-width:0}
+.gx-alerts-l b{display:block;font-size:13.5px;font-weight:600;color:var(--text)}
+.gx-alerts-l span{display:block;font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:2px}
+.gx-alerts+.gx-msg{margin:4px 4px 18px}
+.gx-alerts+.gx-msg:empty{min-height:0;margin:0 0 18px}
+
+.gx-switch{position:relative;flex:none;width:48px;height:28px;border-radius:999px;cursor:pointer;padding:0;
+  background:var(--surface2);border:1px solid var(--border);transition:background .2s,border-color .2s}
+.gx-switch i{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:var(--muted);
+  box-shadow:0 2px 6px rgba(0,0,0,.35);transition:transform .22s cubic-bezier(.2,.9,.3,1),background .2s}
+.gx-switch[aria-checked="true"]{background:linear-gradient(135deg,var(--accent-dark),var(--accent));border-color:transparent}
+.gx-switch[aria-checked="true"] i{transform:translateX(20px);background:#fff}
+/* busy: the knob turns into a spinner where it stands */
+.gx-switch.busy{cursor:progress}
+.gx-switch.busy i{background:transparent;box-shadow:none;border:2px solid var(--accent2);border-top-color:transparent;
+  animation:sp .7s linear infinite}
+.gx-switch.busy[aria-checked="true"] i{animation:gxSpinOn .7s linear infinite}
+@keyframes gxSpinOn{from{transform:translateX(20px) rotate(0)}to{transform:translateX(20px) rotate(360deg)}}
+.gx-switch:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+
+/* ══ the confirm sheet: details scroll, the PIN and the outcome stay in view ══ */
+.gx-sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px 4px;
+  transition:opacity .2s}
+.gx-sheet-note{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 10px}
+.gx-sheet-foot{flex:none;padding-top:12px;margin:0 -16px;padding-left:16px;padding-right:16px;
+  box-shadow:0 -14px 18px -16px rgba(0,0,0,.9)}
+.gx-sheet-foot .pinbox{margin:0;padding:16px 18px 6px}
+.gx-sheet-foot .pinbox[hidden]{display:none}
+.gx-sheet-foot .gx-msg:empty{min-height:0;margin:0}
+/* while it runs the details are settled: dimmed, still readable */
+#gx-sheet[data-mode="run"] .gx-sheet-body{opacity:.5;pointer-events:none}
+/* at the end the outcome is the whole story */
+#gx-sheet[data-mode="done"] .gx-sheet-body,#gx-sheet[data-mode="fail"] .gx-sheet-body{display:none}
+#gx-sheet[data-mode="done"] .gx-sheet-foot,#gx-sheet[data-mode="fail"] .gx-sheet-foot{box-shadow:none;padding-top:4px}
+#gx-sheet[data-mode="done"] .gx-prog{display:none}
+
+/* the steps of an action, ticked as they complete */
+.gx-prog{list-style:none;margin:2px 0 4px;padding:0}
+.gx-prog[hidden]{display:none}
+.gx-prog li{position:relative;display:flex;align-items:center;gap:12px;padding:7px 2px;font-size:13.5px;color:var(--muted)}
+.gx-prog li i{position:relative;flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);background:var(--bg)}
+.gx-prog li:not(:last-child)::before{content:'';position:absolute;left:11.25px;top:28px;height:calc(100% - 20px);width:1.5px;
+  background:var(--border)}
+.gx-prog li.ok::before{background:rgba(0,255,176,.4)}
+.gx-prog li.ok{color:var(--text)}
+.gx-prog li.ok i{border-color:var(--green);background:rgba(0,255,176,.14)}
+.gx-prog li.ok i::after{content:'';position:absolute;left:5.5px;top:2.5px;width:5px;height:9px;
+  border:solid var(--green);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.gx-prog li.now{color:#fff;font-weight:600}
+.gx-prog li.now i{border:2px solid var(--accent2);border-top-color:transparent;animation:sp .7s linear infinite}
+.gx-prog li.bad{color:var(--red);font-weight:600}
+.gx-prog li.bad i{border-color:var(--red);background:rgba(255,107,107,.16)}
+.gx-prog li.bad i::before,.gx-prog li.bad i::after{content:'';position:absolute;left:8px;top:3.5px;width:1.8px;height:10px;
+  background:var(--red);transform:rotate(45deg)}
+.gx-prog li.bad i::after{transform:rotate(-45deg)}
+
+/* the outcome: what happened, and what happens next */
+.gx-done{text-align:center;padding:8px 2px 2px}
+.gx-done[hidden]{display:none}
+.gx-done-mark{position:relative;display:block;width:56px;height:56px;margin:4px auto 0;border-radius:50%;
+  border:1.5px solid var(--green);background:radial-gradient(circle,rgba(0,255,176,.22),rgba(0,255,176,.06) 70%);
+  box-shadow:0 0 30px rgba(0,255,176,.25);animation:gxMark .4s cubic-bezier(.2,1.4,.4,1) both}
+.gx-done-mark::after{content:'';position:absolute;left:20px;top:13px;width:11px;height:20px;
+  border:solid var(--green);border-width:0 3px 3px 0;transform:rotate(45deg)}
+@keyframes gxMark{from{transform:scale(.55);opacity:0}}
+.gx-done b{display:block;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:25px;color:#fff;line-height:1.15;margin:12px 0 6px}
+.gx-done p{font-size:13px;color:var(--muted);line-height:1.6;max-width:36ch;margin:0 auto 16px}
+.gx-done-btns{display:flex;flex-direction:column;gap:8px}
+.gx-done-btns .btn{margin:0}
+.gx-done.bad .gx-done-mark{border-color:var(--red);background:radial-gradient(circle,rgba(255,107,107,.22),rgba(255,107,107,.06) 70%);
+  box-shadow:0 0 30px rgba(255,107,107,.2)}
+.gx-done.bad .gx-done-mark::before,.gx-done.bad .gx-done-mark::after{content:'';position:absolute;left:26.5px;top:15px;width:3px;height:24px;
+  border:0;background:var(--red);transform:rotate(45deg)}
+.gx-done.bad .gx-done-mark::after{transform:rotate(-45deg)}
+.gx-done.bad p{color:var(--text);word-break:break-word}
+
+/* a deal opened from an alert: marked for a moment so the eye lands on it */
+.gx-deal.flash{animation:gxFlash 1.8s ease-out 1}
+@keyframes gxFlash{0%,35%{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(0,212,255,.22)}}
+
+@media (prefers-reduced-motion:reduce){
+  .gx-switch i,.gx-done-mark,.gx-deal.flash,.nt-dot{transition:none;animation:none}
+  .gx-prog li.now i,.gx-switch.busy i{animation-duration:1.6s}
+}

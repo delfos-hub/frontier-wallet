@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=da3f8312">
+<link rel="stylesheet" href="assets/css/app.css?v=533bcd63">
 </head>
 <body>
 <div id="rt"></div>
@@ -596,8 +596,13 @@
   <div class="gx-list" id="gx-offers"></div>
   <div class="head gx-head"><h2>Active deals</h2><span class="gx-rec" id="gx-record"></span></div>
   <div class="gx-list" id="gx-takes"></div>
-  <div class="gx-ton" id="gx-tg-line" hidden><span>Telegram alerts</span><b id="gx-tg-state">off</b>
-    <button class="gx-link" id="gx-tg-btn" type="button">turn on</button></div>
+  <div class="gx-alerts" id="gx-tg-line" hidden>
+    <div class="gx-alerts-l">
+      <b id="gx-tg-label">Telegram alerts</b>
+      <span id="gx-tg-sub">Get a message from the wallet bot when a buyer locks GRAM, even with the wallet closed.</span>
+    </div>
+    <button class="gx-switch" id="gx-tg-btn" type="button" role="switch" aria-checked="false" aria-labelledby="gx-tg-label"><i></i></button>
+  </div>
   <div class="gx-msg" id="gx-tg-msg"></div>
 
   <div class="head"><h2>New offer</h2></div>
@@ -644,32 +649,31 @@
 </section>
 
 <!-- A buyer is waiting: shown over any screen. -->
-<div class="gx-alert" id="gx-alert" hidden>
-  <div class="gx-alert-in">
-    <div class="gx-alert-top"><span class="gx-alert-ico" id="gx-alert-ico"></span><span class="gx-alert-dot"></span>New buyer &middot; GRAM</div>
-    <b id="gx-alert-what"></b>
-    <p id="gx-alert-left"></p>
-    <div class="gx-alert-btns">
-      <button class="dust" id="gx-alert-later" type="button">Later</button>
-      <button class="btn solid" id="gx-alert-go" type="button">Answer</button>
-    </div>
-  </div>
-</div>
-
 <!-- Top level, like the other sheets: inside a .step the tab bar covers it. -->
 <div class="sw-sheet" id="gx-sheet" hidden>
-  <div class="sw-sheet-in">
+  <div class="sw-sheet-in gx-sheet-in" role="dialog" aria-modal="true" aria-labelledby="gx-sheet-title">
     <div class="sw-sheet-top"><span id="gx-sheet-title">Confirm</span>
       <button class="sw-x" id="gx-sheet-x" type="button">Cancel</button></div>
-    <p class="tiny" id="gx-sheet-note" style="text-align:left;margin:0 0 10px">A signed message, not a transaction: it moves no funds. This is exactly what will be signed.</p>
-    <div class="p2p-lines" id="gx-lines"></div>
-    <details class="gx-raw"><summary>Signed text</summary><pre id="gx-signed"></pre></details>
-    <div class="pinbox" id="gx-pinbox" style="margin-top:12px">
-      <label>Enter your PIN to sign</label>
-      <div class="pinrow" id="gx-pinrow"></div>
-      <input class="pinin" id="gx-pin" type="tel" inputmode="numeric" maxlength="8" autocomplete="off">
+    <div class="gx-sheet-body" id="gx-sheet-body">
+      <p class="gx-sheet-note" id="gx-sheet-note">A signed message, not a transaction: it moves no funds. This is exactly what will be signed.</p>
+      <div class="p2p-lines" id="gx-lines"></div>
+      <details class="gx-raw"><summary>Signed text</summary><pre id="gx-signed"></pre></details>
     </div>
-    <div class="gx-msg" id="gx-sheet-msg" style="text-align:center"></div>
+    <div class="gx-sheet-foot">
+      <div class="pinbox" id="gx-pinbox">
+        <label for="gx-pin">Enter your PIN to sign</label>
+        <div class="pinrow" id="gx-pinrow"></div>
+        <input class="pinin" id="gx-pin" type="tel" inputmode="numeric" maxlength="8" autocomplete="off">
+      </div>
+      <ol class="gx-prog" id="gx-prog" hidden aria-live="polite"></ol>
+      <div class="gx-done" id="gx-done" hidden>
+        <span class="gx-done-mark" id="gx-done-mark" aria-hidden="true"></span>
+        <b id="gx-done-title"></b>
+        <p id="gx-done-text"></p>
+        <div class="gx-done-btns" id="gx-done-btns"></div>
+      </div>
+      <div class="gx-msg" id="gx-sheet-msg" style="text-align:center"></div>
+    </div>
   </div>
 </div>
 
@@ -755,21 +759,21 @@
 <!-- Wallet-wide notification card (notify.js) -->
 <div class="nt-card" id="nt-card" hidden>
   <div class="nt-in" id="nt-in">
-    <div class="nt-top"><span class="nt-ico" id="nt-ico"></span><span id="nt-label"></span></div>
+    <div class="nt-top"><span class="nt-ico" id="nt-ico"></span><span class="nt-dot" id="nt-dot" hidden></span><span id="nt-label"></span></div>
     <b id="nt-title"></b>
     <p id="nt-text"></p>
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=da3f8312"></script>
-<script src="assets/js/ads.js?v=da3f8312"></script>
-<script type="module" src="assets/js/swap.js?v=da3f8312"></script>
-<script type="module" src="assets/js/activity.js?v=da3f8312"></script>
-<script type="module" src="assets/js/nft.js?v=da3f8312"></script>
-<script type="module" src="assets/js/p2p.js?v=da3f8312"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=da3f8312"></script>
-<script type="module" src="assets/js/gram.js?v=da3f8312"></script>
-<script type="module" src="assets/js/gov.js?v=da3f8312"></script>
-<script type="module" src="assets/js/stake.js?v=da3f8312"></script>
+<script type="module" src="assets/js/app.js?v=533bcd63"></script>
+<script src="assets/js/ads.js?v=533bcd63"></script>
+<script type="module" src="assets/js/swap.js?v=533bcd63"></script>
+<script type="module" src="assets/js/activity.js?v=533bcd63"></script>
+<script type="module" src="assets/js/nft.js?v=533bcd63"></script>
+<script type="module" src="assets/js/p2p.js?v=533bcd63"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=533bcd63"></script>
+<script type="module" src="assets/js/gram.js?v=533bcd63"></script>
+<script type="module" src="assets/js/gov.js?v=533bcd63"></script>
+<script type="module" src="assets/js/stake.js?v=533bcd63"></script>
 </body>
 </html>

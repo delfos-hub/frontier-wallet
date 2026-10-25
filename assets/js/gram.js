@@ -12,15 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=da3f8312';
-import { GRAM_NET } from './gram-net.js?v=da3f8312';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=da3f8312';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=da3f8312';
-import { S } from './state.js?v=da3f8312';
-import { decryptSeed } from './storage.js?v=da3f8312';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=da3f8312';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=da3f8312';
-import { buildLock, refundMessage } from './gram-tonlock.js?v=da3f8312';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=533bcd63';
+import { GRAM_NET } from './gram-net.js?v=533bcd63';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=533bcd63';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=533bcd63';
+import { S } from './state.js?v=533bcd63';
+import { decryptSeed } from './storage.js?v=533bcd63';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=533bcd63';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=533bcd63';
+import { buildLock, refundMessage } from './gram-tonlock.js?v=533bcd63';
+import { chime, notify } from './notify.js?v=533bcd63';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -146,7 +147,9 @@ async function load(){
 }
 $('#gx-refresh').addEventListener('click', load);
 
+let MY_OFFERS = [];
 function drawOffers(list){
+  MY_OFFERS = list;
   const box = $('#gx-offers');
   if (!list.length) { box.innerHTML = '<div class="gx-none">No live offers. Create one below.</div>'; return; }
   box.innerHTML = list.map(o =>
@@ -205,19 +208,19 @@ function drawTakes(list, stats){
     const head = '<b>' + human(t.lunc, 6) + ' LUNC</b> for ' + human(t.gram, 9) + ' GRAM';
     const pair = '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'GRAM' }) + iconHTML({ sym: 'LUNC' }) + '</span>';
     if (mine.id && !t.terra_lock_id && mine.timeout && now() >= mine.timeout) {
-      return '<div class="gx-item gx-deal">' + pair +
+      return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
         '<div class="gx-l">' + head + '<span>Your LUNC lock #' + mine.id + ' was never taken: it can come back to you now</span></div>' +
         '<button class="btn solid gx-answer gx-terra-refund" type="button" data-id="' + mine.id + '" data-ton="' + esc(t.ton_lock) + '">Refund</button>' +
       '</div>';
     }
     if (t.status === 'pending' || !t.terra_lock_id) {
-      return '<div class="gx-item gx-deal">' + pair +
+      return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
         '<div class="gx-l">' + head + '<span>' + (mine.id ? 'LUNC locked, the answer still has to be reported'
           : 'Waiting for your answer \u00b7 ' + left(windowLeftOf(t)) + ' left') + '</span>' + stepper(1) + '</div>' +
         '<button class="btn solid gx-answer" type="button" data-ton="' + esc(t.ton_lock) + '">' + (mine.id ? 'Report' : 'Answer') + '</button>' +
       '</div>';
     }
-    return '<div class="gx-item gx-deal">' + pair +
+    return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
       '<div class="gx-l">' + head + '<span>Your LUNC is locked \u00b7 waiting for the buyer to claim</span>' + stepper(2) + '</div>' +
       '<span class="gx-tag pending">live</span>' +
     '</div>';
@@ -241,10 +244,13 @@ async function checkFinished(list){
         setFinal(t.ton_lock, st);
         changed = true;
         if (OPEN_SEEN.has(t.ton_lock)) {
-          say('#gx-status', st === 'claimed'
-            ? 'Deal done: ' + human(t.lunc, 6) + ' LUNC sold for ' + human(t.gram, 9) + ' GRAM. The GRAM is on its way to your TON address.'
-            : 'A deal ended unclaimed: your ' + human(t.lunc, 6) + ' LUNC came back.');
-          if (st === 'claimed') buzz('success');
+          notify(st === 'claimed'
+            ? { key: 'gram:done:' + t.ton_lock, kind: 'success', icon: 'GRAM', label: 'Deal done \u00b7 GRAM',
+                title: 'Sold ' + human(t.lunc, 6) + ' LUNC',
+                text: 'The buyer claimed it, and ' + human(t.gram, 9) + ' GRAM is on its way to your TON address.' }
+            : { key: 'gram:back:' + t.ton_lock, kind: 'info', icon: 'LUNC', label: 'Deal ended \u00b7 GRAM',
+                title: 'Your LUNC came back',
+                text: 'The buyer did not claim in time, so the ' + human(t.lunc, 6) + ' LUNC locked for them is back on your address.' });
         }
       }
     }
@@ -421,29 +427,48 @@ $('#gx-post').addEventListener('click', async function(){
     ['Ends', new Date(expires * 1000).toLocaleString()],
     ['Network', NET.chain + ' + TON testnet']
   ];
-  let signed;
-  try { signed = await consent('Publish this offer', lines, payload); } catch (e) { return; }
-  say('#gx-msg', 'Publishing');
+  say('#gx-msg', '');
   try {
-    await api('/offers', signed);
-    buzz('success');
-    say('#gx-msg', 'Published. Buyers can see it now.');
+    await consent('Publish this offer', lines, payload, async function (m, step) {
+      step(0);
+      const signed = await signArbitrary(m, addrOf(), payload);
+      step(1);
+      await api('/offers', signed);
+    }, null, {
+      steps: ['Signing the offer', 'Publishing it to buyers'],
+      done: () => ({
+        title: 'Offer published',
+        text: 'Buyers see it now: ' + human(f.total, 6) + ' LUNC for up to ' + human(gramFor(f.total, f.price), 9) + ' GRAM. ' +
+          'When one locks GRAM you hear a chime here' + (TG_LINKED ? ' and get a Telegram message.' : '.'),
+        actions: (TG_INIT && !TG_LINKED) ? [{ label: 'Also alert me in Telegram', quiet: true, run: tgTurnOn }] : []
+      })
+    });
     $('#gx-sell').value = ''; $('#gx-get').value = ''; $('#gx-min').value = ''; MODE = 0;
     load();
-  } catch (e) {
-    say('#gx-msg', e.message, true);
-  }
+  } catch (e) { /* cancelled, or explained in the sheet */ }
 });
 
 $('#gx-offers').addEventListener('click', async function(e){
   const b = e.target.closest('.gx-cancel');
   if (!b) return;
   const id = b.dataset.id;
+  const o = MY_OFFERS.find(x => x.id === id);
   const payload = JSON.stringify({ type: 'htlc-offer-cancel', v: 1, id: id });
-  let signed;
-  try { signed = await consent('Cancel this offer', [['Offer', id.slice(0, 16) + '\u2026']], payload); } catch (err) { return; }
-  try { await api('/offers/' + encodeURIComponent(id) + '/cancel', signed); buzz('success'); load(); }
-  catch (err) { say('#gx-status', err.message, true); }
+  const lines = o ? [['Offer', human(o.remaining_lunc, 6) + ' LUNC left of ' + human(o.total_lunc, 6)],
+                     ['Price', '1 GRAM = ' + Math.round(1e15 / Number(o.price)).toLocaleString('en-US') + ' LUNC']]
+                  : [['Offer', id.slice(0, 16) + '\u2026']];
+  try {
+    await consent('Cancel this offer', lines, payload, async function (m, step) {
+      step(0);
+      const signed = await signArbitrary(m, addrOf(), payload);
+      step(1);
+      await api('/offers/' + encodeURIComponent(id) + '/cancel', signed);
+    }, null, {
+      steps: ['Signing the cancellation', 'Taking it off the market'],
+      done: () => ({ title: 'Offer cancelled', text: 'Buyers no longer see it. Deals a buyer already started still need your answer under Active deals.' })
+    });
+    load();
+  } catch (err) { /* cancelled, or explained in the sheet */ }
 });
 
 
@@ -453,7 +478,8 @@ $('#gx-offers').addEventListener('click', async function(e){
    Turning it on links this address to this Telegram account, once:
    Telegram's initData proves the account (the Worker checks it with the bot
    token), a signed message proves the address. The bot also needs the user's
-   permission to write first (requestWriteAccess). Off needs no PIN. */
+   permission to write first (requestWriteAccess). Off needs no PIN.
+   The switch has three states: off, busy (asking, signing, saving) and on. */
 const TGW = window.Telegram && window.Telegram.WebApp;
 const TG_INIT = (TGW && TGW.initData) || '';
 const TG_USER = TGW && TGW.initDataUnsafe && TGW.initDataUnsafe.user ? TGW.initDataUnsafe.user.id : null;
@@ -461,8 +487,14 @@ let TG_LINKED = false;
 let TG_BUSY = false;
 
 function tgPaint(){
-  $('#gx-tg-state').textContent = TG_LINKED ? 'on' : 'off';
-  $('#gx-tg-btn').textContent = TG_LINKED ? 'turn off' : 'turn on';
+  const sw = $('#gx-tg-btn');
+  sw.setAttribute('aria-checked', TG_LINKED ? 'true' : 'false');
+  sw.classList.toggle('busy', TG_BUSY);
+  sw.disabled = TG_BUSY;
+  $('#gx-tg-line').classList.toggle('on', TG_LINKED);
+  $('#gx-tg-sub').textContent = TG_LINKED
+    ? 'The wallet bot messages you when a buyer locks GRAM, even with the wallet closed.'
+    : 'Get a message from the wallet bot when a buyer locks GRAM, even with the wallet closed.';
 }
 async function tgStatus(){
   const line = $('#gx-tg-line');
@@ -470,8 +502,7 @@ async function tgStatus(){
   try {
     const st = await api('/notify/status', { initData: TG_INIT, address: addrOf() });
     line.hidden = !st.enabled;
-    TG_LINKED = !!st.linked;
-    tgPaint();
+    if (!TG_BUSY) { TG_LINKED = !!st.linked; tgPaint(); }
   } catch (e) { line.hidden = true; }
 }
 function writeAccess(){
@@ -480,38 +511,47 @@ function writeAccess(){
     try { TGW.requestWriteAccess(ok => resolve(!!ok)); } catch (e) { resolve(true); }
   });
 }
-$('#gx-tg-btn').addEventListener('click', async function(){
-  if (TG_BUSY) return;
-  TG_BUSY = true;
+async function tgTurnOn(){
+  if (TG_BUSY || TG_LINKED) return;
+  TG_BUSY = true; tgPaint();
   say('#gx-tg-msg', '');
   try {
-    if (TG_LINKED) {
-      await api('/notify/unlink', { initData: TG_INIT, address: addrOf() });
-      TG_LINKED = false;
-      say('#gx-tg-msg', 'Alerts are off for this address.');
-    } else {
-      if (!(await writeAccess())) { say('#gx-tg-msg', 'The bot needs your permission to send you messages.', true); return; }
-      const payload = JSON.stringify({ type: 'frontier-notify-link', v: 1, network: NET.name, address: addrOf(), tg_id: String(TG_USER), ts: now() });
-      let signed;
-      try {
-        signed = await consent('Turn on Telegram alerts', [
-          ['Address', addrOf().slice(0, 12) + '\u2026' + addrOf().slice(-6)],
-          ['Alerts go to', 'this Telegram account'],
-          ['When', 'a buyer locks GRAM for your offer']
-        ], payload);
-      } catch (e) { return; }
+    if (!(await writeAccess())) { say('#gx-tg-msg', 'Telegram did not allow the bot to message you. Turn it on again and choose Allow.', true); return; }
+    const payload = JSON.stringify({ type: 'frontier-notify-link', v: 1, network: NET.name, address: addrOf(), tg_id: String(TG_USER), ts: now() });
+    await consent('Turn on Telegram alerts', [
+      ['Address', addrOf().slice(0, 12) + '\u2026' + addrOf().slice(-6)],
+      ['Alerts go to', 'this Telegram account'],
+      ['When', 'a buyer locks GRAM for your offer']
+    ], payload, async function (m, step) {
+      step(0);
+      const signed = await signArbitrary(m, addrOf(), payload);
+      step(1);
       await api('/notify/link', Object.assign({ initData: TG_INIT }, signed));
       TG_LINKED = true;
-      buzz('success');
-      say('#gx-tg-msg', 'Alerts are on. The bot will message you when a buyer locks GRAM.');
-    }
+    }, null, {
+      steps: ['Signing the link', 'Connecting the wallet bot'],
+      done: () => ({ title: 'Telegram alerts are on', text: 'When a buyer locks GRAM for your offer, the wallet bot sends you a message with a button that opens this deal.' })
+    });
   } catch (e) {
-    say('#gx-tg-msg', e.message || String(e), true);
+    if (e && !e.shown && e.message !== 'cancelled' && e.message !== 'watch only') say('#gx-tg-msg', e.message || String(e), true);
   } finally {
-    TG_BUSY = false;
-    tgPaint();
+    TG_BUSY = false; tgPaint();
   }
-});
+}
+async function tgTurnOff(){
+  if (TG_BUSY || !TG_LINKED) return;
+  TG_BUSY = true; tgPaint();
+  say('#gx-tg-msg', '');
+  try {
+    await api('/notify/unlink', { initData: TG_INIT, address: addrOf() });
+    TG_LINKED = false;
+  } catch (e) {
+    say('#gx-tg-msg', 'Could not turn alerts off: ' + (e.message || e), true);
+  } finally {
+    TG_BUSY = false; tgPaint();
+  }
+}
+$('#gx-tg-btn').addEventListener('click', () => (TG_LINKED ? tgTurnOff() : tgTurnOn()));
 
 /* ---------------- answering a take (stage 3) ----------------
    1. Read the buyer's TON lock on the chain (not the Worker's word): the
@@ -595,12 +635,20 @@ $('#gx-takes').addEventListener('click', async function(e){
     const step = { contract: NET.htlc, msg: { refund: { id: Number(r.dataset.id) } }, funds: [] };
     try {
       await consent('Refund your LUNC lock', [['Terra lock', '#' + r.dataset.id], ['Goes back to', addrOf()]],
-        JSON.stringify(step.msg), async m => { const s2 = await sendSwap(addrOf(), [step], m, NET); await s2.wait(); },
-        'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired.');
+        JSON.stringify(step.msg), async function (m, st) {
+          st(0);
+          const s2 = await sendSwap(addrOf(), [step], m, NET);
+          st(1);
+          const res = await s2.wait();
+          if (!res) throw new Error('the refund was sent but is not confirmed yet (tx ' + s2.hash.slice(0, 10) + '\u2026). Refresh in a minute.');
+        },
+        'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired.', {
+          steps: ['Sending the refund', 'Waiting for the block'],
+          done: () => ({ title: 'LUNC returned', text: 'The LUNC from lock #' + r.dataset.id + ' is back on your address.' })
+        });
       setFinal(r.dataset.ton, 'refunded');
-      say('#gx-status', 'Your LUNC came back.');
       load();
-    } catch (err) { if (err && err.message !== 'cancelled') say('#gx-status', String(err.message || err), true); r.disabled = false; }
+    } catch (err) { if (err && !err.shown && err.message !== 'cancelled') say('#gx-status', String(err.message || err), true); r.disabled = false; }
     return;
   }
   const b = e.target.closest('.gx-answer');
@@ -616,10 +664,12 @@ async function answerTake(t, b){
     // a lock already made on this device for this take: only the report is left
     if (had.id) {
       const payload = JSON.stringify({ type: 'htlc-take-locked', v: 1, network: NET.name, ton_lock: t.ton_lock, terra_lock_id: had.id });
-      await consent('Report your answer', [['Terra lock', '#' + had.id], ['For', human(t.lunc, 6) + ' LUNC to ' + t.taker_terra.slice(0, 12) + '\u2026']],
-        payload, m => report(t, had.id, m));
-      say('#gx-status', 'Reported. The buyer can now claim the LUNC.');
-      buzz('success'); load(); return;
+      await consent('Send your answer', [['Terra lock', '#' + had.id], ['For', human(t.lunc, 6) + ' LUNC to ' + t.taker_terra.slice(0, 12) + '\u2026']],
+        payload, async function (m, st) { st(0); await report(t, had.id, m); }, null, {
+          steps: ['Signing and sending your answer'],
+          done: () => ({ title: 'Answer sent', text: 'The buyer can claim the LUNC now. The GRAM is released to your TON address when they do.' })
+        });
+      load(); return;
     }
     if (had.tx) {
       // the lock was sent but its id never came back: look the tx up
@@ -656,27 +706,35 @@ async function answerTake(t, b){
       ['Network', NET.chain + ' + TON testnet']
     ];
     const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you.';
-    await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m){
+    await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m, st){
       // the PIN may have taken a while: the timeout is set again now and checked
+      st(0);
       step.msg.lock.timeout = terraTimeout(c.n);
-      if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now');
+      if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now. Nothing was locked.');
       const sent = await sendSwap(addrOf(), [step], m, NET);
       remember(t.ton_lock, { tx: sent.hash, at: now(), timeout: step.msg.lock.timeout });
-      say('#gx-sheet-msg', 'Lock sent, waiting for the block');
+      st(1);
       const res = await sent.wait();
-      if (!res) throw new Error('the lock was sent but is not confirmed yet (tx ' + sent.hash + '). Refresh in a minute, then press Report.');
+      if (!res) throw new Error('the lock was sent but is not confirmed yet (tx ' + sent.hash.slice(0, 10) + '\u2026). Refresh in a minute, then press Report.');
       const id = lockIdOf(res);
-      if (!id) throw new Error('the lock went through but its id was not found (tx ' + sent.hash + ')');
+      if (!id) throw new Error('the lock went through but its id was not found (tx ' + sent.hash.slice(0, 10) + '\u2026). Refresh in a minute, then press Report.');
       remember(t.ton_lock, { id: id });
-      say('#gx-sheet-msg', 'Locked as #' + id + ', reporting');
+      st(2);
       await report(t, id, m);
-      return id;
-    }, NOTE_ANSWER);
-    say('#gx-status', 'Answered. The buyer can now claim the LUNC; the GRAM comes to you when they do.');
-    buzz('success');
+      return { id: id, timeout: step.msg.lock.timeout };
+    }, NOTE_ANSWER, {
+      steps: ['Locking ' + human(c.gross, 6) + ' LUNC on ' + NET.chain, 'Waiting for the block', 'Sending your answer to the buyer'],
+      done: r => ({
+        title: 'Answered',
+        text: human(t.lunc, 6) + ' LUNC is locked for the buyer (lock #' + r.id + '). When they claim it, ' + human(t.gram, 9) +
+          ' GRAM is released to your TON address. If they never do, the LUNC comes back to you after ' +
+          new Date(r.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.'
+      })
+    });
     load();
   } catch (err) {
-    if (err && err.message !== 'cancelled') { report_('gram', err); say('#gx-status', String(err && err.message || err), true); }
+    if (err && !err.shown && err.message !== 'cancelled') { report_('gram', err); say('#gx-status', String(err && err.message || err), true); }
+    if (err && err.shown) load();
   } finally {
     if (b) b.disabled = false;
   }
@@ -684,32 +742,12 @@ async function answerTake(t, b){
 
 /* ---------------- a new buyer: tell the maker ----------------
    While the wallet is open (any screen), the maker's takes are read every
-   15 s. A take not seen before that is waiting for an answer brings a sound,
-   a vibration in Telegram, a pop-up with Answer, and a count on the home
-   card. With the wallet closed, the Telegram bot is what will tell the maker
-   (next stage). */
+   15 s. A take not seen before that is waiting for an answer raises the
+   wallet-wide card (notify.js): a chime, a vibration, Answer. The card waits
+   for the PIN screen and any open sheet, and is dropped if the take was
+   answered or its window closed meanwhile. The home card keeps a count.
+   With the wallet closed, the Telegram bot tells the maker (offers Worker). */
 const SEEN = new Set();
-let ALERTING = null;
-let AUDIO = null;
-// a browser plays sound only after the user has touched the page once
-document.addEventListener('pointerdown', function () {
-  if (!AUDIO) { try { AUDIO = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
-}, { once: true });
-function chime(){
-  if (!AUDIO) return;
-  try {
-    const t0 = AUDIO.currentTime;
-    [[880, 0], [1320, 0.16]].forEach(function (n) {
-      const o = AUDIO.createOscillator(), g = AUDIO.createGain();
-      o.type = 'sine'; o.frequency.value = n[0];
-      g.gain.setValueAtTime(0.0001, t0 + n[1]);
-      g.gain.exponentialRampToValueAtTime(0.25, t0 + n[1] + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1] + 0.35);
-      o.connect(g).connect(AUDIO.destination);
-      o.start(t0 + n[1]); o.stop(t0 + n[1] + 0.4);
-    });
-  } catch (e) {}
-}
 function badge(n){
   const el = $('#xc-gram-n');
   if (!el) return;
@@ -717,41 +755,60 @@ function badge(n){
   el.hidden = !n;
 }
 function windowLeft(t){ return t.created + (POLICY ? POLICY.answer_window_sec : 900) - now(); }
-function showAlert(t){
-  ALERTING = t;
-  const ico = $('#gx-alert-ico');
-  if (ico && !ico.dataset.done) { ico.dataset.done = '1'; ico.innerHTML = iconHTML({ sym: 'GRAM' }); paintIcons(ico); }
-  $('#gx-alert-what').textContent = human(t.lunc, 6) + ' LUNC for ' + human(t.gram, 9) + ' GRAM';
-  $('#gx-alert-left').textContent = 'Answer within ' + left(windowLeft(t)) + ', or the buyer\u2019s GRAM goes back and it counts as a miss.';
-  $('#gx-alert').hidden = false;
-  chime();
-  buzz('warning');
+const stillWaiting = t => windowLeft(t) > 0 && !mineFor(t.ton_lock).id;
+
+function alertTake(t){
+  notify({
+    key: 'gram:take:' + t.ton_lock, kind: 'info', theme: 'gram', live: true, icon: 'GRAM',
+    label: 'New buyer \u00b7 GRAM',
+    title: human(t.lunc, 6) + ' LUNC for ' + human(t.gram, 9) + ' GRAM',
+    text: () => 'Answer within ' + left(windowLeft(t)) + ', or the buyer\u2019s GRAM goes back and it counts as a miss.',
+    valid: () => stillWaiting(t),
+    actions: [{ label: 'Answer', primary: true, run: () => openDeal(t.ton_lock, true) }]
+  });
 }
-$('#gx-alert-later').addEventListener('click', () => { $('#gx-alert').hidden = true; ALERTING = null; });
-$('#gx-alert-go').addEventListener('click', function () {
-  const t = ALERTING;
-  $('#gx-alert').hidden = true; ALERTING = null;
-  if (!t) return;
-  if (!$('#st-gram').classList.contains('on')) { go('gram'); load(); }
+
+// the Sell tab with this deal in view and marked; answer: open its sheet too
+async function openDeal(ton, answer){
+  if (!$('#st-gram').classList.contains('on')) go('gram');
   tab('sell');
-  answerTake(t, null);
-});
+  await load();
+  let row = null;
+  for (let k = 0; k < 20 && !row; k++) {
+    row = document.querySelector('.gx-deal[data-ton="' + CSS.escape(ton) + '"]');
+    if (!row) await new Promise(r => setTimeout(r, 250));
+  }
+  if (!row) { say('#gx-status', 'That deal is no longer waiting for you: it was answered, or its time ran out.'); return; }
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+  const t = TAKES.find(x => x.ton_lock === ton);
+  if (answer && t && t.status === 'pending' && stillWaiting(t)) answerTake(t, row.querySelector('.gx-answer'));
+}
 
 async function watchTakes(){
   const me = addrOf();
   if (!me || !LABS || document.hidden || LOADING) return;
   let d;
   try { d = await api('/takes?maker=' + encodeURIComponent(me)); } catch (e) { return; }
-  const waiting = (d.takes || []).filter(t => t.status === 'pending' && windowLeft(t) > 0 && !mineFor(t.ton_lock).id);
+  if (!POLICY) { try { POLICY = (await api('/offers')).policy || null; } catch (e) {} }
+  const waiting = (d.takes || []).filter(t => t.status === 'pending' && stillWaiting(t));
   badge(waiting.length);
   const fresh = waiting.filter(t => !SEEN.has(t.ton_lock));
   waiting.forEach(t => SEEN.add(t.ton_lock));
   if ($('#st-gram').classList.contains('on')) { TAKES = d.takes || []; drawTakes(TAKES, d.stats || {}); }
-  if (fresh.length && !ALERTING && $('#gx-sheet').hidden) {
-    if (!POLICY) { try { POLICY = (await api('/offers')).policy || null; } catch (e) {} }
-    showAlert(fresh[0]);
-  }
+  fresh.forEach(alertTake);
 }
+
+/* Opened from the bot's message: the button carries ?take=<TON lock>. Once
+   the wallet is unlocked, go straight to that deal. */
+const DEEP_TAKE = (function () { try { return new URLSearchParams(location.search).get('take'); } catch (e) { return null; } })();
+let DEEP_DONE = false;
+document.addEventListener('frontier:wallet', function () {
+  if (!DEEP_TAKE || DEEP_DONE || !LABS) return;
+  DEEP_DONE = true;
+  SEEN.add(DEEP_TAKE);                  // the card would only repeat what the bot said
+  setTimeout(() => openDeal(DEEP_TAKE, false), 300);
+});
 setInterval(watchTakes, 15000);
 setTimeout(watchTakes, 3000);
 
@@ -981,11 +1038,20 @@ async function selfClaim(id){
   const b = buys()[id];
   if (!b || !b.terraLockId) return;
   const step = { contract: NET.htlc, msg: { claim: { id: b.terraLockId, secret: b.secret } }, funds: [] };
-  await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC']],
-    JSON.stringify({ claim: { id: b.terraLockId, secret: '\u2026' } }),
-    async m => { const r = await sendSwap(addrOf(), [step], m, NET); await r.wait(); },
-    'A transaction: it claims the LUNC locked for you, revealing the secret on ' + NET.chain + '. The seller then gets the GRAM.');
-  say('#gx-status', 'Claimed. The LUNC is on its way to your address.');
+  try {
+    await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC']],
+      JSON.stringify({ claim: { id: b.terraLockId, secret: '\u2026' } }),
+      async function (m, st) {
+        st(0);
+        const r = await sendSwap(addrOf(), [step], m, NET);
+        st(1);
+        if (!(await r.wait())) throw new Error('the claim was sent but is not confirmed yet (tx ' + r.hash.slice(0, 10) + '\u2026). It usually lands within a minute.');
+      },
+      'A transaction: it claims the LUNC locked for you, revealing the secret on ' + NET.chain + '. The seller then gets the GRAM.', {
+        steps: ['Sending the claim', 'Waiting for the block'],
+        done: () => ({ title: 'LUNC claimed', text: human(b.lunc, 6) + ' LUNC is on your address. The seller receives the GRAM.' })
+      });
+  } catch (e) { /* cancelled, or explained in the sheet */ }
   watchBuys();
 }
 
@@ -1122,8 +1188,9 @@ async function watchBuys(){
           if (l.status === 'open') b.terraTimeout = Number(l.timeout);
           if (l.status === 'claimed') {
             saveBuy(id, { stage: 'done', problem: null });
-            say('#gx-status', 'Done: ' + human(b.lunc, 6) + ' LUNC received on your Frontier address.');
-            chime(); buzz('success');
+            notify({ key: 'gram:bought:' + id, kind: 'success', icon: 'LUNC', label: 'Buy done \u00b7 GRAM',
+              title: 'Received ' + human(b.lunc, 6) + ' LUNC',
+              text: 'It is on your Frontier address. The seller got the GRAM.' });
             load();
           } else if (l.status === 'open') {
             // the relayer finishes it; a repeated /claim with the same pair is answered, not doubled
@@ -1159,40 +1226,101 @@ $('#gx-relay-edit').addEventListener('click', function(){
   showRelayer(); quote();
 });
 
-/* ---------------- consent: show, PIN, sign ----------------
-   Resolves with { payload, pubkey, signature }, rejects on Cancel. The seed
-   used to sign is the one decrypted from the PIN typed here, never the copy
-   already unlocked in memory. */
+/* ---------------- consent: show, PIN, sign, see it through ----------------
+   One sheet carries an action from the question to its result, so nothing
+   happens out of sight:
+     1. what will be signed, line by line (the body scrolls; the PIN does not)
+     2. after the PIN, the steps of the action, each ticked as it completes
+     3. the outcome in plain words and what happens next, until Done
+   A failure stays on the step where it happened, with the reason.
+
+   consent(title, lines, text, action, note, flow)
+     action(mnemonic, step)  does the work; step(i) marks flow.steps[i] as the
+                             one running. Without an action the text is signed
+                             and { payload, pubkey, signature } is returned.
+     flow  { steps: ['Locking 40 LUNC', ...],
+             done: result => ({ title, text, actions: [{ label, run, quiet }] }) }
+   Resolves with the action's result as soon as it is done (the result stays
+   on screen until Done); rejects with Error('cancelled') on Cancel, or with
+   the action's error marked .shown, already explained in the sheet. The seed
+   used is the one decrypted from the PIN typed here, never the copy already
+   unlocked in memory. */
 let PEND = null;
 const NOTE_MESSAGE = 'A signed message, not a transaction: it moves no funds. This is exactly what will be signed.';
-function consent(title, lines, text, action, note){
-  if (!canSign()) { say('#gx-msg', 'This wallet has no key on this device (watch only).', true); return Promise.reject(); }
+const SHEET = () => $('#gx-sheet');
+
+function sheetMode(mode){
+  // ask: lines + PIN | run: lines + progress | done / fail: the outcome
+  SHEET().dataset.mode = mode;
+  $('#gx-pinbox').hidden = mode !== 'ask';
+  $('#gx-prog').hidden = mode === 'ask';
+  $('#gx-done').hidden = !(mode === 'done' || mode === 'fail');
+  $('#gx-sheet-x').hidden = mode !== 'ask';          // later on, the outcome has its own button
+}
+
+function consent(title, lines, text, action, note, flow){
+  if (!canSign()) { say('#gx-msg', 'This wallet has no key on this device (watch only).', true); return Promise.reject(new Error('watch only')); }
   return new Promise(function (resolve, reject) {
-    PEND = { text: text, action: action, resolve: resolve, reject: reject, tries: 0, busy: false };
+    PEND = { text: text, action: action, flow: flow || {}, resolve: resolve, reject: reject, tries: 0, busy: false, settled: false };
     $('#gx-sheet-title').textContent = title;
     $('#gx-sheet-note').textContent = note || NOTE_MESSAGE;
     $('#gx-lines').innerHTML = lines.map(l =>
       '<div class="p2p-line"><span>' + esc(l[0]) + '</span><b>' + esc(l[1]) + '</b></div>').join('');
     $('#gx-signed').textContent = text;
+    $('#gx-prog').innerHTML = '';
     say('#gx-sheet-msg', '');
     $('#gx-pin').value = '';
     dots('gx-pinrow', 0);
-    $('#gx-sheet').hidden = false;
+    sheetMode('ask');
+    $('#gx-sheet-body').scrollTop = 0;
+    SHEET().hidden = false;
     focusPin('#gx-pin');
   });
 }
+
+// the step list: 'PIN accepted' first, then the action's own steps
+function progDraw(names, at, failed){
+  $('#gx-prog').innerHTML = ['PIN accepted'].concat(names).map(function (n, k) {
+    const st = failed && k === at ? 'bad' : k < at ? 'ok' : k === at ? 'now' : '';
+    return '<li class="' + st + '"><i aria-hidden="true"></i><span>' + esc(n) + '</span></li>';
+  }).join('');
+}
+
+function showOutcome(ok, title, text, actions){
+  $('#gx-done').classList.toggle('bad', !ok);
+  $('#gx-done-title').textContent = title;
+  $('#gx-done-text').textContent = text || '';
+  const box = $('#gx-done-btns');
+  box.innerHTML = '';
+  (actions || []).forEach(function (a) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn ' + (a.quiet ? 'quiet' : 'solid'); b.textContent = a.label;
+    b.addEventListener('click', function () { closeSheet(); try { a.run(); } catch (e) {} });
+    box.appendChild(b);
+  });
+  const close = document.createElement('button');
+  close.type = 'button'; close.className = 'btn ' + ((actions && actions.length) ? 'quiet' : 'solid');
+  close.textContent = ok ? 'Done' : 'Close';
+  close.addEventListener('click', closeSheet);
+  box.appendChild(close);
+  sheetMode(ok ? 'done' : 'fail');
+  close.focus({ preventScroll: true });
+}
+
 function closeSheet(){
-  $('#gx-sheet').hidden = true;
+  SHEET().hidden = true;
   $('#gx-pin').value = '';
   PEND = null;
 }
 $('#gx-sheet-x').addEventListener('click', function(){
-  if (!PEND || PEND.busy) return;
-  const p = PEND; closeSheet(); p.reject(new Error('cancelled'));
+  if (!PEND) { closeSheet(); return; }
+  if (PEND.busy) return;
+  const p = PEND; closeSheet();
+  if (!p.settled) p.reject(new Error('cancelled'));
 });
 $('#gx-pinbox').addEventListener('click', () => focusPin('#gx-pin'));
 $('#gx-pin').addEventListener('input', async function(){
-  if (!PEND || PEND.busy) return;
+  if (!PEND || PEND.busy || SHEET().dataset.mode !== 'ask') return;
   const v = digitsOnly($('#gx-pin'));
   dots('gx-pinrow', v.length);
   if (v.length < PIN_LEN) return;
@@ -1211,16 +1339,41 @@ $('#gx-pin').addEventListener('input', async function(){
     say('#gx-sheet-msg', 'Wrong PIN', true);
     return;
   }
+  const p = PEND;
+  const names = p.flow.steps || (p.action ? ['Working'] : ['Signing']);
+  let at = 1;
+  const step = function (i) { at = Math.min(i + 1, names.length); if (PEND === p) progDraw(names, at); };
+  say('#gx-sheet-msg', 'Keep this open until it finishes');
+  sheetMode('run');
+  progDraw(names, 1);
   try {
-    say('#gx-sheet-msg', PEND.action ? 'Working, keep this open' : 'Signing');
-    const out = PEND.action ? await PEND.action(mnemonic) : await signArbitrary(mnemonic, addrOf(), PEND.text);
+    const out = p.action ? await p.action(mnemonic, step) : await signArbitrary(mnemonic, addrOf(), p.text);
     mnemonic = null;
-    const p = PEND; closeSheet(); p.resolve(out);
+    p.settled = true; p.busy = false;
+    if (PEND !== p) { p.resolve(out); return; }
+    if (p.flow.done) {
+      progDraw(names, names.length + 1);
+      say('#gx-sheet-msg', '');
+      const d = p.flow.done(out) || {};
+      buzz('success');
+      showOutcome(true, d.title || 'Done', d.text, d.actions);
+      p.resolve(out);
+    } else {
+      // a plain signature: nothing to see through, the caller goes on
+      closeSheet(); p.resolve(out);
+    }
   } catch (e) {
     mnemonic = null;
+    p.settled = true; p.busy = false;
     report_('gram', e);
-    const p = PEND; closeSheet(); p.reject(e);
-    // an action reports its own failure where it was started
-    if (!p.action) say('#gx-msg', 'Could not sign: ' + (e && e.message || e), true);
+    buzz('error');
+    if (PEND === p) {
+      progDraw(names, at, true);
+      say('#gx-sheet-msg', '');
+      // the red step above says where; this says why, and what to do
+      showOutcome(false, 'Not completed', String(e && e.message || e).replace(/^./, c => c.toUpperCase()));
+    }
+    if (e && typeof e === 'object') e.shown = true;
+    p.reject(e);
   }
 });
