@@ -12,15 +12,15 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=b8e3c349';
-import { GRAM_NET } from './gram-net.js?v=b8e3c349';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=b8e3c349';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=b8e3c349';
-import { S } from './state.js?v=b8e3c349';
-import { decryptSeed } from './storage.js?v=b8e3c349';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=b8e3c349';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=b8e3c349';
-import { buildLock, refundMessage } from './gram-tonlock.js?v=b8e3c349';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=469ec3bb';
+import { GRAM_NET } from './gram-net.js?v=469ec3bb';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=469ec3bb';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=469ec3bb';
+import { S } from './state.js?v=469ec3bb';
+import { decryptSeed } from './storage.js?v=469ec3bb';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=469ec3bb';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=469ec3bb';
+import { buildLock, refundMessage } from './gram-tonlock.js?v=469ec3bb';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -88,7 +88,8 @@ function paintCard(){
 // is shown to everyone.
 const LABS = (function () {
   try {
-    if (location.hash === '#labs') localStorage.setItem('fw:labs', '1');
+    // ?labs=1 too: inside Telegram the mini app's #hash is taken by the launch params
+    if (location.hash === '#labs' || new URLSearchParams(location.search).get('labs') === '1') localStorage.setItem('fw:labs', '1');
     if (location.hash === '#nolabs') localStorage.removeItem('fw:labs');
     return NET.name !== 'testnet' || localStorage.getItem('fw:labs') === '1';
   } catch (e) { return false; }
@@ -133,6 +134,7 @@ async function load(){
     drawBuys();
     TAKES = takes.takes || [];
     drawTakes(TAKES, takes.stats || {});
+    tgStatus();
     say('#gx-status', '');
     preview();
   } catch (e) {
@@ -444,6 +446,72 @@ $('#gx-offers').addEventListener('click', async function(e){
   catch (err) { say('#gx-status', err.message, true); }
 });
 
+
+/* ---------------- Telegram alerts ----------------
+   The offers Worker messages the seller through the wallet's bot when a buyer
+   announces a take, so a deal is not missed while the wallet is closed.
+   Turning it on links this address to this Telegram account, once:
+   Telegram's initData proves the account (the Worker checks it with the bot
+   token), a signed message proves the address. The bot also needs the user's
+   permission to write first (requestWriteAccess). Off needs no PIN. */
+const TGW = window.Telegram && window.Telegram.WebApp;
+const TG_INIT = (TGW && TGW.initData) || '';
+const TG_USER = TGW && TGW.initDataUnsafe && TGW.initDataUnsafe.user ? TGW.initDataUnsafe.user.id : null;
+let TG_LINKED = false;
+let TG_BUSY = false;
+
+function tgPaint(){
+  $('#gx-tg-state').textContent = TG_LINKED ? 'on' : 'off';
+  $('#gx-tg-btn').textContent = TG_LINKED ? 'turn off' : 'turn on';
+}
+async function tgStatus(){
+  const line = $('#gx-tg-line');
+  if (!line || !TG_INIT || !TG_USER || !addrOf()) return;      // outside Telegram: nothing to link
+  try {
+    const st = await api('/notify/status', { initData: TG_INIT, address: addrOf() });
+    line.hidden = !st.enabled;
+    TG_LINKED = !!st.linked;
+    tgPaint();
+  } catch (e) { line.hidden = true; }
+}
+function writeAccess(){
+  return new Promise(function (resolve) {
+    if (!TGW || typeof TGW.requestWriteAccess !== 'function' || !(TGW.isVersionAtLeast && TGW.isVersionAtLeast('6.9'))) { resolve(true); return; }
+    try { TGW.requestWriteAccess(ok => resolve(!!ok)); } catch (e) { resolve(true); }
+  });
+}
+$('#gx-tg-btn').addEventListener('click', async function(){
+  if (TG_BUSY) return;
+  TG_BUSY = true;
+  say('#gx-tg-msg', '');
+  try {
+    if (TG_LINKED) {
+      await api('/notify/unlink', { initData: TG_INIT, address: addrOf() });
+      TG_LINKED = false;
+      say('#gx-tg-msg', 'Alerts are off for this address.');
+    } else {
+      if (!(await writeAccess())) { say('#gx-tg-msg', 'The bot needs your permission to send you messages.', true); return; }
+      const payload = JSON.stringify({ type: 'frontier-notify-link', v: 1, network: NET.name, address: addrOf(), tg_id: String(TG_USER), ts: now() });
+      let signed;
+      try {
+        signed = await consent('Turn on Telegram alerts', [
+          ['Address', addrOf().slice(0, 12) + '\u2026' + addrOf().slice(-6)],
+          ['Alerts go to', 'this Telegram account'],
+          ['When', 'a buyer locks GRAM for your offer']
+        ], payload);
+      } catch (e) { return; }
+      await api('/notify/link', Object.assign({ initData: TG_INIT }, signed));
+      TG_LINKED = true;
+      buzz('success');
+      say('#gx-tg-msg', 'Alerts are on. The bot will message you when a buyer locks GRAM.');
+    }
+  } catch (e) {
+    say('#gx-tg-msg', e.message || String(e), true);
+  } finally {
+    TG_BUSY = false;
+    tgPaint();
+  }
+});
 
 /* ---------------- answering a take (stage 3) ----------------
    1. Read the buyer's TON lock on the chain (not the Worker's word): the
