@@ -12,15 +12,15 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=bc03c078';
-import { GRAM_NET } from './gram-net.js?v=bc03c078';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=bc03c078';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=bc03c078';
-import { S } from './state.js?v=bc03c078';
-import { decryptSeed } from './storage.js?v=bc03c078';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=bc03c078';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=bc03c078';
-import { buildLock, refundMessage } from './gram-tonlock.js?v=bc03c078';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=b8e3c349';
+import { GRAM_NET } from './gram-net.js?v=b8e3c349';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=b8e3c349';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=b8e3c349';
+import { S } from './state.js?v=b8e3c349';
+import { decryptSeed } from './storage.js?v=b8e3c349';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=b8e3c349';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=b8e3c349';
+import { buildLock, refundMessage } from './gram-tonlock.js?v=b8e3c349';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -555,15 +555,20 @@ async function answerTake(t, b){
     }
     if (had.tx) {
       // the lock was sent but its id never came back: look the tx up
-      let res = null;
-      try { res = (await getJSON(NET.lcd + '/cosmos/tx/v1beta1/txs/' + had.tx, 8000, 1)).tx_response; } catch (e) {}
+      // only a real "not found" counts as not landed; a network error proves nothing
+      let res = null, notFound = false;
+      try {
+        const r = await fetch(NET.lcd + '/cosmos/tx/v1beta1/txs/' + had.tx);
+        if (r.ok) res = (await r.json()).tx_response;
+        else if (r.status === 404 || r.status === 400) notFound = true;
+      } catch (e) {}
       if (res && Number(res.code) === 0 && lockIdOf(res)) {
         remember(t.ton_lock, { id: lockIdOf(res) });
         if (b) b.disabled = false;
         return answerTake(t, b);                        // goes straight to Report
       }
       if (res && Number(res.code) !== 0) remember(t.ton_lock, { tx: null });   // it failed on chain: a new lock is fine
-      else if (!res && now() - (had.at || 0) > 180) remember(t.ton_lock, { tx: null });   // never landed
+      else if (notFound && now() - (had.at || 0) > 180) remember(t.ton_lock, { tx: null });   // never landed
       else { say('#gx-status', 'Your lock for this take is still on its way (tx ' + had.tx.slice(0, 10) + '\u2026). Try again in a minute.', true); return; }
     }
     say('#gx-status', 'Checking the buyer\u2019s GRAM lock on TON\u2026');
@@ -578,7 +583,7 @@ async function answerTake(t, b){
       ['You lock', human(c.gross, 6) + ' LUNC (incl. burn tax)'],
       ['Buyer receives', human(t.lunc, 6) + ' LUNC'],
       ['Buyer', t.taker_terra],
-      ['Claim until', new Date(c.timeout * 1000).toLocaleString()],
+      ['Claim until', 'about ' + new Date(c.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (set when you sign)'],
       ['If unclaimed', 'the LUNC comes back to you after that'],
       ['Network', NET.chain + ' + TON testnet']
     ];
@@ -894,6 +899,28 @@ function problemHtml(b){
   const fix = b.problem.indexOf('relayer') >= 0 ? ' <button class="gx-link gx-relay-fix" type="button">change relayer</button>' : '';
   return '<div class="gx-problem">' + esc(b.problem) + fix + '</div>';
 }
+// the relayer is late: the buyer can claim the LUNC with this wallet's own key
+// (it needs a little LUNC for gas), while there is time left
+function selfClaimBtn(id, b){
+  if (b.stage !== 'claiming' || !canSign() || !b.terraTimeout) return '';
+  const leftSec = b.terraTimeout - now();
+  const late = now() - (b.since || now()) > 180 || leftSec < 2 * CLAIM_MARGIN;
+  if (!late || leftSec < 90) return '';
+  return '<button class="btn solid gx-selfclaim" type="button" data-id="' + esc(id) + '">Claim the LUNC myself</button>' +
+    '<p class="gx-hint">The relayer has not claimed yet. Claiming yourself costs a little LUNC for gas' + (BAL !== null && BAL < 5000000n ? ' - you have none on ' + NET.chain + ' yet' : '') + '.</p>';
+}
+async function selfClaim(id){
+  const b = buys()[id];
+  if (!b || !b.terraLockId) return;
+  const step = { contract: NET.htlc, msg: { claim: { id: b.terraLockId, secret: b.secret } }, funds: [] };
+  await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC']],
+    JSON.stringify({ claim: { id: b.terraLockId, secret: '\u2026' } }),
+    async m => { const r = await sendSwap(addrOf(), [step], m, NET); await r.wait(); },
+    'A transaction: it claims the LUNC locked for you, revealing the secret on ' + NET.chain + '. The seller then gets the GRAM.');
+  say('#gx-status', 'Claimed. The LUNC is on its way to your address.');
+  watchBuys();
+}
+
 function refundBtn(id, b){
   const late = now() >= b.timeout;
   return (late && (b.stage === 'unanswered' || b.stage === 'announced' || b.stage === 'sent'))
@@ -925,7 +952,7 @@ function drawBuys(){
       '<b class="gx-hero-big">' + human(b.lunc, 6) + ' LUNC</b>' +
       '<p class="gx-hero-sub">for ' + human(b.gram, 9) + ' GRAM</p>' +
       stepsHtml(BUY_STEP[b.stage] ?? 1, true) +
-      '<p>' + buyLine(b) + '</p>' + problemHtml(b) + refundBtn(id, b);
+      '<p>' + buyLine(b) + '</p>' + problemHtml(b) + selfClaimBtn(id, b) + refundBtn(id, b);
     hero.hidden = false;
   } else hero.hidden = true;
   paintIcons(hero);
@@ -942,6 +969,8 @@ function drawBuys(){
 }
 ['#gx-buys', '#gx-hero'].forEach(function (sel) {
   $(sel).addEventListener('click', function (e) {
+    const sc = e.target.closest('.gx-selfclaim');
+    if (sc) { sc.disabled = true; selfClaim(sc.dataset.id).catch(err => { if (err && err.message !== 'cancelled') say('#gx-status', String(err.message || err), true); sc.disabled = false; }); return; }
     const c = e.target.closest('.gx-hero-close');
     if (c) { saveBuy(c.dataset.id, { seen: true }); drawBuys(); return; }
     if (e.target.closest('.gx-relay-fix')) $('#gx-relay-edit').click();
@@ -1009,7 +1038,7 @@ async function watchBuys(){
           if (t.status === 'locked' && t.terra_lock_id) {
             const problems = await sellerLockOk(b, t);
             if (problems.length) { saveBuy(id, { problem: 'The seller\u2019s lock did not pass the check: ' + problems.join('; ') + '. The secret stays on this device; your GRAM comes back after the timeout.' }); continue; }
-            saveBuy(id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null });
+            saveBuy(id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null, since: now() });
             chime(); buzz('success');
             b.stage = 'claiming'; b.terraLockId = Number(t.terra_lock_id);
           } else if (t.status === 'unanswered') saveBuy(id, { stage: 'unanswered' });
@@ -1017,6 +1046,12 @@ async function watchBuys(){
         if (b.stage === 'claiming') {
           const q = btoa(JSON.stringify({ lock: { id: b.terraLockId } }));
           const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 1)).data || {};
+          if (l.status === 'refunded' || (l.status === 'open' && now() >= Number(l.timeout))) {
+            // the LUNC was not claimed in time: the GRAM comes back after the TON timeout
+            saveBuy(id, { stage: 'unanswered', problem: 'The LUNC was not claimed before the seller\u2019s lock expired. Your GRAM comes back after the TON lock\u2019s timeout.' });
+            continue;
+          }
+          if (l.status === 'open') b.terraTimeout = Number(l.timeout);
           if (l.status === 'claimed') {
             saveBuy(id, { stage: 'done', problem: null });
             say('#gx-status', 'Done: ' + human(b.lunc, 6) + ' LUNC received on your Frontier address.');
@@ -1030,7 +1065,7 @@ async function watchBuys(){
                 body: JSON.stringify({ terraLockId: b.terraLockId, tonLock: id, secret: b.secret, offerId: b.offerId, lunc: b.lunc }) });
               if (!r.ok) { let m = ''; try { m = (await r.json()).error || ''; } catch (e) {} if (r.status >= 500 || r.status === 429) problem = 'The relayer is busy (' + r.status + '), trying again.'; else problem = 'The relayer refused: ' + (m || r.status); }
             } catch (e) { problem = 'The relayer is not reachable at ' + relayerUrl() + '. Check its address (change relayer).'; }
-            if (problem !== (b.problem || null)) saveBuy(id, { problem: problem });
+            if (problem !== (b.problem || null) || b.terraTimeout !== all[id].terraTimeout) saveBuy(id, { problem: problem, terraTimeout: b.terraTimeout });
           }
         } else if (b.stage === 'refunding') {
           const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
@@ -1046,7 +1081,10 @@ setTimeout(watchBuys, 2000);
 /* ---------- relayer address (testnet tunnels change) ---------- */
 function showRelayer(){ $('#gx-relay-url').textContent = relayerUrl() || 'not set'; }
 showRelayer();
+// on mainnet the relayer is pinned in gram-net.js: the secret goes to it
+$('#gx-relay-edit').hidden = NET.name !== 'testnet';
 $('#gx-relay-edit').addEventListener('click', function(){
+  if (NET.name !== 'testnet') return;
   const v = prompt('Relayer address (https://...)', relayerUrl());
   if (v === null) return;
   try { localStorage.setItem('fw:gram:relayer', v.trim()); } catch (e) {}
