@@ -1,8 +1,8 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=1b1f2a83';
-import { $, buzz, go, tap } from './shell.js?v=1b1f2a83';
-import { S } from './state.js?v=1b1f2a83';
-import { iconHTML, paintIcons } from './chain.js?v=1b1f2a83';
-import { heldTokens, refreshBalances } from './tokens.js?v=1b1f2a83';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=42cc1f90';
+import { $, buzz, go, tap } from './shell.js?v=42cc1f90';
+import { S } from './state.js?v=42cc1f90';
+import { iconHTML, paintIcons } from './chain.js?v=42cc1f90';
+import { heldTokens, refreshBalances } from './tokens.js?v=42cc1f90';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -61,6 +61,10 @@ const b64 = b => btoa(String.fromCharCode.apply(null, b));
 
 /* ---------------- chain facts ---------------- */
 const CHAIN = 'columbus-5';
+// The chain every call talks to unless told otherwise. A caller that works
+// on another network (the GRAM swap on rebel-2) passes its own { chain, lcd };
+// nothing else in the wallet ever does.
+const MAINNET = { chain: CHAIN, lcd: LCD };
 const GAS_PRICE = 28.325;        // uluna per gas unit
 // You pay for gas you declare, not gas you burn, so this is money not
 // insurance. Station's own ratio on the same transfer is 1.276.
@@ -81,8 +85,8 @@ async function burnTaxRate(){
   return TAX;
 }
 
-async function account(addr){
-  const r = await getJSON(LCD + '/cosmos/auth/v1beta1/accounts/' + addr, 10000);
+async function account(addr, net = MAINNET){
+  const r = await getJSON(net.lcd + '/cosmos/auth/v1beta1/accounts/' + addr, 10000);
   const a = r.account || {};
   return { num: a.account_number || '0', seq: a.sequence || '0' };
 }
@@ -129,9 +133,9 @@ function nativeSendTx(from, to, denom, raw, memo, key, seq, feeCoins, gas){
 
 // The simulator wants a complete transaction, so it gets one with a blank
 // signature. It never checks the signature - it only runs the messages.
-async function simulateGas(body, auth){
+async function simulateGas(body, auth, net = MAINNET){
   const raw = txRaw(body, auth, [new Uint8Array(64)]);
-  const r = await fetch(LCD + '/cosmos/tx/v1beta1/simulate', {
+  const r = await fetch(net.lcd + '/cosmos/tx/v1beta1/simulate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tx_bytes: b64(raw) })
@@ -179,8 +183,8 @@ async function dryRunNative(from, to, denom, human, memo, mnemonic){
 
 // The node answers sync: accepted into the mempool, or refused with a reason.
 // Acceptance is not inclusion, so the hash is polled afterwards.
-async function broadcast(raw){
-  const r = await fetch(LCD + '/cosmos/tx/v1beta1/txs', {
+async function broadcast(raw, net = MAINNET){
+  const r = await fetch(net.lcd + '/cosmos/tx/v1beta1/txs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tx_bytes: b64(raw), mode: 'BROADCAST_MODE_SYNC' })
@@ -192,11 +196,11 @@ async function broadcast(raw){
   return res.txhash;
 }
 
-async function waitFor(hash, tries = 30){
+async function waitFor(hash, tries = 30, net = MAINNET){
   for (let i = 0; i < tries; i++) {
     await new Promise(z => setTimeout(z, 2000));
     try {
-      const d = await getJSON(LCD + '/cosmos/tx/v1beta1/txs/' + hash, 8000, 1);
+      const d = await getJSON(net.lcd + '/cosmos/tx/v1beta1/txs/' + hash, 8000, 1);
       const res = d.tx_response || {};
       if (res.height && res.height !== '0') {
         if (res.code) throw new Error('failed on chain (code ' + res.code + '): ' + (res.raw_log || ''));
@@ -575,15 +579,15 @@ function refusalOf(errors){
   return lastOne && lastOne.message;
 }
 
-async function execPlan(from, steps, mnemonic){
-  const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
+async function execPlan(from, steps, mnemonic, net = MAINNET){
+  const [acc, key] = await Promise.all([account(from, net), keyOf(mnemonic)]);
   let used = 0, url = null;
   const refused = [];
   for (const u of EXEC_URLS) {
     // the ceiling has to cover every message, not one of them
     const probe = execTx(u, from, steps, key.pub, acc.seq,
       [{ denom: 'uluna', amount: '1000000' }], 900000 * steps.length);
-    try { used = await simulateGas(probe.body, probe.auth); url = u; break; }
+    try { used = await simulateGas(probe.body, probe.auth, net); url = u; break; }
     catch (e) { refused.push(e); }
   }
   if (!url) throw new Error(plainRefusal(refusalOf(refused)));
@@ -592,23 +596,50 @@ async function execPlan(from, steps, mnemonic){
            gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
 }
 
-async function dryRunSwap(from, steps, mnemonic){
-  const p = await execPlan(from, steps, mnemonic);
+async function dryRunSwap(from, steps, mnemonic, net = MAINNET){
+  const p = await execPlan(from, steps, mnemonic, net);
   return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee, url: p.url };
 }
 
 // Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
 // moves whenever anything else touches this account.
-async function sendSwap(from, steps, mnemonic){
-  const p = await execPlan(from, steps, mnemonic);
+async function sendSwap(from, steps, mnemonic, net = MAINNET){
+  const p = await execPlan(from, steps, mnemonic, net);
   const real = execTx(p.url, from, steps, p.key.pub, p.acc.seq,
     [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
-  const doc = signDoc(real.body, real.auth, CHAIN, p.acc.num);
+  const doc = signDoc(real.body, real.auth, net.chain, p.acc.num);
   const sig = p.key.node.sign(p.key.sha256(doc));
-  const hash = await broadcast(txRaw(real.body, real.auth, [sig]));
-  return { hash: hash, gas: p.gas, gasFee: p.gasFee, wait: function(){ return waitFor(hash); } };
+  const hash = await broadcast(txRaw(real.body, real.auth, [sig]), net);
+  return { hash: hash, gas: p.gas, gasFee: p.gasFee, wait: function(){ return waitFor(hash, 30, net); } };
 }
 export { dryRunSwap, sendSwap };
+
+/* ---------------- signing a message (ADR-36) ----------------
+   Signs text, not a transaction: an amino StdSignDoc with one MsgSignData,
+   empty chain id, zero fee and account numbers, as sorted compact JSON,
+   signed over its sha256 - what Keplr's signArbitrary and cosmjs produce,
+   and what the GRAM offers Worker verifies (offers-worker/src/adr36.mjs).
+   Nothing here can move funds: no chain id, no account number, no fee. */
+const sortJson = v => Array.isArray(v) ? v.map(sortJson)
+  : (v && typeof v === 'object')
+    ? Object.keys(v).sort().reduce(function (o, k) { o[k] = sortJson(v[k]); return o; }, {})
+    : v;
+// the same escaping cosmjs applies before signing
+const aminoEscape = s => s.replace(/&/g, '\\u0026').replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+function adr36Doc(signer, text){
+  const doc = {
+    chain_id: '', account_number: '0', sequence: '0', memo: '',
+    fee: { gas: '0', amount: [] },
+    msgs: [{ type: 'sign/MsgSignData', value: { signer: signer, data: b64(enc.encode(text)) } }]
+  };
+  return enc.encode(aminoEscape(JSON.stringify(sortJson(doc))));
+}
+async function signArbitrary(mnemonic, signer, text){
+  const key = await keyOf(mnemonic);
+  const sig = key.node.sign(key.sha256(adr36Doc(signer, text)));
+  return { payload: text, pubkey: b64(key.pub), signature: b64(sig) };
+}
+export { signArbitrary, adr36Doc };
 
 /* ---------------- staking ----------------
    Four messages, all plain Cosmos SDK, all built by hand like MsgSend above.
