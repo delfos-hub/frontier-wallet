@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=42cc1f90">
+<link rel="stylesheet" href="assets/css/app.css?v=0ac766b9">
 </head>
 <body>
 <div id="rt"></div>
@@ -313,6 +313,13 @@
 <button class="act" id="act-p2p"><i><svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M14 7h3a2 2 0 0 1 2 2v3"/><path d="m17 10 2 2 2-2"/><path d="M10 17H7a2 2 0 0 1-2-2v-3"/><path d="m7 14-2-2-2 2"/></svg></i>P2P</button>
   </div>
 
+  <button class="xc" id="xc-gram" type="button" hidden>
+    <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-n" id="xc-gram-n" hidden></span><span class="xc-badge">Testnet</span></span>
+    <span class="xc-main"><span class="xc-ico" id="xc-gram-ico"></span>
+      <span class="xc-txt"><b>GRAM &#8644; LUNC</b><span>GRAM (formerly TON) &middot; atomic swap, no bridge</span></span>
+      <svg class="xc-go" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span>
+  </button>
+
   <div class="ads" id="ads" hidden><div class="ads-track" id="ads-track"></div><div class="ads-ticks" id="ads-ticks"></div></div>
 <div class="warn sunset" id="usdc-sunset" hidden>
   <button class="sunset-x" id="usdc-sunset-x" type="button" aria-label="Close">&times;</button>
@@ -544,6 +551,132 @@
   </div>
 </div>
 
+<!-- ================= GRAM <-> LUNC (maker) ================= -->
+<section class="step wpad" id="st-gram">
+  <div class="p2p-top">
+    <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+    <h2>GRAM &#8644; LUNC</h2><span class="xc-badge">Testnet</span>
+  </div>
+  <p class="gx-intro">Swap GRAM (formerly TON) and LUNC in an atomic swap: no bridge, no custodian. The buyer locks GRAM on TON first; the seller locks LUNC only after checking that lock, and either both sides are paid or both get their coins back. Testnet: rebel-2 and TON testnet, test coins only.</p>
+  <div class="gx-bar"><span>Your LUNC on rebel-2 <b id="gx-bal">&ndash;</b><i id="gx-me"></i></span><button class="dust" id="gx-refresh" type="button">refresh</button></div>
+  <div class="gx-msg" id="gx-status"></div>
+
+  <div class="gx-tabs"><button class="gx-tab on" type="button" data-tab="buy">Buy LUNC</button><button class="gx-tab" type="button" data-tab="sell">Sell LUNC</button></div>
+
+  <div id="gx-pane-buy">
+    <div class="gx-hero" id="gx-hero" hidden></div>
+    <div class="gx-item gx-tc">
+      <span class="xc-ico gx-deal-ico" id="gx-tc-ico"></span>
+      <div class="gx-l"><b id="gx-tc-name">TON wallet</b><span id="gx-tc-addr">Pays the GRAM. Not connected.</span></div>
+      <button class="btn solid gx-answer" id="gx-tc-btn" type="button">Connect</button>
+    </div>
+
+    <div class="gx-buybox" id="gx-buybox" hidden>
+      <div class="gx-bb-top"><b id="gx-bb-rate"></b><button class="gx-link" id="gx-bb-x" type="button">close</button></div>
+      <div class="gx-amt">
+        <div class="gx-amt-top"><span>You buy</span><button class="gx-chip" id="gx-bb-max" type="button">Max</button></div>
+        <div class="gx-amt-in"><input type="text" id="gx-bb-lunc" inputmode="decimal" autocomplete="off" placeholder="0"><span class="gx-tok">LUNC</span></div>
+        <div class="gx-mkt" id="gx-bb-range" style="margin-top:6px"></div>
+      </div>
+      <div class="gx-sum" id="gx-bb-sum"></div>
+      <button class="btn solid" id="gx-bb-pay" type="button">Pay with TON wallet</button>
+      <div class="gx-msg" id="gx-bb-msg"></div>
+    </div>
+
+    <div class="head gx-head" id="gx-buys-head" hidden><h2>Your buys</h2></div>
+    <div class="gx-list" id="gx-buys"></div>
+    <div class="head gx-head"><h2>Offers</h2><span class="gx-rec" id="gx-book-n"></span></div>
+    <div class="gx-list" id="gx-book"></div>
+    <div class="gx-ton"><span>Relayer</span><b id="gx-relay-url"></b><button class="gx-link" id="gx-relay-edit" type="button">change</button></div>
+  </div>
+
+  <div id="gx-pane-sell" hidden>
+
+  <div class="head"><h2>My offers</h2></div>
+  <div class="gx-list" id="gx-offers"></div>
+  <div class="head gx-head"><h2>Active deals</h2><span class="gx-rec" id="gx-record"></span></div>
+  <div class="gx-list" id="gx-takes"></div>
+  <div class="gx-alerts" id="gx-tg-line" hidden>
+    <div class="gx-alerts-l">
+      <b id="gx-tg-label">Telegram alerts</b>
+      <span id="gx-tg-sub">Get a message from the wallet bot when a buyer locks GRAM, even with the wallet closed.</span>
+    </div>
+    <button class="gx-switch" id="gx-tg-btn" type="button" role="switch" aria-checked="false" aria-labelledby="gx-tg-label"><i></i></button>
+  </div>
+  <div class="gx-msg" id="gx-tg-msg"></div>
+
+  <div class="head"><h2>New offer</h2></div>
+  <div class="gx-form">
+    <div class="gx-rates" id="gx-rates"><span>Loading market prices</span></div>
+    <div class="gx-amt">
+      <div class="gx-amt-top"><span>You sell</span><button class="gx-chip" id="gx-max-btn" type="button">Max</button></div>
+      <div class="gx-amt-in"><input type="text" id="gx-sell" inputmode="decimal" autocomplete="off" placeholder="0">
+        <span class="gx-tok" id="gx-tok-lunc">LUNC</span></div>
+    </div>
+    <div class="gx-swap-ico"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></div>
+    <div class="gx-amt">
+      <div class="gx-amt-top"><span>You receive</span><span class="gx-mkt" id="gx-mkt"></span></div>
+      <div class="gx-amt-in"><input type="text" id="gx-get" inputmode="decimal" autocomplete="off" placeholder="0">
+        <span class="gx-tok" id="gx-tok-gram">GRAM</span></div>
+      <div class="gx-chips">
+        <button class="gx-chip on" type="button" data-pct="0">Market</button>
+        <button class="gx-chip" type="button" data-pct="2">+2%</button>
+        <button class="gx-chip" type="button" data-pct="5">+5%</button>
+      </div>
+    </div>
+
+    <div class="gx-ton" id="gx-ton-line" hidden><span>GRAM goes to</span><b id="gx-ton-short"></b>
+      <button class="gx-link" id="gx-ton-change" type="button">change</button></div>
+    <div class="field gx-ton-edit" id="gx-ton-edit"><label>Your TON address (receives the GRAM)</label>
+      <input type="text" id="gx-ton" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="UQ... or EQ..."></div>
+
+    <details class="gx-more"><summary>More options</summary>
+      <div class="field" style="margin-top:12px"><label>Smallest part a buyer can take, LUNC</label>
+        <input type="text" id="gx-min" inputmode="decimal" autocomplete="off" placeholder="5% of the total"></div>
+      <label>Offer stays live for</label>
+      <div class="gx-chips" style="margin-top:0">
+        <button class="gx-chip" type="button" data-h="1">1 h</button>
+        <button class="gx-chip" type="button" data-h="6">6 h</button>
+        <button class="gx-chip on" type="button" data-h="24">24 h</button>
+      </div>
+    </details>
+
+    <div class="gx-sum" id="gx-sum" hidden></div>
+    <button class="btn solid" id="gx-post" type="button" disabled>Sign and publish</button>
+    <div class="gx-msg" id="gx-msg"></div>
+  </div>
+  </div>
+</section>
+
+<!-- A buyer is waiting: shown over any screen. -->
+<!-- Top level, like the other sheets: inside a .step the tab bar covers it. -->
+<div class="sw-sheet" id="gx-sheet" hidden>
+  <div class="sw-sheet-in gx-sheet-in" role="dialog" aria-modal="true" aria-labelledby="gx-sheet-title">
+    <div class="sw-sheet-top"><span id="gx-sheet-title">Confirm</span>
+      <button class="sw-x" id="gx-sheet-x" type="button">Cancel</button></div>
+    <div class="gx-sheet-body" id="gx-sheet-body">
+      <p class="gx-sheet-note" id="gx-sheet-note">A signed message, not a transaction: it moves no funds. This is exactly what will be signed.</p>
+      <div class="p2p-lines" id="gx-lines"></div>
+      <details class="gx-raw"><summary>Signed text</summary><pre id="gx-signed"></pre></details>
+    </div>
+    <div class="gx-sheet-foot">
+      <div class="pinbox" id="gx-pinbox">
+        <label for="gx-pin">Enter your PIN to sign</label>
+        <div class="pinrow" id="gx-pinrow"></div>
+        <input class="pinin" id="gx-pin" type="tel" inputmode="numeric" maxlength="8" autocomplete="off">
+      </div>
+      <ol class="gx-prog" id="gx-prog" hidden aria-live="polite"></ol>
+      <div class="gx-done" id="gx-done" hidden>
+        <span class="gx-done-mark" id="gx-done-mark" aria-hidden="true"></span>
+        <b id="gx-done-title"></b>
+        <p id="gx-done-text"></p>
+        <div class="gx-done-btns" id="gx-done-btns"></div>
+      </div>
+      <div class="gx-msg" id="gx-sheet-msg" style="text-align:center"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ================= GOVERNANCE ================= -->
 <section class="step wpad" id="st-gov">
   <div class="head" style="margin-top:6px"><h2>Governance</h2><span>Terra Classic</span></div>
@@ -626,20 +759,21 @@
 <!-- Wallet-wide notification card (notify.js) -->
 <div class="nt-card" id="nt-card" hidden>
   <div class="nt-in" id="nt-in">
-    <div class="nt-top"><span class="nt-ico" id="nt-ico"></span><span id="nt-label"></span></div>
+    <div class="nt-top"><span class="nt-ico" id="nt-ico"></span><span class="nt-dot" id="nt-dot" hidden></span><span id="nt-label"></span></div>
     <b id="nt-title"></b>
     <p id="nt-text"></p>
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=42cc1f90"></script>
-<script src="assets/js/ads.js?v=42cc1f90"></script>
-<script type="module" src="assets/js/swap.js?v=42cc1f90"></script>
-<script type="module" src="assets/js/activity.js?v=42cc1f90"></script>
-<script type="module" src="assets/js/nft.js?v=42cc1f90"></script>
-<script type="module" src="assets/js/p2p.js?v=42cc1f90"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=42cc1f90"></script>
-<script type="module" src="assets/js/gov.js?v=42cc1f90"></script>
-<script type="module" src="assets/js/stake.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/app.js?v=0ac766b9"></script>
+<script src="assets/js/ads.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/swap.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/activity.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/nft.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/p2p.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/gram.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/gov.js?v=0ac766b9"></script>
+<script type="module" src="assets/js/stake.js?v=0ac766b9"></script>
 </body>
 </html>

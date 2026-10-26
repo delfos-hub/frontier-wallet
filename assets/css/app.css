@@ -908,13 +908,150 @@ button.row.gov-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:
 #gov-memo{width:100%;box-sizing:border-box;resize:vertical;font:inherit}
 body.sheet-open .tabs{visibility:hidden}
 .gov-link{color:var(--accent);text-decoration:underline;word-break:break-all}
+
+/* ══ GRAM swap: Cross-chain card + maker screen ══ */
+.xc{display:block;width:100%;text-align:left;font-family:inherit;color:var(--text);cursor:pointer;
+  background:linear-gradient(135deg,rgba(0,152,234,.14),rgba(123,92,255,.10) 60%,var(--surface));
+  border:1px solid rgba(0,152,234,.35);border-radius:var(--r-card);padding:12px 14px 13px;margin:-8px 0 20px;
+  transition:transform .12s}
+.xc[hidden]{display:none}
+.xc:active{transform:scale(.98)}
+.xc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.xc-label{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.xc-badge{font-size:9px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--gold);
+  border:1px solid rgba(232,200,64,.45);border-radius:999px;padding:2px 8px}
+.p2p-top .xc-badge{margin-left:auto}
+.xc-main{display:flex;align-items:center;gap:12px}
+.xc-ico{display:flex;flex:none}
+.xc-ico .sym{width:30px;height:30px;font-size:13px}
+.xc-ico .sym+.sym{margin-left:-9px;box-shadow:0 0 0 2px var(--surface)}
+.xc-txt{display:flex;flex-direction:column;min-width:0;flex:1}
+.xc-txt b{font-family:'Rajdhani',sans-serif;font-size:17px;color:#fff;line-height:1.2}
+.xc-txt span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xc-go{width:18px;height:18px;flex:none;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
+.gx-intro{font-size:12.5px;color:var(--muted);line-height:1.6;margin:4px 4px 14px}
+.gx-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 4px 6px;font-size:12.5px;color:var(--muted)}
+.gx-bar b{color:var(--text);margin-left:6px}
+.gx-bar i{display:block;font-style:normal;font-size:11px;opacity:.75}
+.gx-list{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.gx-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-row);padding:11px 12px}
+.gx-l{flex:1;min-width:0;font-size:13px;color:var(--muted)}
+.gx-l b{color:var(--text)}
+.gx-l span{display:block;font-size:11.5px;margin-top:2px;line-height:1.5}
+.gx-none{font-size:12.5px;color:var(--muted);margin:0 4px}
+.gx-tag{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;border-radius:999px;padding:2px 8px;
+  border:1px solid var(--border);color:var(--muted);flex:none}
+.gx-tag.pending{color:var(--gold);border-color:rgba(232,200,64,.45)}
+.gx-tag.locked{color:var(--green);border-color:rgba(0,255,176,.35)}
+.gx-tag.unanswered{color:var(--red);border-color:rgba(255,107,107,.4)}
+.gx-rates{display:flex;flex-direction:column;gap:2px;margin:-2px 2px 12px;padding:0 0 12px;border-bottom:1px solid var(--border)}
+.gx-rates b{font-family:'Rajdhani',sans-serif;font-size:17px;color:#fff}
+.gx-rates span{font-size:11.5px;color:var(--muted)}
+.gx-amt{background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:12px 14px}
+.gx-amt:focus-within{border-color:rgba(123,92,255,.6)}
+.gx-amt-top{display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);font-weight:600;min-height:24px}
+.gx-mkt{letter-spacing:0;text-transform:none;font-weight:500;font-size:11.5px}
+.gx-amt-in{display:flex;align-items:center;gap:10px;margin-top:4px}
+.gx-amt-in input[type=text]{flex:1;min-width:0;background:none;border:0;padding:2px 0;font-family:'Rajdhani',sans-serif;
+  font-size:28px;font-weight:700;color:#fff;box-shadow:none}
+.gx-amt-in input[type=text]:focus{box-shadow:none}
+.gx-tok{display:flex;align-items:center;gap:7px;flex:none;font-weight:700;font-size:14px;color:var(--text);
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:999px;padding:5px 11px 5px 5px}
+.gx-tok .sym{width:24px;height:24px;font-size:11px}
+.gx-swap-ico{display:flex;justify-content:center;margin:-7px 0;position:relative;z-index:1}
+.gx-swap-ico svg{width:30px;height:30px;padding:6px;border-radius:50%;background:var(--surface);border:1px solid var(--border);
+  stroke:var(--accent2);fill:none;stroke-width:2;stroke-linecap:round}
+.gx-chips{display:flex;gap:6px;margin-top:10px}
+.gx-chip{font-family:inherit;font-size:12px;font-weight:600;color:var(--muted);background:transparent;cursor:pointer;
+  border:1px solid var(--border);border-radius:999px;padding:5px 12px}
+.gx-chip.on{color:#fff;border-color:var(--accent);background:rgba(123,92,255,.18)}
+.gx-chip:disabled{opacity:.35;cursor:not-allowed}
+.gx-amt-top .gx-chip{padding:2px 10px;font-size:11px;letter-spacing:.06em}
+.gx-ton{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin:14px 2px 0}
+.gx-ton b{color:var(--text);font-weight:600}
+.gx-ton[hidden],.gx-ton-edit[hidden]{display:none}
+.gx-ton-edit{margin:14px 0 0}
+.gx-link{margin-left:auto;background:none;border:0;color:var(--accent2);font-family:inherit;font-size:12px;cursor:pointer}
+.gx-more{margin-top:14px;font-size:12.5px;color:var(--muted)}
+.gx-more summary{cursor:pointer;list-style:none}
+.gx-more summary::before{content:'+ '}
+.gx-more[open] summary::before{content:'2 '}
+.gx-sum{margin-top:14px;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+.gx-sum[hidden]{display:none}
+.gx-sum div{display:flex;justify-content:space-between;gap:12px;padding:9px 12px;background:var(--surface2);font-size:12.5px}
+.gx-sum span{color:var(--muted);flex:none}
+.gx-sum b{color:var(--text);text-align:right;font-weight:600}
+.gx-form{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:16px 14px 14px;margin-bottom:10px}
+.gx-msg{font-size:12.5px;color:var(--muted);min-height:18px;margin:8px 4px 0;word-break:break-word}
+.gx-msg.bad{color:var(--red)}
+.gx-raw{margin-top:10px;font-size:11.5px;color:var(--muted)}
+.gx-raw summary{cursor:pointer}
+.gx-raw pre{white-space:pre-wrap;word-break:break-all;background:var(--surface2);border-radius:10px;padding:10px;margin-top:6px;
+  font-size:10.5px;color:var(--text)}
+.gx-item .gx-answer{width:auto;flex:none;margin:0;padding:8px 14px;font-size:12.5px;border-radius:999px}
+.xc-n{margin-left:auto;margin-right:8px;min-width:20px;height:20px;border-radius:999px;background:var(--red);color:#fff;
+  font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 6px;animation:xcPulse 1.6s ease-in-out infinite}
+.xc-n[hidden]{display:none}
+@keyframes xcPulse{50%{box-shadow:0 0 0 6px rgba(255,107,107,.18)}}
+@keyframes gxDrop{from{transform:translateY(-14px);opacity:0}}
+.gx-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.gx-rec{font-size:11.5px;color:var(--muted)}
+.gx-deal{align-items:flex-start}
+.gx-steps{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.gx-steps span{font-size:10.5px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.gx-steps span.ok{color:var(--green);border-color:rgba(0,255,176,.35)}
+.gx-steps span.ok::before{content:'\2713  '}
+.gx-steps span.now{color:#fff;border-color:var(--accent);background:rgba(123,92,255,.18)}
+.gx-deal .gx-tag.pending{animation:xcPulse 1.6s ease-in-out infinite}
+.gx-deal-ico{margin-top:2px}
+.gx-deal-ico .sym{width:26px;height:26px;font-size:11px}
+.gx-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:6px 0 16px;border-radius:14px;
+  background:var(--surface);border:1px solid var(--border)}
+.gx-tab{font-family:inherit;font-size:13px;font-weight:700;color:var(--muted);background:transparent;border:0;
+  border-radius:10px;padding:10px 0;cursor:pointer;letter-spacing:.04em}
+.gx-tab.on{color:#fff;background:linear-gradient(135deg,rgba(51,166,245,.35),rgba(123,92,255,.35))}
+#gx-pane-buy[hidden],#gx-pane-sell[hidden],.gx-buybox[hidden],#gx-buys-head[hidden]{display:none}
+.gx-tc{margin-bottom:14px}
+.gx-buybox{background:var(--surface);border:1px solid rgba(51,166,245,.5);border-radius:var(--r-card);padding:14px;margin-bottom:16px}
+.gx-bb-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.gx-bb-top b{font-family:'Rajdhani',sans-serif;font-size:18px;color:#fff}
+.gx-buybox .btn.solid{margin-top:12px;background:linear-gradient(135deg,#1F8FE5,#5B6CFF)}
+.gx-offer .gx-buy-btn{background:linear-gradient(135deg,#1F8FE5,#5B6CFF)}
+.gx-hero{position:relative;overflow:hidden;border-radius:20px;padding:16px 16px 14px;margin-bottom:16px;
+  background:radial-gradient(120% 90% at 100% 0%,rgba(51,166,245,.20),transparent 60%),var(--surface);
+  border:1px solid rgba(51,166,245,.55);box-shadow:0 0 30px rgba(51,166,245,.12)}
+.gx-hero[hidden]{display:none}
+.gx-hero.done{border-color:rgba(0,255,176,.5);background:radial-gradient(120% 90% at 100% 0%,rgba(0,255,176,.16),transparent 60%),var(--surface)}
+.gx-hero-top{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.gx-hero-big{display:block;font-family:'Rajdhani',sans-serif;font-size:30px;color:#fff;margin:8px 0 0;line-height:1.1}
+.gx-hero.done .gx-hero-big{color:var(--green)}
+.gx-hero-sub{margin:0;font-size:13px;color:var(--muted)}
+.gx-hero p{font-size:12.5px;color:var(--muted);line-height:1.55;margin:10px 0 0}
+.gx-steps.big{gap:8px;margin-top:12px}
+.gx-steps.big span{font-size:12px;padding:6px 11px}
+.gx-steps span.now{position:relative}
+.gx-steps span.now::after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:7px;
+  background:#fff;vertical-align:middle;animation:gxBlink 1s ease-in-out infinite}
+@keyframes gxBlink{50%{opacity:.15}}
+.gx-problem{margin-top:10px;font-size:12.5px;line-height:1.5;color:var(--gold);background:rgba(232,200,64,.08);
+  border:1px solid rgba(232,200,64,.3);border-radius:10px;padding:8px 10px}
+.gx-problem .gx-link{margin-left:4px}
+.gx-hero .gx-refund{margin-top:12px;width:100%}
+.gx-hero-links{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px}
+.gx-hero-links a{color:var(--accent2)}
+.gx-hero-close{margin-top:12px;width:100%;padding:10px 0}
+.gx-hero .gx-selfclaim{margin-top:12px;width:100%;background:linear-gradient(135deg,#1F8FE5,#5B6CFF)}
+.gx-hint{font-size:11.5px !important;margin-top:6px !important}
+#gx-relay-edit[hidden]{display:none}
+
 /* ══ wallet-wide notification card (notify.js) ══ */
 .nt-card{position:fixed;inset:0;z-index:70;display:flex;align-items:flex-start;justify-content:center;
   padding:calc(70px + env(safe-area-inset-top,0px)) 16px 0;background:rgba(5,8,16,.5);backdrop-filter:blur(3px)}
 .nt-card[hidden]{display:none}
 .nt-in{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:20px;
   padding:18px 18px 16px;box-shadow:0 18px 50px rgba(0,0,0,.5);animation:gxDrop .28s ease-out}
-@keyframes gxDrop{from{transform:translateY(-14px);opacity:0}}
 .nt-in.success{border-color:rgba(0,255,176,.45);background:radial-gradient(120% 90% at 100% 0%,rgba(0,255,176,.14),transparent 60%),var(--surface)}
 .nt-in.warn{border-color:rgba(232,200,64,.5)}
 .nt-in.info{border-color:rgba(123,92,255,.5)}
@@ -931,3 +1068,107 @@ body.sheet-open .tabs{visibility:hidden}
 .nt-badge{position:absolute;top:6px;right:10px;min-width:18px;height:18px;border-radius:999px;background:var(--red);color:#fff;
   font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 5px}
 .nt-badge[hidden]{display:none}
+
+/* ══ GRAM theme for the wallet-wide card: blue frame, a faded mark behind ══ */
+.nt-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);
+  animation:ntLive 1.6s ease-in-out infinite}
+.nt-dot[hidden]{display:none}
+@keyframes ntLive{50%{opacity:.35}}
+.nt-in.gram{position:relative;overflow:hidden;border-color:rgba(51,166,245,.65);
+  background:radial-gradient(120% 90% at 100% 0%,rgba(51,166,245,.20),transparent 60%),var(--surface);
+  box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 0 1px rgba(51,166,245,.15),0 0 36px rgba(51,166,245,.18)}
+.nt-in.gram::after{content:'';position:absolute;right:-46px;top:-38px;width:210px;height:210px;pointer-events:none;
+  background:url('../tokens/GRAM.webp') center/contain no-repeat;opacity:.09;filter:blur(1.5px);transform:rotate(-12deg)}
+.nt-in.gram>*{position:relative;z-index:1}
+.nt-in.gram .nt-ico .sym{width:28px;height:28px;font-size:12px}
+.nt-in.gram .btn.solid{background:linear-gradient(135deg,#1F8FE5,#5B6CFF)}
+
+/* ══ Telegram alerts: a setting with a switch, not a sentence ══ */
+.gx-alerts{display:flex;align-items:center;gap:14px;margin:0 0 6px;padding:12px 14px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-row);transition:border-color .2s}
+.gx-alerts[hidden]{display:none}
+.gx-alerts.on{border-color:rgba(0,212,255,.28)}
+.gx-alerts-l{flex:1;min-width:0}
+.gx-alerts-l b{display:block;font-size:13.5px;font-weight:600;color:var(--text)}
+.gx-alerts-l span{display:block;font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:2px}
+.gx-alerts+.gx-msg{margin:4px 4px 18px}
+.gx-alerts+.gx-msg:empty{min-height:0;margin:0 0 18px}
+
+.gx-switch{position:relative;flex:none;width:48px;height:28px;border-radius:999px;cursor:pointer;padding:0;
+  background:var(--surface2);border:1px solid var(--border);transition:background .2s,border-color .2s}
+.gx-switch i{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:var(--muted);
+  box-shadow:0 2px 6px rgba(0,0,0,.35);transition:transform .22s cubic-bezier(.2,.9,.3,1),background .2s}
+.gx-switch[aria-checked="true"]{background:linear-gradient(135deg,var(--accent-dark),var(--accent));border-color:transparent}
+.gx-switch[aria-checked="true"] i{transform:translateX(20px);background:#fff}
+/* busy: the knob turns into a spinner where it stands */
+.gx-switch.busy{cursor:progress}
+.gx-switch.busy i{background:transparent;box-shadow:none;border:2px solid var(--accent2);border-top-color:transparent;
+  animation:sp .7s linear infinite}
+.gx-switch.busy[aria-checked="true"] i{animation:gxSpinOn .7s linear infinite}
+@keyframes gxSpinOn{from{transform:translateX(20px) rotate(0)}to{transform:translateX(20px) rotate(360deg)}}
+.gx-switch:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+
+/* ══ the confirm sheet: details scroll, the PIN and the outcome stay in view ══ */
+.gx-sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px 4px;
+  transition:opacity .2s}
+.gx-sheet-note{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 10px}
+.gx-sheet-foot{flex:none;padding-top:12px;margin:0 -16px;padding-left:16px;padding-right:16px;
+  box-shadow:0 -14px 18px -16px rgba(0,0,0,.9)}
+.gx-sheet-foot .pinbox{margin:0;padding:16px 18px 6px}
+.gx-sheet-foot .pinbox[hidden]{display:none}
+.gx-sheet-foot .gx-msg:empty{min-height:0;margin:0}
+/* while it runs the details are settled: dimmed, still readable */
+#gx-sheet[data-mode="run"] .gx-sheet-body{opacity:.5;pointer-events:none}
+/* at the end the outcome is the whole story */
+#gx-sheet[data-mode="done"] .gx-sheet-body,#gx-sheet[data-mode="fail"] .gx-sheet-body{display:none}
+#gx-sheet[data-mode="done"] .gx-sheet-foot,#gx-sheet[data-mode="fail"] .gx-sheet-foot{box-shadow:none;padding-top:4px}
+#gx-sheet[data-mode="done"] .gx-prog{display:none}
+
+/* the steps of an action, ticked as they complete */
+.gx-prog{list-style:none;margin:2px 0 4px;padding:0}
+.gx-prog[hidden]{display:none}
+.gx-prog li{position:relative;display:flex;align-items:center;gap:12px;padding:7px 2px;font-size:13.5px;color:var(--muted)}
+.gx-prog li i{position:relative;flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);background:var(--bg)}
+.gx-prog li:not(:last-child)::before{content:'';position:absolute;left:11.25px;top:28px;height:calc(100% - 20px);width:1.5px;
+  background:var(--border)}
+.gx-prog li.ok::before{background:rgba(0,255,176,.4)}
+.gx-prog li.ok{color:var(--text)}
+.gx-prog li.ok i{border-color:var(--green);background:rgba(0,255,176,.14)}
+.gx-prog li.ok i::after{content:'';position:absolute;left:5.5px;top:2.5px;width:5px;height:9px;
+  border:solid var(--green);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.gx-prog li.now{color:#fff;font-weight:600}
+.gx-prog li.now i{border:2px solid var(--accent2);border-top-color:transparent;animation:sp .7s linear infinite}
+.gx-prog li.bad{color:var(--red);font-weight:600}
+.gx-prog li.bad i{border-color:var(--red);background:rgba(255,107,107,.16)}
+.gx-prog li.bad i::before,.gx-prog li.bad i::after{content:'';position:absolute;left:8px;top:3.5px;width:1.8px;height:10px;
+  background:var(--red);transform:rotate(45deg)}
+.gx-prog li.bad i::after{transform:rotate(-45deg)}
+
+/* the outcome: what happened, and what happens next */
+.gx-done{text-align:center;padding:8px 2px 2px}
+.gx-done[hidden]{display:none}
+.gx-done-mark{position:relative;display:block;width:56px;height:56px;margin:4px auto 0;border-radius:50%;
+  border:1.5px solid var(--green);background:radial-gradient(circle,rgba(0,255,176,.22),rgba(0,255,176,.06) 70%);
+  box-shadow:0 0 30px rgba(0,255,176,.25);animation:gxMark .4s cubic-bezier(.2,1.4,.4,1) both}
+.gx-done-mark::after{content:'';position:absolute;left:20px;top:13px;width:11px;height:20px;
+  border:solid var(--green);border-width:0 3px 3px 0;transform:rotate(45deg)}
+@keyframes gxMark{from{transform:scale(.55);opacity:0}}
+.gx-done b{display:block;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:25px;color:#fff;line-height:1.15;margin:12px 0 6px}
+.gx-done p{font-size:13px;color:var(--muted);line-height:1.6;max-width:36ch;margin:0 auto 16px}
+.gx-done-btns{display:flex;flex-direction:column;gap:8px}
+.gx-done-btns .btn{margin:0}
+.gx-done.bad .gx-done-mark{border-color:var(--red);background:radial-gradient(circle,rgba(255,107,107,.22),rgba(255,107,107,.06) 70%);
+  box-shadow:0 0 30px rgba(255,107,107,.2)}
+.gx-done.bad .gx-done-mark::before,.gx-done.bad .gx-done-mark::after{content:'';position:absolute;left:26.5px;top:15px;width:3px;height:24px;
+  border:0;background:var(--red);transform:rotate(45deg)}
+.gx-done.bad .gx-done-mark::after{transform:rotate(-45deg)}
+.gx-done.bad p{color:var(--text);word-break:break-word}
+
+/* a deal opened from an alert: marked for a moment so the eye lands on it */
+.gx-deal.flash{animation:gxFlash 1.8s ease-out 1}
+@keyframes gxFlash{0%,35%{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(0,212,255,.22)}}
+
+@media (prefers-reduced-motion:reduce){
+  .gx-switch i,.gx-done-mark,.gx-deal.flash,.nt-dot{transition:none;animation:none}
+  .gx-prog li.now i,.gx-switch.busy i{animation-duration:1.6s}
+}
