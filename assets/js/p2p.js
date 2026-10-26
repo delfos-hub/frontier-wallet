@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=f60f2704';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=f60f2704';
-import { $, buzz, go, libs, report } from './shell.js?v=f60f2704';
-import { S } from './state.js?v=f60f2704';
-import { decryptSeed } from './storage.js?v=f60f2704';
-import { dryRunSwap, sendSwap } from './tx.js?v=f60f2704';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=42cc1f90';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=42cc1f90';
+import { $, buzz, go, libs, report } from './shell.js?v=42cc1f90';
+import { S } from './state.js?v=42cc1f90';
+import { decryptSeed } from './storage.js?v=42cc1f90';
+import { dryRunSwap, sendSwap } from './tx.js?v=42cc1f90';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -424,6 +424,15 @@ async function onPin(){
   $('#p2p-pinbox').hidden = true;
   say('Signing and sending');
   try {
+    // recorded before signing: a cancel that confirms late must not read as sold
+    // (if it fails, the order is still listed and nothing is announced)
+    try {
+      const ids = PENDING.steps.map(st => st.msg && (st.msg.cancel_order || st.msg.reclaim_expired)).filter(Boolean).map(m => String(m.order_id) + '@' + Math.floor(Date.now() / 1000));
+      if (ids.length) {
+        const k = 'fw:p2p:closed', had = JSON.parse(localStorage.getItem(k) || '[]');
+        localStorage.setItem(k, JSON.stringify(had.concat(ids).slice(-300)));
+      }
+    } catch (e) {}
     const res = await sendSwap(addrOf(), PENDING.steps, mnemonic);
     mnemonic = null;
     say('Waiting for a block');
@@ -476,4 +485,4 @@ window.addEventListener('message', function (ev) {
 
 dots('p2p-pinrow', 0);
 
-export { openMarket, understand, understandBatch };
+export { P2P_CONTRACT, openMarket, understand, understandBatch };

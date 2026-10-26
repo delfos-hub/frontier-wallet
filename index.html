@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=f60f2704">
+<link rel="stylesheet" href="assets/css/app.css?v=42cc1f90">
 </head>
 <body>
 <div id="rt"></div>
@@ -623,13 +623,23 @@
 </section>
 
 <script src="vendor/telegram-web-app.js"></script>
-<script type="module" src="assets/js/app.js?v=f60f2704"></script>
-<script src="assets/js/ads.js?v=f60f2704"></script>
-<script type="module" src="assets/js/swap.js?v=f60f2704"></script>
-<script type="module" src="assets/js/activity.js?v=f60f2704"></script>
-<script type="module" src="assets/js/nft.js?v=f60f2704"></script>
-<script type="module" src="assets/js/p2p.js?v=f60f2704"></script>
-<script type="module" src="assets/js/gov.js?v=f60f2704"></script>
-<script type="module" src="assets/js/stake.js?v=f60f2704"></script>
+<!-- Wallet-wide notification card (notify.js) -->
+<div class="nt-card" id="nt-card" hidden>
+  <div class="nt-in" id="nt-in">
+    <div class="nt-top"><span class="nt-ico" id="nt-ico"></span><span id="nt-label"></span></div>
+    <b id="nt-title"></b>
+    <p id="nt-text"></p>
+    <div class="nt-btns" id="nt-btns"></div>
+  </div>
+</div>
+<script type="module" src="assets/js/app.js?v=42cc1f90"></script>
+<script src="assets/js/ads.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/swap.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/activity.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/nft.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/p2p.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/gov.js?v=42cc1f90"></script>
+<script type="module" src="assets/js/stake.js?v=42cc1f90"></script>
 </body>
 </html>
