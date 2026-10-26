@@ -187,4 +187,17 @@ function refundMessage(lockRaw) {
   return b64of(toBoc(cell));
 }
 
-export { buildLock, refundMessage, friendly, toBoc, fromBoc, Builder, Cell, RESERVE };
+// An external claim with the swap's secret (32 bytes, hex): pays the lock's
+// recipient (the seller), the tip to the relayer and the rest of the reserve
+// back to the buyer. Like the refund it is free for whoever sends it and goes
+// only where the lock's terms say, so the seller's wallet can send it itself
+// once the secret is public on Terra (audit round 3, A).
+const OP_CLAIM = 0x636c6169;
+function claimMessage(lockRaw, secretHex) {
+  if (!/^[0-9a-fA-F]{64}$/.test(String(secretHex))) throw new Error('the secret must be 32 bytes in hex');
+  const cell = new Builder().uint(2, 2).uint(0, 2).address(lockRaw).coins(0n).bit(0).bit(0)
+    .uint(OP_CLAIM, 32).uint(BigInt('0x' + secretHex), 256).end();
+  return b64of(toBoc(cell));
+}
+
+export { buildLock, refundMessage, claimMessage, friendly, toBoc, fromBoc, Builder, Cell, RESERVE };
