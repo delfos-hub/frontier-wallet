@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=dc54f0f7';
-import { GRAM_NET } from './gram-net.js?v=dc54f0f7';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=dc54f0f7';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=dc54f0f7';
-import { S } from './state.js?v=dc54f0f7';
-import { decryptSeed } from './storage.js?v=dc54f0f7';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=dc54f0f7';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=dc54f0f7';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=dc54f0f7';
-import { chime, notify } from './notify.js?v=dc54f0f7';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=a9b81a50';
+import { GRAM_NET } from './gram-net.js?v=a9b81a50';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=a9b81a50';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=a9b81a50';
+import { S } from './state.js?v=a9b81a50';
+import { decryptSeed } from './storage.js?v=a9b81a50';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=a9b81a50';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=a9b81a50';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=a9b81a50';
+import { chime, notify } from './notify.js?v=a9b81a50';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -61,6 +61,46 @@ async function api(path, body){
 
 /* ---------------- state ---------------- */
 let POLICY = null;
+let POLICY_ERR = '';
+
+/* The rules come from the offers Worker, but every number that keeps funds
+   safe is pinned in gram-net.js (audit round 3, B3): a Worker that disagrees
+   is refused, not followed, and the pinned values are the ones used. */
+function pinPolicy(p){
+  const pin = NET.policy;
+  if (!pin) throw new Error('this wallet has no swap rules for ' + NET.name);
+  if (!p) throw new Error('the swap rules could not be loaded');
+  const bad = [];
+  let tip = '';
+  try { tip = tonRaw(String(p.tip_address || '')); } catch (e) {}
+  if (tip !== tonRaw(pin.tip_address)) bad.push('fee address');
+  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec']
+    .forEach(k => { if (String(p[k]) !== String(pin[k])) bad.push(k); });
+  if (String(p.ton_code_hash || '').toUpperCase() !== String(NET.tonCodeHash).toUpperCase()) bad.push('lock code');
+  const tax = Number(p.tax_bps);
+  if (!Number.isInteger(tax) || tax < 0 || tax > pin.max_tax_bps) bad.push('burn tax');
+  if (bad.length) throw new Error('the offers service publishes swap rules that differ from this wallet\u2019s (' + bad.join(', ') + '). Not trading under them; update the wallet or try later.');
+  return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash });
+}
+function setPolicy(p){
+  try { POLICY = pinPolicy(p); POLICY_ERR = ''; }
+  catch (e) { POLICY = null; POLICY_ERR = e.message; }
+  return POLICY;
+}
+
+/* Offers this wallet signed, kept on the device (audit round 3, B1). When a
+   buyer takes one, the lock is checked against what the seller signed, never
+   against the Worker's copy of it. */
+const signedKey = () => 'fw:gram:signed:' + addrOf();
+function signedAll(){ try { return JSON.parse(localStorage.getItem(signedKey()) || '{}'); } catch (e) { return {}; } }
+function signedOffer(id){ const s = signedAll()[id]; try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function keepSigned(id, payload){
+  const all = signedAll(), t = now();
+  all[id] = payload;
+  // an offer is no use 2 days after it expired (its takes are long settled)
+  for (const k in all) { try { if (JSON.parse(all[k]).expires < t - 2 * 86400) delete all[k]; } catch (e) { delete all[k]; } }
+  try { localStorage.setItem(signedKey(), JSON.stringify(all)); } catch (e) {}
+}
 let BAL = null;            // maker's uluna on NET.chain
 let LOADING = false;
 let TAKES = [];            // my takes as last loaded
@@ -124,7 +164,8 @@ async function load(){
       me ? getJSON(NET.lcd + '/cosmos/bank/v1beta1/balances/' + me + '/by_denom?denom=uluna', 10000, 2)
          : Promise.resolve({})
     ]);
-    POLICY = book.policy || null;
+    setPolicy(book.policy);
+    if (POLICY_ERR) say('#gx-status', POLICY_ERR, true);
     BAL = BigInt((bal.balance && bal.balance.amount) || '0');
     $('#gx-bal').textContent = human(BAL, 6) + ' LUNC';
     const mine = (book.offers || []).filter(o => o.maker === me);
@@ -504,7 +545,8 @@ $('#gx-post').addEventListener('click', async function(){
       step(0);
       const signed = await signArbitrary(m, addrOf(), payload);
       step(1);
-      await api('/offers', signed);
+      const r = await api('/offers', signed);
+      if (r && r.id) keepSigned(r.id, payload);
     }, null, {
       steps: ['Signing the offer', 'Publishing it to buyers'],
       done: () => ({
@@ -662,13 +704,18 @@ function terraTimeout(n){
   return Math.min(now() + p.t_terra_sec, (n.timeout || 0) - p.terra_gap_sec - MARGIN);
 }
 async function checkTake(t){
-  if (!POLICY) POLICY = (await api('/offers')).policy || null;
-  if (!POLICY) throw new Error('the swap rules (policy) could not be loaded; not answering without them');
-  const offer = await api('/offers/' + encodeURIComponent(t.offer_id));
+  if (!POLICY) setPolicy((await api('/offers')).policy);
+  if (!POLICY) throw new Error((POLICY_ERR || 'the swap rules could not be loaded') + ' Not answering without them.');
+  // what I signed, not the Worker's copy of it (audit round 3, B1)
+  const offer = signedOffer(t.offer_id);
   const n = await readLock(NET.tonApi, t.ton_lock, NET.tonCodeHash);
-  const p = POLICY || {};
+  const p = POLICY;
   const problems = [];
-  if (n.state !== 'active') problems.push('the buyer\u2019s TON lock does not exist (yet)');
+  if (!offer || offer.maker !== addrOf() || offer.network !== NET.name)
+    problems.push('this offer was not signed on this device; answer it from the device that published it');
+  else if (BigInt(t.lunc) < BigInt(offer.min_lunc) || BigInt(t.lunc) > BigInt(offer.max_lunc))
+    problems.push('the take is outside the amounts you offered');
+  else if (n.state !== 'active') problems.push('the buyer\u2019s TON lock does not exist (yet)');
   else if (n.foreignCode) problems.push('the TON lock does not run the audited contract');
   else {
     if (n.status !== 'open') problems.push('the TON lock is ' + n.status);
@@ -879,7 +926,7 @@ async function watchTakes(){
   if (!me || !LABS || document.hidden || LOADING) return;
   let d;
   try { d = await api('/takes?maker=' + encodeURIComponent(me)); } catch (e) { return; }
-  if (!POLICY) { try { POLICY = (await api('/offers')).policy || null; } catch (e) {} }
+  if (!POLICY) { try { setPolicy((await api('/offers')).policy); } catch (e) {} }
   const waiting = (d.takes || []).filter(t => t.status === 'pending' && stillWaiting(t));
   badge(waiting.length);
   const fresh = waiting.filter(t => !SEEN.has(t.ton_lock));
@@ -996,8 +1043,10 @@ function drawBook(){
   $('#gx-book-n').textContent = list.length ? list.length + ' live' : '';
   if (!list.length) { box.innerHTML = '<div class="gx-none">No offers right now. Pull to refresh in a minute, or sell LUNC yourself on the Sell tab.</div>'; return; }
   box.innerHTML = list.map(function (o) {
+    // numbers only: the Worker's data never reaches the page as markup (audit round 3, B2)
     const st = o.maker_stats || {};
-    const rec = (st.answered || st.unanswered) ? (st.answered || 0) + ' of ' + ((st.answered || 0) + (st.unanswered || 0)) + ' answered' : 'new seller';
+    const ans = Math.max(0, Math.floor(Number(st.answered) || 0)), miss = Math.max(0, Math.floor(Number(st.unanswered) || 0));
+    const rec = (ans || miss) ? ans + ' of ' + (ans + miss) + ' answered' : 'new seller';
     return '<div class="gx-item gx-offer">' +
       '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'LUNC' }) + '</span>' +
       '<div class="gx-l"><b>1 GRAM = ' + Math.round(1e15 / Number(o.price)).toLocaleString('en-US') + ' LUNC</b>' +
@@ -1068,7 +1117,8 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (!tc.wallet) { await tc.openModal(); say('#gx-bb-msg', 'Connect your TON wallet, then press Pay again.'); return; }
     const acc = tonAccount();
     if (acc.chain !== NET.tonChain) { say('#gx-bb-msg', 'Your TON wallet is on the wrong network: switch it to ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet') + '.', true); return; }
-    const policy = POLICY || (await api('/offers')).policy;
+    const policy = POLICY || setPolicy((await api('/offers')).policy);
+    if (!policy) { say('#gx-bb-msg', POLICY_ERR || 'The swap rules could not be loaded. Try again in a minute.', true); return; }
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const hash = await sha256hex(secret);
     const terms = {
@@ -1238,8 +1288,10 @@ $('#gx-hero').addEventListener('click', onRefund);
 async function sellerLockOk(b, take){
   const q = btoa(JSON.stringify({ lock: { id: Number(take.terra_lock_id) } }));
   const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 2)).data || {};
-  const p = POLICY || {};
-  const keep = 10000n - BigInt(p.tax_bps || 0);
+  if (!POLICY) setPolicy((await api('/offers')).policy);
+  if (!POLICY) return [POLICY_ERR || 'the swap rules could not be loaded'];
+  const p = POLICY;
+  const keep = 10000n - BigInt(p.tax_bps);
   const problems = [];
   if (l.status !== 'open') problems.push('the seller\u2019s lock is ' + l.status);
   if (String(l.hash).toLowerCase() !== b.hash) problems.push('another hash');
@@ -1247,7 +1299,7 @@ async function sellerLockOk(b, take){
   if (JSON.stringify(l.asset) !== JSON.stringify({ native: { denom: 'uluna' } })) problems.push('it is not LUNC');
   if (BigInt(l.amount || 0) * keep / 10000n < BigInt(b.lunc)) problems.push('too little LUNC after the burn tax');
   if (Number(l.timeout) - now() < CLAIM_MARGIN) problems.push('it ends too soon to claim safely');
-  if (Number(l.timeout) + (p.terra_gap_sec || 900) > b.timeout) problems.push('it ends too late');
+  if (Number(l.timeout) + p.terra_gap_sec > b.timeout) problems.push('it ends too late');
   return problems;
 }
 
