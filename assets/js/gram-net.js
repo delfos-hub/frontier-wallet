@@ -25,6 +25,22 @@ const NETS = {
     tonConnectScript: 'vendor/tonconnect-ui-3.0.2.min.js',
     twaReturnUrl: '',               // e.g. https://t.me/<bot>/<app>, for coming back from a TON wallet in Telegram
     tonApi: 'https://testnet.toncenter.com/api/v2',
+    // The swap rules this wallet trades under on this network (audit round 3,
+    // B3). The offers Worker publishes its own copy in /offers; a Worker whose
+    // rules differ is refused, never followed, since these numbers decide where
+    // fees go and how much time each side has. Only the burn tax may move (a
+    // chain parameter), up to max_tax_bps. Must match the Worker's config.
+    policy: {
+      tip_address: 'kQDv5WLiT79cdIQjT9KE1BWeyomLMz7H8iRnW5_ef7LkgU7j',
+      min_tip: '5000000',
+      fee_bps: 0,
+      answer_window_sec: 900,
+      t_terra_sec: 1200,
+      terra_gap_sec: 900,
+      min_terra_left_sec: 900,
+      min_ton_left_sec: 3300,
+      max_tax_bps: 100
+    },
     tonExplorer: 'https://testnet.tonviewer.com/',
     terraExplorer: 'https://finder.terraclassic.community/rebel-2/tx/'
   }
