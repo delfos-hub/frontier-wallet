@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=a9b81a50';
-import { GRAM_NET } from './gram-net.js?v=a9b81a50';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=a9b81a50';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=a9b81a50';
-import { S } from './state.js?v=a9b81a50';
-import { decryptSeed } from './storage.js?v=a9b81a50';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=a9b81a50';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=a9b81a50';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=a9b81a50';
-import { chime, notify } from './notify.js?v=a9b81a50';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=8493f07e';
+import { GRAM_NET } from './gram-net.js?v=8493f07e';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=8493f07e';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=8493f07e';
+import { S } from './state.js?v=8493f07e';
+import { decryptSeed } from './storage.js?v=8493f07e';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=8493f07e';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=8493f07e';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=8493f07e';
+import { chime, notify } from './notify.js?v=8493f07e';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -55,7 +55,7 @@ async function api(path, body){
   });
   let d = {};
   try { d = await r.json(); } catch (e) {}
-  if (!r.ok) throw new Error(d.error || ('offers service answered ' + r.status));
+  if (!r.ok) { const e = new Error(d.error || ('offers service answered ' + r.status)); e.status = r.status; throw e; }
   return d;
 }
 
@@ -78,7 +78,7 @@ function pinPolicy(p){
     .forEach(k => { if (String(p[k]) !== String(pin[k])) bad.push(k); });
   if (String(p.ton_code_hash || '').toUpperCase() !== String(NET.tonCodeHash).toUpperCase()) bad.push('lock code');
   const tax = Number(p.tax_bps);
-  if (!Number.isInteger(tax) || tax < 0 || tax > pin.max_tax_bps) bad.push('burn tax');
+  if (!Number.isInteger(tax) || tax < pin.min_tax_bps || tax > pin.max_tax_bps) bad.push('burn tax');
   if (bad.length) throw new Error('the offers service publishes swap rules that differ from this wallet\u2019s (' + bad.join(', ') + '). Not trading under them; update the wallet or try later.');
   return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash });
 }
@@ -1119,6 +1119,14 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (acc.chain !== NET.tonChain) { say('#gx-bb-msg', 'Your TON wallet is on the wrong network: switch it to ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet') + '.', true); return; }
     const policy = POLICY || setPolicy((await api('/offers')).policy);
     if (!policy) { say('#gx-bb-msg', POLICY_ERR || 'The swap rules could not be loaded. Try again in a minute.', true); return; }
+    // the offer as it stands now, not as the book showed it (audit round 3, D2)
+    let fresh;
+    try { fresh = await api('/offers/' + encodeURIComponent(q.o.id)); }
+    catch (e) { say('#gx-bb-msg', 'This offer is no longer available. Pick another one.', true); load(); return; }
+    if (fresh.price !== q.o.price || fresh.maker_ton !== q.o.maker_ton) { say('#gx-bb-msg', 'The seller changed this offer. Check it again before paying.', true); load(); return; }
+    if (BigInt(fresh.remaining_lunc) < q.lunc || BigInt(fresh.min_lunc) > q.lunc || Number(fresh.expires) < now() + policy.answer_window_sec) {
+      say('#gx-bb-msg', 'This offer cannot take ' + human(q.lunc, 6) + ' LUNC any more (taken by someone else, or ending soon).', true); load(); return;
+    }
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const hash = await sha256hex(secret);
     const terms = {
@@ -1134,7 +1142,11 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     saveBuy(id, { offerId: q.o.id, lunc: String(q.lunc), gram: String(q.gram), tip: String(q.tip), secret: toHex(secret), hash: hash,
                   timeout: terms.timeout, address: lock.address, stage: 'paying', created: now() });
     say('#gx-bb-msg', 'Confirm the payment in your TON wallet');
-    await tc.sendTransaction({ validUntil: now() + 360, network: NET.tonChain,
+    // after validUntil the payment can no longer land, so the chain gives a
+    // sure answer then even if the wallet's answer is lost (audit round 3, D1)
+    const validUntil = now() + 360;
+    saveBuy(id, { validUntil: validUntil });
+    await tc.sendTransaction({ validUntil: validUntil, network: NET.tonChain,
       messages: [{ address: lock.address, amount: String(lock.value), stateInit: lock.stateInit, payload: lock.payload }] });
     saveBuy(id, { stage: 'sent' });
     $('#gx-buybox').hidden = true; BUYING = null;
@@ -1144,9 +1156,17 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     watchBuys();
     load();
   } catch (e) {
-    if (id && buys()[id] && buys()[id].stage === 'paying') saveBuy(id, { stage: 'cancelled' });
     const m = String(e && e.message || e);
-    say('#gx-bb-msg', /reject|declin|cancel/i.test(m) ? 'Payment cancelled in the TON wallet. Nothing was sent.' : m, true);
+    const rejected = /reject|declin|cancel/i.test(m) || (e && /UserRejects/.test(e.name || ''));
+    if (id && buys()[id] && buys()[id].stage === 'paying') {
+      // refused in the TON wallet: nothing was signed. Any other failure (a
+      // lost answer, the app closed meanwhile) is settled by reading the
+      // chain: the buy stays 'paying' and watchBuys looks the lock up.
+      if (rejected) saveBuy(id, { stage: 'cancelled' });
+      else { drawBuys(); watchBuys(); }
+    }
+    say('#gx-bb-msg', rejected ? 'Payment cancelled in the TON wallet. Nothing was sent.'
+      : 'No clear answer from the TON wallet. This wallet is checking on TON whether the payment went through.', !rejected);
   } finally { btn.disabled = false; }
 });
 
@@ -1161,7 +1181,7 @@ const STEP_NAMES = ['You lock GRAM', 'Seller locks LUNC', 'You receive LUNC'];
 const LIVE = ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'];
 function buyLine(b){
   const late = now() >= b.timeout;
-  if (b.stage === 'paying') return 'Confirm the payment in your TON wallet.';
+  if (b.stage === 'paying') return (b.validUntil && now() > b.validUntil) ? 'Checking on TON whether your payment went through.' : 'Confirm the payment in your TON wallet. If you already did, this wallet finds it on TON by itself.';
   if (b.stage === 'sent') return 'Your GRAM is on its way into the lock on TON. Usually under a minute.';
   if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + ').';
   if (b.stage === 'claiming') return 'The seller locked your LUNC and this wallet checked it \u2713. The relayer is claiming it for you now.';
@@ -1307,24 +1327,39 @@ let WATCHING_BUYS = false;
 async function watchBuys(){
   if (WATCHING_BUYS || document.hidden) return;
   const all = buys();
-  const live = Object.entries(all).filter(([, b]) => ['sent', 'announced', 'claiming', 'refunding', 'unanswered'].includes(b.stage));
+  const live = Object.entries(all).filter(([, b]) => ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'].includes(b.stage));
   if (!live.length) return;
   WATCHING_BUYS = true;
   try {
     for (const [id, b] of live) {
       try {
-        if (b.stage === 'sent') {
+        if (b.stage === 'paying' || b.stage === 'sent') {
           const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
           if (n.state === 'active' && n.status === 'open') {
+            // paid: announce the take, and say so plainly if the Worker refuses it
+            let refused = null;
             try {
               await api('/takes', { offerId: b.offerId, tonLock: id, takerTerra: addrOf(), lunc: b.lunc });
             } catch (e) {
               // announced already (by us earlier, or by anyone on our behalf): fine if the record is ours
-              const t = await api('/takes/' + encodeURIComponent(id));
-              if (t.taker_terra !== addrOf() || t.lunc !== b.lunc) throw e;
+              let t = null;
+              try { t = await api('/takes/' + encodeURIComponent(id)); } catch (e2) {}
+              if (!t || t.taker_terra !== addrOf() || t.lunc !== b.lunc) {
+                if (!e.status || e.status >= 500 || e.status === 429) throw e;     // not an answer yet: next round
+                refused = e.message;
+              }
             }
-            saveBuy(id, { stage: 'announced' });
-          } else if (now() - b.created > 900) saveBuy(id, { stage: 'cancelled' });   // never paid: nothing locked
+            if (refused) {
+              saveBuy(id, { stage: 'unanswered', problem: 'The offers service refused this purchase: ' + refused +
+                '. Nothing reached the seller. Your GRAM comes back with "Get my GRAM back" from ' + new Date(b.timeout * 1000).toLocaleString() + '.' });
+              notify({ key: 'gram:refused:' + id, kind: 'warn', icon: 'GRAM', label: 'Buy \u00b7 GRAM', title: 'Purchase not accepted',
+                text: 'Your GRAM is locked until ' + new Date(b.timeout * 1000).toLocaleString() + ', then you can take it back.' });
+            } else saveBuy(id, { stage: 'announced', problem: null });
+          } else if (n.state === 'active' && n.status !== 'open') {
+            saveBuy(id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
+          } else if (now() > (b.validUntil || b.created + 360) + 300) {
+            saveBuy(id, { stage: 'cancelled' });   // the payment can no longer land: nothing was locked
+          }                                          // else: it may still land, read again next round
         } else if (b.stage === 'announced') {
           const t = await api('/takes/' + encodeURIComponent(id));
           if (t.status === 'locked' && t.terra_lock_id) {

@@ -23,13 +23,16 @@ const NETS = {
     // Buy tab lets it be edited (stored on the device)
     relayer: 'https://f5ac2e11d4afd5.lhr.life',
     tonConnectScript: 'vendor/tonconnect-ui-3.0.2.min.js',
-    twaReturnUrl: '',               // e.g. https://t.me/<bot>/<app>, for coming back from a TON wallet in Telegram
+    // back to the wallet from the TON wallet after paying (audit round 3, D2)
+    twaReturnUrl: 'https://t.me/Frontier_WalletBot/gramtest',
     tonApi: 'https://testnet.toncenter.com/api/v2',
     // The swap rules this wallet trades under on this network (audit round 3,
     // B3). The offers Worker publishes its own copy in /offers; a Worker whose
     // rules differ is refused, never followed, since these numbers decide where
     // fees go and how much time each side has. Only the burn tax may move (a
-    // chain parameter), up to max_tax_bps. Must match the Worker's config.
+    // chain parameter), between min_tax_bps and max_tax_bps: a floor too, or a
+    // Worker saying 0 would let a seller lock too little LUNC for the buyer to
+    // receive after the burn tax (review of #20). Must match the Worker's config.
     policy: {
       tip_address: 'kQDv5WLiT79cdIQjT9KE1BWeyomLMz7H8iRnW5_ef7LkgU7j',
       min_tip: '5000000',
@@ -39,6 +42,7 @@ const NETS = {
       terra_gap_sec: 900,
       min_terra_left_sec: 900,
       min_ton_left_sec: 3300,
+      min_tax_bps: 50,
       max_tax_bps: 100
     },
     tonExplorer: 'https://testnet.tonviewer.com/',
