@@ -45,7 +45,8 @@ const NETS = {
       min_tax_bps: 50,
       max_tax_bps: 100,
       min_deal: null,                 // nanoGRAM per deal; null = no limit
-      max_deal: null
+      max_deal: null,
+      max_open_takes_per_taker: 3     // buys one address may have waiting for an answer
     },
     tonExplorer: 'https://testnet.tonviewer.com/',
     terraExplorer: 'https://finder.terraclassic.community/rebel-2/tx/'
@@ -86,7 +87,8 @@ NETS.mainnet = {
     min_tax_bps: null,                // REPLACE: the chain's burn tax at deploy, and a ceiling
     max_tax_bps: null,
     min_deal: '5000000000',           // 5 GRAM
-    max_deal: '500000000000'          // 500 GRAM
+    max_deal: '500000000000',         // 500 GRAM
+    max_open_takes_per_taker: 3
   }
 };
 

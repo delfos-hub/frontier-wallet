@@ -27,7 +27,7 @@ function lift(s, header){
 const pinPolicy = new Function('NET', 'tonRaw', lift(src, 'function pinPolicy(p){') + '\nreturn pinPolicy;')(NET, tonRaw);
 
 // what the testnet Worker publishes today (GET /offers, 26 Oct 2026)
-const WORKER = { min_deal: null, max_deal: null, tip_address: 'kQDv5WLiT79cdIQjT9KE1BWeyomLMz7H8iRnW5_ef7LkgU7j', min_tip: '5000000', fee_bps: 0,
+const WORKER = { min_deal: null, max_deal: null, max_open_takes_per_taker: 3, tip_address: 'kQDv5WLiT79cdIQjT9KE1BWeyomLMz7H8iRnW5_ef7LkgU7j', min_tip: '5000000', fee_bps: 0,
   ton_code_hash: '39D4C6CCA7AEC5DBEA9FD5BBC5B28CD0BADB04B8E99822FC241075B9FC58172C', min_ton_left_sec: 3300,
   terra_gap_sec: 900, t_terra_sec: 1200, min_terra_left_sec: 900, answer_window_sec: 900, tax_bps: 50 };
 const refused = (over, why) => {
@@ -55,6 +55,7 @@ const odd = pinPolicy(Object.assign({}, WORKER, { extra: 1 }));
 ok('the pinned values are the ones used', odd.tip_address === NET.policy.tip_address && odd.min_tip === NET.policy.min_tip && !('extra' in odd));
 
 ok('different deal limits are refused', refused({ min_deal: '1' }, 'min_deal') && refused({ max_deal: '1' }, 'max_deal'));
+ok('a different per-buyer limit is refused', refused({ max_open_takes_per_taker: 10 }, 'max_open_takes_per_taker'));
 ok('a Worker without deal limits matches a network without them', !!pinPolicy(Object.assign({}, WORKER, { min_deal: undefined, max_deal: undefined })));
 
 group('deal limits in the forms');
@@ -66,6 +67,10 @@ ok('mainnet: 5 GRAM minimum, 500 GRAM maximum', main.dealLimits().min === 500000
 ok('a 4.99 GRAM deal is refused, 5 is fine', /at least 5 GRAM/.test(main.dealErr(4990000000n)) && main.dealErr(5000000000n) === '');
 ok('a 500.01 GRAM deal is refused', /at most 500 GRAM/.test(main.dealErr(500010000000n)));
 ok('testnet: no limits', helpers(NET, null, human9).dealErr(1n) === '');
+const waiting = stages => new Function('NET', 'POLICY', 'buys',
+  lift(src, 'function waitingBuys(){') + lift(src, 'function openErr(){') + '\nreturn openErr;')(NET, null, () => Object.fromEntries(stages.map((st, i) => [i, { stage: st }])));
+ok('3 buys waiting for an answer: a 4th is not paid', /3 buys waiting/.test(waiting(['announced', 'sent', 'paying'])()));
+ok('2 waiting (others finished or called off): a 3rd can be paid', waiting(['announced', 'sent', 'claiming', 'done', 'cancelled'])() === '');
 
 group('the mainnet entry');
 const m = NETS.mainnet.policy;

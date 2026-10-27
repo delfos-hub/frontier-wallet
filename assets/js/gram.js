@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=ae92d5ee';
-import { GRAM_NET } from './gram-net.js?v=ae92d5ee';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=ae92d5ee';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=ae92d5ee';
-import { S } from './state.js?v=ae92d5ee';
-import { decryptSeed } from './storage.js?v=ae92d5ee';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=ae92d5ee';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=ae92d5ee';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=ae92d5ee';
-import { chime, notify } from './notify.js?v=ae92d5ee';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d8d7c593';
+import { GRAM_NET } from './gram-net.js?v=d8d7c593';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d8d7c593';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=d8d7c593';
+import { S } from './state.js?v=d8d7c593';
+import { decryptSeed } from './storage.js?v=d8d7c593';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=d8d7c593';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d8d7c593';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d8d7c593';
+import { chime, notify } from './notify.js?v=d8d7c593';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -74,7 +74,7 @@ function pinPolicy(p){
   let tip = '';
   try { tip = tonRaw(String(p.tip_address || '')); } catch (e) {}
   if (tip !== tonRaw(pin.tip_address)) bad.push('fee address');
-  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec', 'min_deal', 'max_deal']
+  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec', 'min_deal', 'max_deal', 'max_open_takes_per_taker']
     .forEach(k => { if (String(p[k] ?? null) !== String(pin[k] ?? null)) bad.push(k); });
   if (String(p.ton_code_hash || '').toUpperCase() !== String(NET.tonCodeHash).toUpperCase()) bad.push('lock code');
   const tax = Number(p.tax_bps);
@@ -86,6 +86,18 @@ function pinPolicy(p){
 function dealLimits(){
   const p = POLICY || NET.policy || {};
   return { min: p.min_deal ? BigInt(p.min_deal) : 0n, max: p.max_deal ? BigInt(p.max_deal) : 0n };
+}
+// Buys of this wallet still waiting for a seller's answer. The Worker takes
+// at most max_open_takes_per_taker of them per address, and it can only say
+// so after the GRAM is locked: so the wallet does not pay for one more
+// (review of widgets#44).
+function waitingBuys(){
+  return Object.values(buys()).filter(b => ['paying', 'sent', 'announced'].includes(b.stage)).length;
+}
+function openErr(){
+  const max = Number((POLICY || NET.policy || {}).max_open_takes_per_taker) || 0;
+  const n = waitingBuys();
+  return max && n >= max ? 'You have ' + n + ' buys waiting for a seller\u2019s answer, the most allowed at once. Pay for the next one when one of them is answered.' : '';
 }
 function dealErr(gram){
   const lim = dealLimits();
@@ -1114,7 +1126,7 @@ function buyTerms(){
   const err = !(lunc > 0n) ? 'Enter how much LUNC you want.'
     : lunc < BigInt(o.min_lunc) ? 'This seller sells from ' + human(o.min_lunc, 6) + ' LUNC.'
     : lunc > BigInt(o.max_lunc) ? 'This seller has ' + human(o.max_lunc, 6) + ' LUNC available.'
-    : dealErr(gram);
+    : dealErr(gram) || openErr();
   return { o: o, lunc: lunc, gram: gram, tip: tip, err: err };
 }
 function quote(){
