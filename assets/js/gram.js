@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=2334efcc';
-import { GRAM_NET } from './gram-net.js?v=2334efcc';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=2334efcc';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=2334efcc';
-import { S } from './state.js?v=2334efcc';
-import { decryptSeed } from './storage.js?v=2334efcc';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=2334efcc';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=2334efcc';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=2334efcc';
-import { chime, notify } from './notify.js?v=2334efcc';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=ae92d5ee';
+import { GRAM_NET } from './gram-net.js?v=ae92d5ee';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=ae92d5ee';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=ae92d5ee';
+import { S } from './state.js?v=ae92d5ee';
+import { decryptSeed } from './storage.js?v=ae92d5ee';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=ae92d5ee';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=ae92d5ee';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=ae92d5ee';
+import { chime, notify } from './notify.js?v=ae92d5ee';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1151,7 +1151,12 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     // the offer as it stands now, not as the book showed it (audit round 3, D2)
     let fresh;
     try { fresh = await api('/offers/' + encodeURIComponent(q.o.id)); }
-    catch (e) { say('#gx-bb-msg', 'This offer is no longer available. Pick another one.', true); load(); return; }
+    catch (e) {
+      if (e.status === 404) { say('#gx-bb-msg', 'This offer is no longer available. Pick another one.', true); load(); }
+      else say('#gx-bb-msg', 'The offer could not be checked just now. Try again in a moment.', true);
+      return;
+    }
+    if (!fresh.live) { say('#gx-bb-msg', 'This offer was cancelled or is no longer shown to buyers. Pick another one.', true); load(); return; }
     if (fresh.price !== q.o.price || fresh.maker_ton !== q.o.maker_ton) { say('#gx-bb-msg', 'The seller changed this offer. Check it again before paying.', true); load(); return; }
     if (BigInt(fresh.remaining_lunc) < q.lunc || BigInt(fresh.min_lunc) > q.lunc || Number(fresh.expires) < now() + policy.answer_window_sec) {
       say('#gx-bb-msg', 'This offer cannot take ' + human(q.lunc, 6) + ' LUNC any more (taken by someone else, or ending soon).', true); load(); return;
@@ -1354,15 +1359,24 @@ async function sellerLockOk(b, take){
 }
 
 let WATCHING_BUYS = false;
+const REFUSAL_FINAL_SEC = 120;          // a take the Worker keeps refusing this long is refused
 async function watchBuys(){
   if (WATCHING_BUYS || document.hidden) return;
   const all = buys();
-  const live = Object.entries(all).filter(([, b]) => ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'].includes(b.stage));
+  // a buy called off by the phone's clock stays watched for an hour: the TON
+  // wallet checks validUntil against chain time, which may be behind (review of #21)
+  const live = Object.entries(all).filter(([, b]) => ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'].includes(b.stage)
+    || (b.stage === 'cancelled' && b.validUntil && now() < b.validUntil + 3600));
   if (!live.length) return;
   WATCHING_BUYS = true;
   try {
     for (const [id, b] of live) {
       try {
+        if (b.stage === 'cancelled') {
+          const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
+          if (n.state === 'active' && n.status === 'open') saveBuy(id, { stage: 'sent', problem: null });   // it landed after all
+          continue;
+        }
         if (b.stage === 'paying' || b.stage === 'sent') {
           const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
           if (n.state === 'active' && n.status === 'open') {
@@ -1379,12 +1393,20 @@ async function watchBuys(){
                 refused = e.message;
               }
             }
+            // The Worker reads TON on its own and may not see the lock yet
+            // ("TON lock is uninit"): a refusal counts only once it has
+            // lasted REFUSAL_FINAL_SEC (review of #21).
+            if (refused && (!b.refusedAt || now() - b.refusedAt < REFUSAL_FINAL_SEC)) {
+              if (!b.refusedAt) saveBuy(id, { refusedAt: now() });
+              refused = null;
+              continue;
+            }
             if (refused) {
               saveBuy(id, { stage: 'unanswered', problem: 'The offers service refused this purchase: ' + refused +
                 '. Nothing reached the seller. Your GRAM comes back with "Get my GRAM back" from ' + new Date(b.timeout * 1000).toLocaleString() + '.' });
               notify({ key: 'gram:refused:' + id, kind: 'warn', icon: 'GRAM', label: 'Buy \u00b7 GRAM', title: 'Purchase not accepted',
                 text: 'Your GRAM is locked until ' + new Date(b.timeout * 1000).toLocaleString() + ', then you can take it back.' });
-            } else saveBuy(id, { stage: 'announced', problem: null });
+            } else saveBuy(id, { stage: 'announced', problem: null, refusedAt: null });
           } else if (n.state === 'active' && n.status !== 'open') {
             saveBuy(id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
           } else if (now() > (b.validUntil || b.created + 360) + 300) {

@@ -28,11 +28,11 @@ async function run(buy, { lock, takes, takeRecord, clock = NOW }){
   const store = { [ID]: Object.assign({ offerId: 'o1', lunc: '100000000', gram: '1', timeout: NOW + 30 * 3600, created: NOW - 60 }, buy) };
   const notes = [];
   const env = {
-    WATCHING_BUYS: false, document: { hidden: false },
+    WATCHING_BUYS: false, document: { hidden: false }, REFUSAL_FINAL_SEC: 120,
     buys: () => store, saveBuy: (id, v) => { store[id] = Object.assign({}, store[id], v); },
     readLock: async () => lock, now: () => clock, addrOf: () => ME,
     api: async (p) => {
-      if (p === '/takes') { if (takes instanceof Error) throw takes; return {}; }
+      if (p === '/takes') { if (takes instanceof Error) throw takes; return {}; }   // takes undefined = accepted
       if (takeRecord instanceof Error) throw takeRecord;
       return takeRecord;
     },
@@ -58,15 +58,30 @@ r = await run({ stage: 'sent', validUntil: NOW + 300 }, { lock: NONE });
 ok('"sent" with the lock not visible yet is not called off early', r.b.stage === 'sent', r.b.stage);
 
 group('a take the offers service refuses is shown, not swallowed (D2)');
-r = await run({ stage: 'sent' }, { lock: OPEN, takes: httpError(400, 'the offer has expired'), takeRecord: httpError(404, 'not found') });
-ok('the buy says it was refused, with the reason', r.b.stage === 'unanswered' && /refused this purchase: the offer has expired/.test(r.b.problem || ''), r.b.problem);
+const REFUSED = { lock: OPEN, takes: httpError(400, 'the offer has expired'), takeRecord: httpError(404, 'not found') };
+r = await run({ stage: 'sent' }, REFUSED);
+ok('a first refusal is not final: the Worker may not see the lock yet', r.b.stage === 'sent' && r.b.refusedAt === NOW, r.b.stage);
+r = await run({ stage: 'sent', refusedAt: NOW - 60 }, REFUSED);
+ok('still refused a minute later: still retried', r.b.stage === 'sent', r.b.stage);
+r = await run({ stage: 'sent', refusedAt: NOW - 121 }, REFUSED);
+ok('refused for 2 minutes: the buy says so, with the reason', r.b.stage === 'unanswered' && /refused this purchase: the offer has expired/.test(r.b.problem || ''), r.b.problem);
 ok('and when the GRAM can come back', /Get my GRAM back/.test(r.b.problem || ''));
 ok('the buyer is alerted', r.notes.some(n => /not accepted/.test(n.title)));
+r = await run({ stage: 'sent', refusedAt: NOW - 30 }, { lock: OPEN, takes: undefined });
+ok('the Worker\u2019s TON read catching up: announced, and the refusal forgotten', r.b.stage === 'announced' && r.b.refusedAt === null, r.b.stage);
+r = await run({ stage: 'sent' }, { lock: OPEN, takes: httpError(400, 'TON lock is uninit'), takeRecord: httpError(404, 'not found') });
+ok('Pablo\u2019s case: "TON lock is uninit" right after paying is retried, not final', r.b.stage === 'sent', r.b.stage);
 r = await run({ stage: 'sent' }, { lock: OPEN, takes: httpError(503, 'busy'), takeRecord: httpError(404, 'not found') });
-ok('a Worker that is down is retried, not taken as a refusal', r.b.stage === 'sent', r.b.stage);
+ok('a Worker that is down is retried, not taken as a refusal', r.b.stage === 'sent' && !r.b.refusedAt, r.b.stage);
 r = await run({ stage: 'sent' }, { lock: OPEN, takes: httpError(409, 'already announced'), takeRecord: { taker_terra: ME, lunc: '100000000' } });
 ok('a take already announced for this buyer counts as announced', r.b.stage === 'announced', r.b.stage);
-r = await run({ stage: 'sent' }, { lock: OPEN, takes: httpError(409, 'already announced'), takeRecord: { taker_terra: 'terra1other', lunc: '100000000' } });
-ok('a take recorded for someone else is a refusal for this buyer', r.b.stage === 'unanswered', r.b.stage);
+r = await run({ stage: 'sent', refusedAt: NOW - 200 }, { lock: OPEN, takes: httpError(409, 'already announced'), takeRecord: { taker_terra: 'terra1other', lunc: '100000000' } });
+ok('a take recorded for someone else is, in the end, a refusal for this buyer', r.b.stage === 'unanswered', r.b.stage);
+
+group('a buy called off by the phone clock is read once more (review of #21)');
+r = await run({ stage: 'cancelled', validUntil: NOW - 600 }, { lock: OPEN });
+ok('the payment landed after all (chain time behind the phone): back to "sent"', r.b.stage === 'sent', r.b.stage);
+r = await run({ stage: 'cancelled', validUntil: NOW - 600 }, { lock: NONE });
+ok('nothing landed: stays cancelled', r.b.stage === 'cancelled', r.b.stage);
 
 report();
