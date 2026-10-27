@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=0ac766b9';
-import { GRAM_NET } from './gram-net.js?v=0ac766b9';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=0ac766b9';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=0ac766b9';
-import { S } from './state.js?v=0ac766b9';
-import { decryptSeed } from './storage.js?v=0ac766b9';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=0ac766b9';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=0ac766b9';
-import { buildLock, refundMessage } from './gram-tonlock.js?v=0ac766b9';
-import { chime, notify } from './notify.js?v=0ac766b9';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=dc54f0f7';
+import { GRAM_NET } from './gram-net.js?v=dc54f0f7';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=dc54f0f7';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=dc54f0f7';
+import { S } from './state.js?v=dc54f0f7';
+import { decryptSeed } from './storage.js?v=dc54f0f7';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=dc54f0f7';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=dc54f0f7';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=dc54f0f7';
+import { chime, notify } from './notify.js?v=dc54f0f7';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -172,16 +172,50 @@ function finals(){ try { return JSON.parse(localStorage.getItem(finalKey()) || '
 function setFinal(ton, v){ const f = finals(); f[ton] = v; try { localStorage.setItem(finalKey(), JSON.stringify(f)); } catch (e) {} }
 const OPEN_SEEN = new Set();          // locked deals seen still open in this session
 
-async function terraLockStatus(id){
+async function terraLockRead(id){
   const q = btoa(JSON.stringify({ lock: { id: Number(id) } }));
   const d = await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 1);
-  return d.data && d.data.status;
+  return d.data || null;
+}
+
+/* ---------------- the seller's GRAM (audit round 3, A) ----------------
+   The buyer's claim of the LUNC makes the secret public on Terra. From then
+   on anyone can release the GRAM to the seller with a free external message,
+   but someone has to, before the TON lock's timeout (at least ~24 h later).
+   The relayer does it for every swap it knows about; so that it knows, the
+   wallet registers each answered deal with it (/watch). If the relayer is
+   down, or the buyer claimed the LUNC without it, the seller's own wallet
+   sends the claim: by itself whenever the wallet is open, and with a button.
+   A claim can only pay the lock's own recipient, so sending it twice, or
+   together with the relayer, is harmless: the second one is refused for
+   free. */
+const RELEASE = {};                    // ton_lock -> { secret, sentAt, error }
+async function relayerWatch(tonLock, terraLockId){
+  const url = relayerUrl();
+  if (!url) return false;
+  try {
+    const r = await fetch(url + '/watch', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ terraLockId: Number(terraLockId), tonLock: tonLock }) });
+    return r.ok;
+  } catch (e) { return false; }
+}
+const WATCH_TRIED = {};                // ton_lock -> last attempt, so a down relayer is not asked every 15 s
+async function watchDeal(t, terraLockId){
+  if (now() - (WATCH_TRIED[t.ton_lock] || 0) < 300) return;
+  WATCH_TRIED[t.ton_lock] = now();
+  if (await relayerWatch(t.ton_lock, terraLockId)) remember(t.ton_lock, { watched: true });
+}
+async function sendGramClaim(t, secret){
+  const r = await fetch(NET.tonApi + '/sendBoc', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ boc: claimMessage(tonRaw(t.ton_lock), String(secret)) }) });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!j.ok) throw new Error('TON refused the claim: ' + (j.error || r.status));
 }
 
 function windowLeftOf(t){ return t.created + (POLICY ? POLICY.answer_window_sec : 900) - now(); }
 
 function stepper(done){
-  const names = ['Buyer locked GRAM', 'You lock LUNC', 'Buyer claims'];
+  const names = ['Buyer locked GRAM', 'You lock LUNC', 'Buyer claims', 'GRAM to you'];
   return '<div class="gx-steps">' + names.map((n, k) =>
     '<span class="' + (k < done ? 'ok' : k === done ? 'now' : '') + '">' + n + '</span>').join('') + '</div>';
 }
@@ -220,6 +254,15 @@ function drawTakes(list, stats){
         '<button class="btn solid gx-answer" type="button" data-ton="' + esc(t.ton_lock) + '">' + (mine.id ? 'Report' : 'Answer') + '</button>' +
       '</div>';
     }
+    const rel = RELEASE[t.ton_lock];
+    if (rel) {
+      return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
+        '<div class="gx-l">' + head + '<span>' + (rel.error
+          ? 'The buyer claimed the LUNC; releasing your GRAM did not go through yet (' + esc(rel.error) + ')'
+          : 'The buyer claimed the LUNC \u00b7 releasing your GRAM to your TON address') + '</span>' + stepper(3) + '</div>' +
+        '<button class="btn solid gx-answer gx-release" type="button" data-ton="' + esc(t.ton_lock) + '">Release GRAM</button>' +
+      '</div>';
+    }
     return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
       '<div class="gx-l">' + head + '<span>Your LUNC is locked \u00b7 waiting for the buyer to claim</span>' + stepper(2) + '</div>' +
       '<span class="gx-tag pending">live</span>' +
@@ -229,7 +272,9 @@ function drawTakes(list, stats){
   checkFinished(active.filter(t => t.status === 'locked' && t.terra_lock_id));
 }
 
-// read the Terra side of answered deals; a finished one leaves the list
+// Answered deals, read from both chains. The Terra side tells whether the
+// buyer took the LUNC; the deal is over only when the TON side is: the GRAM
+// paid to me (claimed), or nothing more to do (refunded on Terra).
 let CHECKING = false;
 async function checkFinished(list){
   if (CHECKING || !list.length) return;
@@ -237,21 +282,47 @@ async function checkFinished(list){
   let changed = false;
   try {
     for (const t of list) {
-      let st;
-      try { st = await terraLockStatus(t.terra_lock_id); } catch (e) { continue; }
+      if (!mineFor(t.ton_lock).watched) await watchDeal(t, t.terra_lock_id);
+      let tl;
+      try { tl = await terraLockRead(t.terra_lock_id); } catch (e) { continue; }
+      const st = tl && tl.status;
       if (st === 'open') { OPEN_SEEN.add(t.ton_lock); continue; }
-      if (st === 'claimed' || st === 'refunded') {
-        setFinal(t.ton_lock, st);
+      if (st === 'refunded') {
+        setFinal(t.ton_lock, 'refunded');
         changed = true;
-        if (OPEN_SEEN.has(t.ton_lock)) {
-          notify(st === 'claimed'
-            ? { key: 'gram:done:' + t.ton_lock, kind: 'success', icon: 'GRAM', label: 'Deal done \u00b7 GRAM',
-                title: 'Sold ' + human(t.lunc, 6) + ' LUNC',
-                text: 'The buyer claimed it, and ' + human(t.gram, 9) + ' GRAM is on its way to your TON address.' }
-            : { key: 'gram:back:' + t.ton_lock, kind: 'info', icon: 'LUNC', label: 'Deal ended \u00b7 GRAM',
-                title: 'Your LUNC came back',
-                text: 'The buyer did not claim in time, so the ' + human(t.lunc, 6) + ' LUNC locked for them is back on your address.' });
+        if (OPEN_SEEN.has(t.ton_lock)) notify({ key: 'gram:back:' + t.ton_lock, kind: 'info', icon: 'LUNC', label: 'Deal ended \u00b7 GRAM',
+          title: 'Your LUNC came back',
+          text: 'The buyer did not claim in time, so the ' + human(t.lunc, 6) + ' LUNC locked for them is back on your address.' });
+        continue;
+      }
+      if (st !== 'claimed') continue;
+      // the LUNC is the buyer's: now the GRAM must reach me
+      let n;
+      try { n = await readLock(NET.tonApi, t.ton_lock, NET.tonCodeHash); } catch (e) { continue; }
+      const was = RELEASE[t.ton_lock];
+      if (n.status === 'claimed') {
+        setFinal(t.ton_lock, 'claimed');
+        delete RELEASE[t.ton_lock];
+        changed = true;
+        if (OPEN_SEEN.has(t.ton_lock) || was) notify({ key: 'gram:done:' + t.ton_lock, kind: 'success', icon: 'GRAM', label: 'Deal done \u00b7 GRAM',
+          title: 'Sold ' + human(t.lunc, 6) + ' LUNC',
+          text: 'The buyer claimed the LUNC and ' + human(t.gram, 9) + ' GRAM was paid to your TON address.' });
+      } else if (n.status === 'open' && now() < n.timeout) {
+        const rel = RELEASE[t.ton_lock] = Object.assign({ sentAt: 0 }, was, { secret: tl.secret || (was && was.secret) });
+        if (!was) changed = true;
+        if (rel.secret && now() - rel.sentAt > 90) {
+          try { await sendGramClaim(t, rel.secret); rel.sentAt = now(); if (rel.error) { rel.error = ''; changed = true; } }
+          catch (e) { if (rel.error !== e.message) { rel.error = e.message; changed = true; } }
         }
+      } else {
+        // refunded to the buyer, or past its timeout: the GRAM was not claimed in time
+        setFinal(t.ton_lock, 'lost');
+        delete RELEASE[t.ton_lock];
+        changed = true;
+        notify({ key: 'gram:lost:' + t.ton_lock, kind: 'warn', icon: 'GRAM', label: 'Deal \u00b7 GRAM',
+          title: 'The GRAM was not released in time',
+          text: 'The buyer claimed ' + human(t.lunc, 6) + ' LUNC, but the TON lock ' + (n.status === 'refunded' ? 'was refunded' : 'expired') +
+            ' before the GRAM was claimed for you. Contact the Delfos team with this deal.' });
       }
     }
   } finally { CHECKING = false; }
@@ -626,6 +697,8 @@ async function report(t, id, mnemonic){
   const signed = await signArbitrary(mnemonic, addrOf(), payload);
   await api('/takes/' + encodeURIComponent(t.ton_lock) + '/locked', signed);
   remember(t.ton_lock, { reported: true });
+  // the relayer finishes the swap only if it knows about it (audit round 3, A)
+  if (await relayerWatch(t.ton_lock, id)) remember(t.ton_lock, { watched: true });
 }
 
 $('#gx-takes').addEventListener('click', async function(e){
@@ -649,6 +722,22 @@ $('#gx-takes').addEventListener('click', async function(e){
       setFinal(r.dataset.ton, 'refunded');
       load();
     } catch (err) { if (err && !err.shown && err.message !== 'cancelled') say('#gx-status', String(err.message || err), true); r.disabled = false; }
+    return;
+  }
+  const rl = e.target.closest('.gx-release');
+  if (rl) {
+    const t = TAKES.find(x => x.ton_lock === rl.dataset.ton);
+    if (!t) return;
+    rl.disabled = true;
+    say('#gx-status', 'Releasing your GRAM');
+    try {
+      const tl = await terraLockRead(t.terra_lock_id);
+      if (!tl || tl.status !== 'claimed' || !tl.secret) throw new Error('the buyer has not claimed the LUNC on ' + NET.chain + ' yet');
+      await sendGramClaim(t, tl.secret);
+      RELEASE[t.ton_lock] = Object.assign(RELEASE[t.ton_lock] || {}, { secret: tl.secret, sentAt: now(), error: '' });
+      say('#gx-status', 'Claim sent. The GRAM reaches your TON address in a minute.');
+    } catch (err) { say('#gx-status', String(err.message || err), true); }
+    rl.disabled = false;
     return;
   }
   const b = e.target.closest('.gx-answer');
@@ -796,8 +885,16 @@ async function watchTakes(){
   const fresh = waiting.filter(t => !SEEN.has(t.ton_lock));
   waiting.forEach(t => SEEN.add(t.ton_lock));
   if ($('#st-gram').classList.contains('on')) { TAKES = d.takes || []; drawTakes(TAKES, d.stats || {}); }
+  else {
+    // off the GRAM screen, answered deals are still seen through: a GRAM
+    // left to release is claimed from here (audit round 3, A)
+    const fin = finals();
+    const answered = (d.takes || []).filter(t => t.status === 'locked' && t.terra_lock_id && !fin[t.ton_lock]);
+    if (answered.length && now() - LAST_SWEEP >= 60) { LAST_SWEEP = now(); checkFinished(answered); }
+  }
   fresh.forEach(alertTake);
 }
+let LAST_SWEEP = 0;
 
 /* Opened from the bot's message: the button carries ?take=<TON lock>. Once
    the wallet is unlocked, go straight to that deal. */
@@ -1054,10 +1151,12 @@ async function selfClaim(id){
         st(1);
         if (!(await r.wait())) throw new Error('the claim was sent but is not confirmed yet (tx ' + r.hash.slice(0, 10) + '\u2026). It usually lands within a minute.');
       },
-      'A transaction: it claims the LUNC locked for you, revealing the secret on ' + NET.chain + '. The seller then gets the GRAM.', {
+      'A transaction: it claims the LUNC locked for you, revealing the secret on ' + NET.chain + '. With it the GRAM is then released to the seller.', {
         steps: ['Sending the claim', 'Waiting for the block'],
-        done: () => ({ title: 'LUNC claimed', text: human(b.lunc, 6) + ' LUNC is on your address. The seller receives the GRAM.' })
+        done: () => ({ title: 'LUNC claimed', text: human(b.lunc, 6) + ' LUNC is on your address. The GRAM is released to the seller next.' })
       });
+    // so that the relayer releases the seller's GRAM too (audit round 3, A)
+    relayerWatch(id, b.terraLockId);
   } catch (e) { /* cancelled, or explained in the sheet */ }
   watchBuys();
 }
