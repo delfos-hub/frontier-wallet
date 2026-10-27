@@ -48,7 +48,8 @@ ok('less TON time left is refused', refused({ min_ton_left_sec: 600 }, 'min_ton_
 ok('another lock code is refused', refused({ ton_code_hash: 'AB'.repeat(32) }, 'lock code'));
 ok('a burn tax above the ceiling is refused', refused({ tax_bps: 5000 }, 'burn tax'));
 ok('a negative or broken burn tax is refused', refused({ tax_bps: -1 }) && refused({ tax_bps: 'x' }));
-ok('a burn tax change within the ceiling is followed', pinPolicy(Object.assign({}, WORKER, { tax_bps: 30 })).tax_bps === 30);
+ok('a burn tax below the floor is refused (a Worker saying 0)', refused({ tax_bps: 0 }, 'burn tax') && refused({ tax_bps: 30 }, 'burn tax'));
+ok('a burn tax change within the range is followed', pinPolicy(Object.assign({}, WORKER, { tax_bps: 80 })).tax_bps === 80);
 ok('no rules at all is refused', (() => { try { pinPolicy(null); return false; } catch (e) { return true; } })());
 const odd = pinPolicy(Object.assign({}, WORKER, { extra: 1 }));
 ok('the pinned values are the ones used', odd.tip_address === NET.policy.tip_address && odd.min_tip === NET.policy.min_tip && !('extra' in odd));
