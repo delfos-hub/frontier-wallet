@@ -43,13 +43,53 @@ const NETS = {
       min_terra_left_sec: 900,
       min_ton_left_sec: 3300,
       min_tax_bps: 50,
-      max_tax_bps: 100
+      max_tax_bps: 100,
+      min_deal: null,                 // nanoGRAM per deal; null = no limit
+      max_deal: null
     },
     tonExplorer: 'https://testnet.tonviewer.com/',
     terraExplorer: 'https://finder.terraclassic.community/rebel-2/tx/'
   }
 };
 
+// Mainnet: the agreed launch parameters (team chat 25-26 Oct 2026, audit
+// round 3 E). Not selectable until every REPLACE_ value is filled at deploy
+// time (ready: true then); the Worker's env.mainnet in offers-worker/
+// wrangler.jsonc must carry the same numbers, and the relayer checks the tip
+// address and minimum tip against that Worker when it starts.
+NETS.mainnet = {
+  name: 'mainnet',
+  ready: false,
+  chain: 'columbus-5',
+  lcd: 'https://terra-classic-lcd.publicnode.com',
+  worker: 'REPLACE_WITH_MAINNET_WORKER_URL',
+  // htlc-swap code 11746, instantiated on columbus-5 with no admin
+  htlc: 'REPLACE_WITH_MAINNET_HTLC_ADDRESS',
+  tonCodeHash: NETS.testnet.tonCodeHash,
+  tonCode: NETS.testnet.tonCode,
+  tonChain: '-239',
+  relayer: 'https://relayer.delfos-hub.net',
+  tonConnectScript: NETS.testnet.tonConnectScript,
+  twaReturnUrl: 'REPLACE_WITH_MAINNET_MINI_APP_URL',
+  tonApi: 'https://toncenter.com/api/v2',
+  tonExplorer: 'https://tonviewer.com/',
+  terraExplorer: 'https://finder.terraclassic.community/columbus-5/tx/',
+  policy: {
+    tip_address: 'REPLACE_WITH_TON_TREASURY_MULTISIG',
+    min_tip: '50000000',              // 0.05 GRAM
+    fee_bps: 30,                      // 0.3%
+    answer_window_sec: 1800,
+    t_terra_sec: 21600,               // the seller's LUNC lock: 6 h
+    terra_gap_sec: 86400,             // 24 h between the two locks
+    min_terra_left_sec: 18000,        // 5 h the buyer keeps to claim
+    min_ton_left_sec: 106800,         // window + 5 h + 24 h + 10 min
+    min_tax_bps: null,                // REPLACE: the chain's burn tax at deploy, and a ceiling
+    max_tax_bps: null,
+    min_deal: '5000000000',           // 5 GRAM
+    max_deal: '500000000000'          // 500 GRAM
+  }
+};
+
 const GRAM_NET = NETS.testnet;
 
-export { GRAM_NET };
+export { GRAM_NET, NETS };
