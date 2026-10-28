@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=d8d7c593">
+<link rel="stylesheet" href="assets/css/app.css?v=ee96c48b">
 </head>
 <body>
 <div id="rt"></div>
@@ -312,6 +312,9 @@
     <button class="act" id="act-swap"><i><svg viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m14 4 4 4-4 4"/><path d="M20 16H7"/><path d="m10 12-4 4 4 4"/></svg></i>Swap</button>
 <button class="act" id="act-p2p"><i><svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M14 7h3a2 2 0 0 1 2 2v3"/><path d="m17 10 2 2 2-2"/><path d="M10 17H7a2 2 0 0 1-2-2v-3"/><path d="m7 14-2-2-2 2"/></svg></i>P2P</button>
   </div>
+
+  <!-- transfers on their way (tx.js): one line each until the block lands -->
+  <div class="txq" id="txq" hidden></div>
 
   <button class="xc" id="xc-gram" type="button" hidden>
     <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-n" id="xc-gram-n" hidden></span><span class="xc-badge">Testnet</span></span>
@@ -765,15 +768,16 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=d8d7c593"></script>
-<script src="assets/js/ads.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/swap.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/activity.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/nft.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/p2p.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/gram.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/gov.js?v=d8d7c593"></script>
-<script type="module" src="assets/js/stake.js?v=d8d7c593"></script>
+<script type="module" src="assets/js/app.js?v=ee96c48b"></script>
+<script src="assets/js/ads.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/swap.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/activity.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/nft.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/p2p.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/gram.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/incoming.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/gov.js?v=ee96c48b"></script>
+<script type="module" src="assets/js/stake.js?v=ee96c48b"></script>
 </body>
 </html>

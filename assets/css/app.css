@@ -1172,3 +1172,31 @@ body.sheet-open .tabs{visibility:hidden}
   .gx-switch i,.gx-done-mark,.gx-deal.flash,.nt-dot{transition:none;animation:none}
   .gx-prog li.now i,.gx-switch.busy i{animation-duration:1.6s}
 }
+
+/* ---------- transfers on their way (tx.js) ---------- */
+.txq{display:flex;flex-direction:column;gap:8px;margin:4px 0 16px}
+.txq[hidden]{display:none}
+.txq-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;font-family:inherit;color:var(--text);
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-row);padding:11px 14px;cursor:pointer;
+  animation:txq-in .25s ease-out}
+.txq-row:active{transform:scale(.985)}
+.txq-ico{display:flex;flex:none}
+.txq-ico .sym{width:32px;height:32px;font-size:13px}
+.txq-mid{display:flex;flex-direction:column;min-width:0;flex:1}
+.txq-mid b{font-family:'Rajdhani',sans-serif;font-size:15.5px;color:#fff;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.txq-mid span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.txq-st{width:20px;height:20px;flex:none;border-radius:50%;position:relative}
+.txq-row.wait,.txq-row.slow{border-color:rgba(123,92,255,.45)}
+.txq-row.wait .txq-st,.txq-row.slow .txq-st{border:2px solid rgba(123,92,255,.25);border-top-color:var(--accent);animation:txq-spin .8s linear infinite}
+.txq-row.done{border-color:rgba(0,255,176,.4)}
+.txq-row.done .txq-st{background:rgba(0,255,176,.15)}
+.txq-row.done .txq-st::after{content:"";position:absolute;left:7px;top:4px;width:5px;height:9px;border:solid var(--green);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.txq-row.done .txq-mid span{color:var(--green)}
+.txq-row.fail{border-color:rgba(255,107,107,.45)}
+.txq-row.fail .txq-st{background:rgba(255,107,107,.15)}
+.txq-row.fail .txq-st::before,.txq-row.fail .txq-st::after{content:"";position:absolute;left:9px;top:4px;width:2px;height:12px;background:var(--red);border-radius:1px}
+.txq-row.fail .txq-st::before{transform:rotate(45deg)}
+.txq-row.fail .txq-st::after{transform:rotate(-45deg)}
+.txq-row.fail .txq-mid span{color:var(--red);white-space:normal}
+@keyframes txq-spin{to{transform:rotate(360deg)}}
+@keyframes txq-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}

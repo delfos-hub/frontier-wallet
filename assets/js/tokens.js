@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=d8d7c593';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=d8d7c593';
-import { $, go } from './shell.js?v=d8d7c593';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=ee96c48b';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=ee96c48b';
+import { $, go } from './shell.js?v=ee96c48b';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -539,6 +539,9 @@ async function loadBalances(addr, force){
   if (RUNNING) return;
   if (!force && addr === LAST_ADDR && Date.now() - LOADED_AT < 15000) return;
   RUNNING = true;
+  // the list on screen already belongs to this address and is newer than any
+  // snapshot, so redrawing the snapshot over it only flashes old numbers
+  const warm = LAST_ADDR === addr && LAST.found.length > 0;
   LAST_ADDR = addr;
   const list = $('#tok-list');
   SWEEPING = true;
@@ -550,7 +553,7 @@ async function loadBalances(addr, force){
   // be filled, which is the whole difference in how fast this feels.
   try {
     const snap = cacheGetStale('snap:' + addr);
-    if (snap && Array.isArray(snap.found) && snap.found.length) {
+    if (!warm && snap && Array.isArray(snap.found) && snap.found.length) {
       SWEEPING = false;              // that reading was complete when it was saved
       renderTokens(list, snap.found, snap.px || {}, 'Checking for changes.');
       SWEEPING = true;
@@ -802,6 +805,10 @@ async function loadBalances(addr, force){
 // faster than that, and neither should the polling.
 async function refreshBalances(force){
   if (!LAST_ADDR) return;
+  // A forced read comes from someone who knows the chain just moved. A pass
+  // already running may have read the old state, and loadBalances returns at
+  // once while it runs - which swallowed exactly the refresh after a send.
+  if (force) { for (let i = 0; RUNNING && i < 200; i++) await nap(300); }
   try { await loadBalances(LAST_ADDR, force); }
   catch (e) { /* a failed refresh is not a failed swap */ }
 }

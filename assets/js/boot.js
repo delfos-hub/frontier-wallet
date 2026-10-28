@@ -1,11 +1,11 @@
-import { amt, fmt } from './chain.js?v=d8d7c593';
-import { finish } from './crypto.js?v=d8d7c593';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d8d7c593';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=d8d7c593';
-import { S } from './state.js?v=d8d7c593';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=d8d7c593';
-import { paintSendTok } from './tx.js?v=d8d7c593';
-import { luncRaw, openWallet } from './tokens.js?v=d8d7c593';
+import { amt, fmt } from './chain.js?v=ee96c48b';
+import { finish } from './crypto.js?v=ee96c48b';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=ee96c48b';
+import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=ee96c48b';
+import { S } from './state.js?v=ee96c48b';
+import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=ee96c48b';
+import { paintSendTok } from './tx.js?v=ee96c48b';
+import { luncRaw, openWallet } from './tokens.js?v=ee96c48b';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -117,14 +117,9 @@ $('#home-addr').addEventListener('click', function () {
 })();
 $('#act-send').addEventListener('click', () => {
   // the asset picker starts from whatever the wallet actually holds
+  // paintSendTok writes the balance of the chosen asset itself. Writing the
+  // LUNC balance over it afterwards showed LUNC as available for any token.
   paintSendTok();
-  // hand the send screen the balance it is allowed to spend
-  const el = $('#send-avail');
-  if (el) {
-    const raw = luncRaw() || 0;
-    el.dataset.raw = String(raw);
-    el.textContent = raw ? '\u00b7 ' + fmt(amt(raw, 6)) + ' available' : '';
-  }
   go('send');
 });
 

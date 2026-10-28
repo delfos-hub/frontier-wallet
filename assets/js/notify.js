@@ -6,7 +6,7 @@
        kind     'info' | 'success' | 'warn'      (colours the card)
        theme    an extra look, e.g. 'gram'       (optional)
        live     true: a pulsing dot, for something waiting on the user
-       icon     a token symbol for the icon, optional
+       icon     a token symbol, or a token row ({ sym, logo, ... }), optional
        label    small line above the title
        text     a string, or a function called when the card is shown, so a
                 countdown is right even if the card waited in the queue
@@ -20,8 +20,8 @@
    screen) and while a sheet is open (a confirmation is never covered); they
    come up, in order, as soon as both are clear. A card with a key already
    queued or shown is not shown twice in this session. */
-import { iconHTML, paintIcons } from './chain.js?v=d8d7c593';
-import { $, buzz } from './shell.js?v=d8d7c593';
+import { iconHTML, paintIcons } from './chain.js?v=ee96c48b';
+import { $, buzz } from './shell.js?v=ee96c48b';
 
 let AUDIO = null;
 document.addEventListener('pointerdown', function () {
@@ -91,7 +91,8 @@ function next(){
   const box = $('#nt-card');
   if (!n) { box.hidden = true; return; }
   $('#nt-in').className = 'nt-in ' + (n.kind || 'info') + (n.theme ? ' ' + n.theme : '');
-  $('#nt-ico').innerHTML = n.icon ? iconHTML({ sym: n.icon }) : '';
+  // a symbol, or the token row itself so a CW20 gets its own logo
+  $('#nt-ico').innerHTML = n.icon ? iconHTML(typeof n.icon === 'object' ? n.icon : { sym: n.icon }) : '';
   paintIcons($('#nt-ico'));
   const dot = $('#nt-dot');
   if (dot) dot.hidden = !n.live;

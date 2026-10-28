@@ -4,10 +4,10 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=d8d7c593';
-import { DEC, knownAsset } from './market.js?v=d8d7c593';
-import { $ } from './shell.js?v=d8d7c593';
-import { S } from './state.js?v=d8d7c593';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=ee96c48b';
+import { DEC, knownAsset } from './market.js?v=ee96c48b';
+import { $, go } from './shell.js?v=ee96c48b';
+import { S } from './state.js?v=ee96c48b';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -215,6 +215,18 @@ function describe(t, me){
   }
   if (type.indexOf('MsgExecuteContract') >= 0) {
     const intent = intentOf(m);
+    /* A token transfer is a send like any other, and was drawn as one only by
+       name: no amount, no ticker, and the token's own contract where the
+       recipient should be. The message has all three. */
+    const tr = m.msg && m.msg.transfer;
+    if (intent === 'transfer' && tr && tr.amount) {
+      const tk = nameOf(m.contract);
+      const mine = m.sender === me;
+      return { kind: mine ? 'out' : 'in',
+               title: (mine ? 'Sent' : 'Received') + extra,
+               sub: mine ? 'to ' + short(tr.recipient) : 'from ' + short(m.sender),
+               value: (mine ? '-' : '+') + fmt(amt(tr.amount, tk.dec)) + ' ' + tk.sym };
+    }
     const swap = intent === 'swap' || intent === 'execute_swap_operations' ||
                  intent === 'swap_operations';
     const verb = VERB[intent];
@@ -287,6 +299,20 @@ function transfersIn(t, me){
   return out;
 }
 
+// Token moves are not transfer events; each token contract logs its own
+// from / to / amount, and that is where a CW20 send shows up.
+function tokenMoves(t, me){
+  const out = [];
+  for (const c of wasmCalls(t)) {
+    if (!c.amount || !c.at || (c.action !== 'transfer' && c.action !== 'send')) continue;
+    if (c.to !== me && c.from !== me) continue;
+    const tk = nameOf(c.at);
+    out.push({ mine: c.to === me, other: c.to === me ? c.from : c.to,
+               text: fmt(amt(c.amount, tk.dec)) + ' ' + tk.sym });
+  }
+  return out;
+}
+
 function memoOf(t){
   const m = ((t.tx || {}).body || {}).memo || '';
   return m.trim();
@@ -308,7 +334,7 @@ function openTx(hash){
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
   const d = describe(t, me);
   const failed = Number(t.code) > 0;
-  const moves = transfersIn(t, me);
+  const moves = transfersIn(t, me).concat(tokenMoves(t, me));
   const memo = memoOf(t);
 
   let html =
@@ -358,13 +384,16 @@ async function load(){
   list.innerHTML = '<div class="empty">Reading the chain</div>';
 
   // sent and received are two different questions to the same index
-  const [mine, got] = await Promise.all([
+  // and a token arriving is a third: it never touches the bank module, so
+  // transfer.recipient does not see it - the token contract's own log does
+  const [mine, got, tok] = await Promise.all([
     page("message.sender='" + me + "'"),
-    page("transfer.recipient='" + me + "'")
+    page("transfer.recipient='" + me + "'"),
+    page("wasm.to='" + me + "'")
   ]);
 
   const seen = {}, all = [];
-  for (const t of mine.concat(got)) {
+  for (const t of mine.concat(got, tok)) {
     if (!t || seen[t.txhash]) continue;
     seen[t.txhash] = 1;
     all.push(t);
@@ -432,4 +461,27 @@ $('#tx-copy').addEventListener('click', async function () {
 document.querySelectorAll('[data-tab="activity"]').forEach(b =>
   b.addEventListener('click', () => { load(); }));
 
-export { load };
+/* A transaction from somewhere else in the wallet: a send that just landed,
+   a notification's Details button. Read by hash if the list has not got it. */
+async function showTx(hash){
+  if (!hash) return;
+  go('activity');
+  load();
+  if (!TXS[hash]) {
+    try {
+      const d = await getJSON(LCD + '/cosmos/tx/v1beta1/txs/' + hash, 10000, 2);
+      if (d && d.tx_response) TXS[hash] = d.tx_response;
+    } catch (e) { /* not indexed yet; the list will have it shortly */ }
+  }
+  openTx(hash);
+}
+document.addEventListener('frontier:show-tx', e => showTx(e.detail && e.detail.hash));
+
+// something moved: the list is stale, and if it is on screen, read it again
+document.addEventListener('frontier:tx', () => {
+  LOADED = '';
+  const a = document.getElementById('st-activity');
+  if (a && a.classList.contains('on')) load();
+});
+
+export { load, nameOf, short, showTx, wasmCalls };
