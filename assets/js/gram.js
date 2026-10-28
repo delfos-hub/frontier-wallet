@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=73915718';
-import { GRAM_NET } from './gram-net.js?v=73915718';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=73915718';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=73915718';
-import { S } from './state.js?v=73915718';
-import { decryptSeed } from './storage.js?v=73915718';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=73915718';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=73915718';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=73915718';
-import { chime, notify } from './notify.js?v=73915718';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=ae92d5ee';
+import { GRAM_NET } from './gram-net.js?v=ae92d5ee';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=ae92d5ee';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=ae92d5ee';
+import { S } from './state.js?v=ae92d5ee';
+import { decryptSeed } from './storage.js?v=ae92d5ee';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=ae92d5ee';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=ae92d5ee';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=ae92d5ee';
+import { chime, notify } from './notify.js?v=ae92d5ee';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -68,19 +68,30 @@ let POLICY_ERR = '';
    is refused, not followed, and the pinned values are the ones used. */
 function pinPolicy(p){
   const pin = NET.policy;
-  if (!pin) throw new Error('this wallet has no swap rules for ' + NET.name);
+  if (!pin || NET.ready === false) throw new Error('the swap is not open on ' + NET.name + ' in this wallet yet');
   if (!p) throw new Error('the swap rules could not be loaded');
   const bad = [];
   let tip = '';
   try { tip = tonRaw(String(p.tip_address || '')); } catch (e) {}
   if (tip !== tonRaw(pin.tip_address)) bad.push('fee address');
-  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec']
-    .forEach(k => { if (String(p[k]) !== String(pin[k])) bad.push(k); });
+  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec', 'min_deal', 'max_deal']
+    .forEach(k => { if (String(p[k] ?? null) !== String(pin[k] ?? null)) bad.push(k); });
   if (String(p.ton_code_hash || '').toUpperCase() !== String(NET.tonCodeHash).toUpperCase()) bad.push('lock code');
   const tax = Number(p.tax_bps);
   if (!Number.isInteger(tax) || tax < pin.min_tax_bps || tax > pin.max_tax_bps) bad.push('burn tax');
   if (bad.length) throw new Error('the offers service publishes swap rules that differ from this wallet\u2019s (' + bad.join(', ') + '). Not trading under them; update the wallet or try later.');
   return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash });
+}
+// GRAM per deal, from the pinned rules: { min, max } in nanoGRAM (0n = none)
+function dealLimits(){
+  const p = POLICY || NET.policy || {};
+  return { min: p.min_deal ? BigInt(p.min_deal) : 0n, max: p.max_deal ? BigInt(p.max_deal) : 0n };
+}
+function dealErr(gram){
+  const lim = dealLimits();
+  if (lim.min && gram < lim.min) return 'A deal must be worth at least ' + human(lim.min, 9) + ' GRAM.';
+  if (lim.max && gram > lim.max) return 'A deal can be worth at most ' + human(lim.max, 9) + ' GRAM.';
+  return '';
 }
 function setPolicy(p){
   try { POLICY = pinPolicy(p); POLICY_ERR = ''; }
@@ -459,8 +470,25 @@ function readForm(){
   const minTxt = val('min');
   out.min = minTxt ? rawOf('min', 6) : out.total / 20n;
   if (out.min < 1000000n) out.min = out.total < 1000000n ? out.total : 1000000n;   // at least 1 LUNC
-  if (out.min > out.total) out.errs.push('The smallest part cannot be more than the total.');
   out.max = out.total;
+  // GRAM per deal (audit round 3, E): the default smallest part is raised to
+  // the minimum deal, and one take never asks more than the maximum deal
+  const lim = dealLimits();
+  if (out.price > 0n && (lim.min || lim.max)) {
+    const luncAt = g => g * 1000000000000n / out.price;              // LUNC a deal of g nanoGRAM buys, rounded down
+    if (lim.min) {
+      const floor = luncAt(lim.min) + 1n;
+      if (!minTxt && out.min < floor) out.min = floor;
+      if (out.total < floor) out.errs.push('An offer must be worth at least ' + human(lim.min, 9) + ' GRAM here.');
+      else if (out.min < floor) out.errs.push('The smallest part must be worth at least ' + human(lim.min, 9) + ' GRAM (' + human(floor, 6) + ' LUNC at your price).');
+    }
+    if (lim.max) {
+      const ceil = luncAt(lim.max);
+      if (out.max > ceil) out.max = ceil;
+      if (out.min > ceil) out.errs.push('The smallest part can be worth at most ' + human(lim.max, 9) + ' GRAM (' + human(ceil, 6) + ' LUNC at your price).');
+    }
+  }
+  if (out.min > out.total) out.errs.push('The smallest part cannot be more than the total.');
   out.hours = HOURS;
   const av = available();
   if (av !== null && out.total > av) out.errs.push('You can offer up to ' + human(av, 6) + ' LUNC (balance after the burn tax, minus your other live offers and takes waiting for you, and 50 LUNC kept for gas).');
@@ -1085,7 +1113,8 @@ function buyTerms(){
   const tip = tipOf(gram);
   const err = !(lunc > 0n) ? 'Enter how much LUNC you want.'
     : lunc < BigInt(o.min_lunc) ? 'This seller sells from ' + human(o.min_lunc, 6) + ' LUNC.'
-    : lunc > BigInt(o.max_lunc) ? 'This seller has ' + human(o.max_lunc, 6) + ' LUNC available.' : '';
+    : lunc > BigInt(o.max_lunc) ? 'This seller has ' + human(o.max_lunc, 6) + ' LUNC available.'
+    : dealErr(gram);
   return { o: o, lunc: lunc, gram: gram, tip: tip, err: err };
 }
 function quote(){
@@ -1209,7 +1238,8 @@ function selfClaimBtn(id, b){
   if (b.stage !== 'claiming' || !canSign() || !b.terraTimeout) return '';
   const leftSec = b.terraTimeout - now();
   const late = now() - (b.since || now()) > 180 || leftSec < 2 * CLAIM_MARGIN;
-  if (!late || leftSec < 90) return '';
+  // a claim too close to the end can land late and still publish the secret
+  if (!late || leftSec < CLAIM_MARGIN / 2) return '';
   return '<button class="btn solid gx-selfclaim" type="button" data-id="' + esc(id) + '">Claim the LUNC myself</button>' +
     '<p class="gx-hint">The relayer has not claimed yet. Claiming yourself costs a little LUNC for gas' + (BAL !== null && BAL < 5000000n ? ' - you have none on ' + NET.chain + ' yet' : '') + '.</p>';
 }
