@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=4e9ba88d';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=4e9ba88d';
-import { $, go } from './shell.js?v=4e9ba88d';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=46c50251';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=46c50251';
+import { $, go } from './shell.js?v=46c50251';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -560,7 +560,12 @@ function renderTokens(list, found, px, hint){
   // prices do, and calling that moment "complete" is what froze $2.34 over a
   // list worth two hundred.
   const totalEl = $('#bal-total');
-  if (!settling) {
+  // The total waits for prices, not for the sweep. A sweep is the daily hunt
+  // for tokens this address has never shown; on a fresh install it runs for a
+  // couple of minutes, and holding the total for all of it froze an early
+  // partial figure ($0.20 over a $45 wallet) for exactly that long. Anything
+  // the sweep finds only adds a row, and the total follows it.
+  if (!waiting) {
     const from = TOTAL_SHOWN;
     TOTAL_SHOWN = total;
     totalEl.classList.remove('stale');

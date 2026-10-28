@@ -4,10 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=4e9ba88d';
-import { DEC, knownAsset } from './market.js?v=4e9ba88d';
-import { $, go } from './shell.js?v=4e9ba88d';
-import { S } from './state.js?v=4e9ba88d';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=46c50251';
+import { DEC, knownAsset as marketAsset } from './market.js?v=46c50251';
+import { $, go } from './shell.js?v=46c50251';
+import { heldTokens } from './tokens.js?v=46c50251';
+import { S } from './state.js?v=46c50251';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -79,6 +80,16 @@ function coins(list){
    For a trade that crossed two pools the first offer and the last return are
    the two ends of what the owner did; everything between them is the middle
    token appearing and disappearing inside the same transaction. */
+/* A token the market map does not name is still one the wallet may hold, and
+   the wallet knows what it is called: TERRA came out as "TERRA1EX" here while
+   the home list a tab away said TERRA. */
+function knownAsset(k){
+  const m = marketAsset(k);
+  if (m) return m;
+  const r = heldTokens().filter(x => (x.contract ? 'cw20:' + x.contract : 'native:' + x.denom) === k)[0];
+  return r ? { sym: r.sym, dec: r.dec === undefined ? 6 : r.dec } : null;
+}
+
 const keyFor = a => !a ? '' :
   (String(a).slice(0, 6) === 'terra1' ? 'cw20:' + a : 'native:' + a);
 

@@ -1277,3 +1277,7 @@ li.row[data-k]:active,.core-cell:active{opacity:.75}
 @keyframes tk-sh{to{background-position:-200% 0}}
 /* pickers: a section heading between what you hold and everything else */
 .sw-sec{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:14px 6px 6px}
+
+/* token page console: swap marked like the home one */
+#tk-swap{color:#E8F0FF}
+#tk-swap svg{stroke:#00D4FF}

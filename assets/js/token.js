@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=4e9ba88d';
-import { DEC, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=4e9ba88d';
-import { $, go, tap } from './shell.js?v=4e9ba88d';
-import { S } from './state.js?v=4e9ba88d';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=4e9ba88d';
-import { rowHTML } from './activity.js?v=4e9ba88d';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=46c50251';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=46c50251';
+import { $, go, tap } from './shell.js?v=46c50251';
+import { S } from './state.js?v=46c50251';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=46c50251';
+import { rowHTML } from './activity.js?v=46c50251';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
@@ -96,6 +96,14 @@ function unitLunc(t){
 }
 
 /* ---------------- the page ---------------- */
+// the console is a grid of equal cells; a hidden button must take its cell with it
+function fitActs(){
+  const box = document.querySelector('.tk-acts');
+  if (!box) return;
+  const n = box.querySelectorAll('.act:not([hidden])').length;
+  box.style.gridTemplateColumns = 'repeat(' + Math.max(n, 1) + ',1fr)';
+}
+
 function paintHead(t){
   $('#tk-ico').innerHTML = iconHTML(t);
   paintIcons($('#tk-ico'));
@@ -126,8 +134,12 @@ async function open(key){
   $('#tk-about').innerHTML = skel(2);
   $('#tk-act').innerHTML = skel(3);
   $('#tk-swap').hidden = false;
+  fitActs();
   go('token');
   await owMarket().catch(() => null);
+  // without the feed the pool list comes from the stored factory walk; built
+  // from scratch it is a thousand reads, so only when it is already stored
+  if (!poolsOf(key).length && graphReady()) await graph().catch(() => null);
   if (seq !== SEQ) return;
   paintMarket(CUR);
   // three independent readings; whichever answers first is drawn first
@@ -140,6 +152,7 @@ async function open(key){
 function paintMarket(t){
   const pools = poolsOf(KEY);
   $('#tk-swap').hidden = !pools.length && t.denom !== 'uluna';
+  fitActs();
   const liq = pools.reduce((a, p) => a + (p.liq || 0), 0);
   const vol = pools.reduce((a, p) => a + (p.vol || 0), 0);
   let html = line('Price', money(unitUsd(t)));

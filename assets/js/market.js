@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=4e9ba88d';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=46c50251';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -676,13 +676,29 @@ const owLogo = contract => (OW && OW.logos['cw20:' + contract]) || null;
 
 // Every pool the map lists for one asset, deepest first, with the other side
 // named. For the token screen; a swap still goes through peersOf.
+// The feed's pools first; the factory walk adds the exchanges the feed does not
+// cover, and stands in for all of them when the feed could not be read.
+const DIALECT_NAME = { ts: 'Terraswap-style', gd: 'Garuda', cl: 'CL8Y' };
 function poolsOf(key){
-  if (!OW || !OW.edges) return [];
-  return (OW.edges[key] || []).filter(e => e.to !== key).map(function (e) {
-    const o = assetOf(e.to) || knownAsset(e.to);
-    return { pair: e.pair, other: e.to, otherSym: (o && o.sym) || (OW.syms[e.to] || '?'),
-             liq: e.liq, vol: e.vol, dex: e.dex, name: e.name };
-  }).sort((x, y) => (y.liq || 0) - (x.liq || 0));
+  const out = [], seen = {};
+  const name = k => {
+    const o = assetOf(k) || knownAsset(k);
+    if (o && o.sym) return o.sym;
+    if (k === LUNC_KEY) return 'LUNC';
+    if (k === 'native:uusd') return 'USTC';
+    return (OW && OW.syms && OW.syms[k]) || k.slice(k.indexOf(':') + 1, k.indexOf(':') + 7).toUpperCase();
+  };
+  for (const src of [OW && OW.edges, GRAPH && GRAPH.edges]) {
+    if (!src) continue;
+    for (const e of (src[key] || [])) {
+      if (e.to === key || seen[e.pair]) continue;
+      seen[e.pair] = 1;
+      out.push({ pair: e.pair, other: e.to, otherSym: name(e.to),
+                 liq: typeof e.liq === 'number' ? e.liq : null, vol: e.vol || null, dex: e.dex || 'ts',
+                 name: e.name || DIALECT_NAME[e.dex || 'ts'] || '' });
+    }
+  }
+  return out.sort((x, y) => (y.liq || 0) - (x.liq || 0));
 }
 
 let GRAPH = null;
