@@ -84,8 +84,8 @@ NETS.mainnet = {
     terra_gap_sec: 86400,             // 24 h between the two locks
     min_terra_left_sec: 18000,        // 5 h the buyer keeps to claim
     min_ton_left_sec: 106800,         // window + 5 h + 24 h + 10 min
-    min_tax_bps: null,                // REPLACE: the chain's burn tax at deploy, and a ceiling
-    max_tax_bps: null,
+    min_tax_bps: 150,                 // columbus-5 burn tax 0.015 (read 2026-10-28)
+    max_tax_bps: 300,                 // a rise above 3% stops trading until an update
     min_deal: '5000000000',           // 5 GRAM
     max_deal: '500000000000',         // 500 GRAM
     max_open_takes_per_taker: 3
