@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Frontier GRAM ⇄ LUNC Swap - Terms of Use 1.0 (draft)</title>
+<style>
+:root{--bg:#0b0d17;--card:#141828;--text:#e8eaf5;--muted:#9aa0bd;--line:#262c45;--accent:#7c8cff;--warn:#ffcf5c}
+@media (prefers-color-scheme: light){:root{--bg:#f6f7fb;--card:#fff;--text:#161a2c;--muted:#5d6380;--line:#e1e4f0;--accent:#4b5bdc;--warn:#9a6a00}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:calc(env(safe-area-inset-top,0px) + 20px) 16px calc(env(safe-area-inset-bottom,0px) + 40px)}
+main{max-width:760px;margin:0 auto}
+h1{font-size:22px;line-height:1.3;margin:0 0 6px}
+.meta{color:var(--muted);font-size:13px;margin:0 0 18px}
+.draft{border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13px;margin:0 0 22px}
+h2{font-size:17px;margin:28px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+p,li{color:var(--text)}
+ul,ol{padding-left:22px}
+li{margin:4px 0}
+.tbl{overflow-x:auto;margin:12px 0}
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--card);border-radius:10px;overflow:hidden}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+strong.tbd{color:var(--warn);font-weight:600}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<h1>Frontier GRAM ⇄ LUNC Swap - Terms of Use</h1>
+<p class="meta">Version 1.0 (draft) · 28 October 2026 · Delfos Hub</p>
+<p class="draft">Draft, not yet in force. The swap runs on test networks with test coins only while the team finalises these terms. Points marked [TBD] are still being decided.</p>
+<h2 id="1-about-the-service">1. About the service</h2>
+<p>The GRAM ⇄ LUNC swap in Frontier Wallet lets two people exchange GRAM
+on the TON network for LUNC on Terra Classic directly with each other.
+It is run by the Delfos Hub team, <strong class="tbd">[TBD: legal name and
+address]</strong> ("Delfos Hub", "we"). By using the swap you accept
+these terms.</p>
+<ul>
+<li><strong>Your keys stay with you.</strong> Your wallet's keys are
+kept on your device, encrypted with your PIN. We never hold your coins
+and cannot move them.</li>
+<li><strong>Smart contracts hold the coins during a swap.</strong> Each
+side's coins sit in a smart contract with a time limit. Every claim and
+refund pays only the addresses written into that contract when it was
+made. Nobody, including us, can change those contracts or redirect what
+they hold.</li>
+<li><strong>No bridge.</strong> No wrapped tokens are created: GRAM
+stays on TON, LUNC stays on Terra Classic.</li>
+<li><strong>Between users.</strong> Sellers publish offers and buyers
+take them. We are not a party to any trade and do not set prices.</li>
+</ul>
+<h2 id="2-how-a-swap-works">2. How a swap works</h2>
+<p>The buyer always locks first; the seller locks only after checking
+the buyer's lock on chain.</p>
+<ol type="1">
+<li>A <strong>seller</strong> publishes a signed offer: how much LUNC,
+the price in GRAM, and the smallest part a buyer may take.</li>
+<li>A <strong>buyer</strong> takes part of it. The buyer's wallet
+creates a secret, keeps it on the device, and locks the GRAM (with the
+fee and a small TON network reserve) in a TON contract that only that
+secret can open.</li>
+<li>The <strong>seller</strong> checks that lock and answers by locking
+the LUNC (with the Terra Classic burn tax) in a Terra Classic contract
+tied to the same secret.</li>
+<li>The buyer's LUNC is claimed with the secret, by the relayer (section
+6) or by the buyer's wallet. This publishes the secret on Terra
+Classic.</li>
+<li>With the now public secret, the GRAM is released to the seller's TON
+address, by the relayer or by the seller's wallet.</li>
+</ol>
+<p>A claim on one side publishes the secret that opens the other side.
+If a swap does not complete, each side gets its own coins back after its
+lock expires (section 7). The relayer only sends claims and refunds that
+anyone could send; how far you rely on it is explained in section 6.</p>
+<h2 id="3-time-limits-and-unanswered-deals">3. Time limits and
+unanswered deals</h2>
+<p>Each lock has a fixed end time written into it when it is made,
+checked by its blockchain. The answer window is counted by our offers
+service from the moment it records the buyer's take.</p>
+<div class="tbl"><table>
+<thead>
+<tr class="header">
+<th>What</th>
+<th>Time limit</th>
+<th>When it runs out</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Seller answers a take</td>
+<td>30 min</td>
+<td>The take is cancelled and counts as a miss for the seller</td>
+</tr>
+<tr class="even">
+<td>Seller's LUNC lock</td>
+<td>Up to 6 h</td>
+<td>The LUNC can be refunded, and only to the seller</td>
+</tr>
+<tr class="odd">
+<td>Buyer's GRAM lock</td>
+<td>About 30 h</td>
+<td>The GRAM can be refunded, and only to the buyer</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>If the seller does not answer, the buyer's GRAM stays locked
+until its lock expires, about 30 hours after the buyer paid.</strong>
+The 30-minute window does not release it earlier: the contract allows no
+early refund, so that a buyer can never take the GRAM back and still
+receive LUNC a seller locked.</p>
+<p>Frontier does not let a seller answer after the 30 minutes. A late
+answer sent some other way can still be recorded while the offer has
+room, but it never puts anyone's coins at risk: if the swap does not
+complete, each side gets its coins back when its lock expires.</p>
+<p>The lock times are chosen so that, once the secret is public, the
+other side always has time to claim: the seller's LUNC lock ends at
+least 24 hours before the buyer's GRAM lock, and each wallet checks the
+other side's lock before acting.</p>
+<h2 id="4-offers-and-sellers">4. Offers and sellers</h2>
+<ul>
+<li><strong>Lifetime.</strong> An offer lasts at most 24 hours and then
+expires by itself. To keep selling, publish a new one.</li>
+<li><strong>Changes.</strong> An offer cannot be edited. A seller can
+cancel it at any time and publish a new one. Cancelling stops new takes;
+takes already made still need an answer.</li>
+<li><strong>Fixed terms for the buyer.</strong> The price and amounts
+come from the offer the seller signed, and the buyer's lock commits to
+that offer and amount.</li>
+<li><strong>No double sale.</strong> A take reserves its amount, so two
+buyers can never take the same LUNC. The amount returns to the offer if
+the seller does not answer in time. Once the seller has answered, it
+counts as sold, even if the swap later does not complete and the LUNC
+goes back to the seller.</li>
+<li><strong>Enough LUNC.</strong> An offer is accepted only if the
+seller's balance covers it together with the seller's other offers and
+pending takes. Keep extra LUNC for the burn tax and gas.</li>
+<li><strong>Misses.</strong> An unanswered take counts as a miss. A
+seller's offers are hidden from buyers when, over the last 30 days, the
+seller has at least 3 misses and they are more than a fifth of all
+answers. They return by themselves as old misses pass the 30 days or
+answers add up. Telegram alerts (in the wallet) help sellers answer in
+time.</li>
+<li><strong>Taking an offer is a real commitment for the buyer
+too:</strong> the GRAM is locked on chain before the seller is asked,
+and comes back only through the swap or after the lock expires.</li>
+</ul>
+<h2 id="5-fees-and-network-costs">5. Fees and network costs</h2>
+<p>The wallet shows every amount before you sign. Nothing is charged
+that was not on that screen.</p>
+<div class="tbl"><table>
+<thead>
+<tr class="header">
+<th>Cost</th>
+<th>Who pays</th>
+<th>Amount</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Service fee</td>
+<td>Buyer, in GRAM</td>
+<td>0.3% of the deal, at least 0.05 GRAM. Paid to the Delfos Hub
+treasury, <strong class="tbd">[TBD: TON address]</strong>, shown in the app</td>
+</tr>
+<tr class="even">
+<td>TON network reserve</td>
+<td>Buyer, in GRAM</td>
+<td>0.05 GRAM held in the lock to pay its own network fees; what is left
+goes back to the buyer, except 0.01 GRAM kept on the closed lock for its
+storage</td>
+</tr>
+<tr class="odd">
+<td>Terra Classic burn tax</td>
+<td>Seller, in LUNC</td>
+<td>The network's current rate, added to the seller's lock</td>
+</tr>
+<tr class="even">
+<td>Gas to lock or refund on Terra Classic</td>
+<td>Seller, in LUNC</td>
+<td>Network gas</td>
+</tr>
+<tr class="odd">
+<td>Gas to claim the buyer's LUNC</td>
+<td>Nobody when the relayer claims; a few LUNC when the buyer's wallet
+claims itself</td>
+<td>Network gas</td>
+</tr>
+</tbody>
+</table></div>
+<p>The service fee is paid only when a swap completes: a refunded GRAM
+lock returns it in full. Network fees and the burn tax are set by the
+networks, can change, and are not returned if a swap does not complete.
+No other fee is charged.</p>
+<h2 id="6-the-relayer">6. The relayer</h2>
+<p>The relayer is a service run by Delfos Hub that finishes swaps for
+both sides, so neither side needs the other network's coin for gas or
+has to stay online.</p>
+<ul>
+<li><strong>What it does.</strong> It claims the LUNC for the buyer,
+with the secret the buyer's wallet gives it, then releases the GRAM to
+the seller. It also sends refunds when locks expire.</li>
+<li><strong>What it cannot do.</strong> Send coins anywhere else: the
+LUNC can only go to the buyer, the GRAM only to the seller, refunds only
+to whoever locked. If its server were broken into, the attacker could
+not take swap funds.</li>
+<li><strong>What you rely on it for.</strong> Timing. It publishes the
+buyer's secret only by claiming the LUNC for the buyer, and only while
+the seller's GRAM can still be released. If it goes down, nothing is
+lost: an unused secret stays private and both sides can refund, and a
+published secret lets the seller's wallet release the GRAM itself.</li>
+<li><strong>The one case it matters.</strong> A buyer who hands the
+secret to the relayer trusts it not to leak the secret without claiming.
+Frontier limits this: the buyer's wallet claims the LUNC itself if the
+relayer has not done so in time, while the wallet is open.</li>
+</ul>
+<p>Frontier talks only to the relayer address built into the app.</p>
+<h2 id="7-getting-your-coins-back">7. Getting your coins back</h2>
+<p>If a swap does not complete, your coins come back after your lock
+expires. The relayer sends the refund by itself; you can also do it in
+Frontier:</p>
+<ul>
+<li><strong>Buyer:</strong> "Get my GRAM back" on the deal, after its
+lock expires. Free: the lock pays its own network fee.</li>
+<li><strong>Seller:</strong> "Refund" on the deal, after the LUNC lock
+expires. Costs a few LUNC of gas.</li>
+</ul>
+<p>Refunds are open to anyone and always pay the person who locked, so
+they work even if Frontier or the relayer is unavailable, using the
+lock's address (buyer) or number (seller) from your transaction
+history.</p>
+<p><strong>Keep your wallet data.</strong> The swap's secret lives only
+on the device that made it; your recovery phrase does not restore it. If
+it is lost, the swap may not complete, but your GRAM still comes back
+when the lock expires.</p>
+<h2 id="8-your-responsibilities">8. Your responsibilities</h2>
+<ul>
+<li><strong>Keys and PIN.</strong> Keep your recovery phrase private and
+safe. We cannot recover a lost phrase or PIN, and cannot reverse a
+transaction you signed.</li>
+<li><strong>Check before you sign.</strong> Read the confirmation
+screen: amounts, addresses, network. A transaction on chain is
+final.</li>
+<li><strong>Your TON address.</strong> As a seller, make sure the TON
+address that receives the GRAM is yours and correct. Avoid exchange
+deposit addresses, which may not credit a transfer from a contract.</li>
+<li><strong>Answer your takes.</strong> As a seller, keep enough LUNC
+for the lock, the burn tax and gas, and answer within 30 minutes.</li>
+<li><strong>Open your wallet when a deal waits.</strong> Frontier
+finishes your side by itself while it is open, if the relayer has
+not.</li>
+<li><strong>The law.</strong> Use the swap only where it is legal for
+you, and not if you are subject to sanctions. Taxes on your trades are
+your responsibility.</li>
+<li><strong>Age.</strong> You must be at least 18, or of legal age where
+you live.</li>
+</ul>
+<h2 id="9-risks">9. Risks</h2>
+<p>Crypto swaps carry risks we cannot remove. By using the swap you
+accept them.</p>
+<ul>
+<li><strong>Smart contracts.</strong> The contracts were reviewed by the
+team in several audit rounds and have no owner or upgrade path, but code
+can still have flaws that lose funds.</li>
+<li><strong>Networks.</strong> TON or Terra Classic can halt, slow down
+or change their rules (fees, burn tax). A delay close to a time limit
+can make a swap fail.</li>
+<li><strong>Waiting.</strong> If a seller does not answer, your GRAM
+stays locked for about 30 hours (section 3).</li>
+<li><strong>Price.</strong> The price is fixed when you take an offer.
+The market may move while a swap is open.</li>
+<li><strong>The relayer.</strong> Swaps rely on it, or on your open
+wallet, to claim in time (section 6).</li>
+<li><strong>Your device.</strong> Malware, a lost phone or a shared PIN
+can expose your keys; a cleared wallet can lose an open swap's secret
+(section 7).</li>
+<li><strong>Scams.</strong> We will never ask for your recovery phrase,
+PIN or a swap secret. Use only the official Frontier Wallet bot.</li>
+</ul>
+<h2 id="10-your-data">10. Your data</h2>
+<p>The swap asks for no name, email or phone number. What it
+handles:</p>
+<ul>
+<li><strong>On your device only:</strong> your encrypted keys, swap
+secrets and deal states.</li>
+<li><strong>On our offers service (Cloudflare):</strong> offers and
+takes, with the wallet addresses, amounts and times in them.</li>
+<li><strong>If you turn on Telegram alerts:</strong> the link between
+your wallet address and your Telegram account, so the bot can message
+you. Turning alerts off deletes it at once.</li>
+<li><strong>On our relayer (a server in Germany):</strong> the swaps it
+finishes, with their lock ids and, once used, the secret.</li>
+<li><strong>Our hosting providers and the public nodes your wallet talks
+to</strong> see your IP address, under their own policies.</li>
+<li><strong>Blockchains:</strong> every lock, address, amount and
+published secret is public and permanent. Nobody can delete it.</li>
+</ul>
+<p>There is no analytics or tracking in the swap. <strong class="tbd">[TBD:
+retention periods and the privacy contact, from the team's
+decision.]</strong> You can ask us by email to delete the data held by
+our services that is tied to your address; this cannot cover public
+blockchain records.</p>
+<h2 id="11-support-warranties-and-liability">11. Support, warranties and
+liability</h2>
+<p><strong>Support.</strong> Write to <strong class="tbd">[TBD: support
+email]</strong>. Include the deal's lock address or number, your public
+wallet addresses, transaction links and what happened. We will never ask
+for your recovery phrase, PIN or a swap secret; anyone who does is not
+us. <strong class="tbd">[TBD: response times.]</strong></p>
+<p><strong>No warranties.</strong> The swap is provided "as is" and "as
+available", without warranties of any kind, to the extent the law
+allows. We do not promise it will always be available, that offers will
+be filled, or that the software is free of errors.</p>
+<p><strong>Liability.</strong> To the extent the law allows, Delfos Hub
+and its contributors are not liable for losses of coins, profits or data
+from using the swap, including losses caused by smart contracts,
+networks, the relayer, other users or your own mistakes. A refund from a
+contract is not compensation. Losses caused by your own mistake are not
+compensated. <strong class="tbd">[TBD: whether other cases can be reviewed, by whom
+and from which funds.]</strong> Nothing here limits rights you have by
+law that cannot be limited.</p>
+<p>Nothing in Frontier Wallet is investment, financial or tax
+advice.</p>
+<h2 id="12-limits-changes-to-these-terms-end-of-service">12. Limits,
+changes to these terms, end of service</h2>
+<p><strong>Launch limits.</strong> During the first weeks a deal must be
+between 5 and 500 GRAM.</p>
+<p><strong>What we can change.</strong> The Delfos Hub team can change
+the limits, time limits and fee for new offers and swaps. A swap already
+started keeps the terms written into its locks, which nobody can
+change.</p>
+<p><strong>Changes to these terms.</strong> We announce changes in the
+app and in our Telegram channel <strong class="tbd">[TBD: notice period]</strong>
+before they apply. Each version has a number and date, and older
+versions stay available. Sellers accept the current version when they
+publish an offer, buyers before their first swap under it. If you do not
+accept a new version, you can still cancel your offers and finish or
+refund your open swaps.</p>
+<p><strong>End of service.</strong> If the swap is closed, we announce
+it <strong class="tbd">[TBD: notice period]</strong> ahead, stop new offers and
+takes, and keep the relayer running until every open swap has been
+completed or refunded. Your coins never depend on us to come back
+(section 7).</p>
+
+</main>
+</body>
+</html>

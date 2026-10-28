@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d8d7c593';
-import { GRAM_NET } from './gram-net.js?v=d8d7c593';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d8d7c593';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=d8d7c593';
-import { S } from './state.js?v=d8d7c593';
-import { decryptSeed } from './storage.js?v=d8d7c593';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=d8d7c593';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d8d7c593';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d8d7c593';
-import { chime, notify } from './notify.js?v=d8d7c593';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=07546db3';
+import { GRAM_NET, TERMS } from './gram-net.js?v=07546db3';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=07546db3';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=07546db3';
+import { S } from './state.js?v=07546db3';
+import { decryptSeed } from './storage.js?v=07546db3';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=07546db3';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=07546db3';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=07546db3';
+import { chime, notify } from './notify.js?v=07546db3';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -564,6 +564,7 @@ function preview(){ showTon(); follow(); }
 $('#gx-post').addEventListener('click', async function(){
   const f = readForm();
   if (f.errs.length) { say('#gx-msg', f.errs[0], true); buzz('error'); return; }
+  if (!(await needTerms())) { say('#gx-msg', 'Accept the Terms of Use to publish an offer.', true); return; }
   try { localStorage.setItem(tonKey(), f.ton); } catch (e) {}
   const expires = now() + f.hours * 3600 - 120;     // 2 min under the limit: a phone clock may run ahead
   const payload = JSON.stringify({
@@ -1151,6 +1152,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
   if (!q || q.err) return;
   const me = addrOf();
   if (!me) { say('#gx-bb-msg', 'Open a wallet first.', true); return; }
+  if (!(await needTerms())) { say('#gx-bb-msg', 'Accept the Terms of Use to buy.', true); return; }
   const btn = this; btn.disabled = true;
   let id = null;
   try {
@@ -1506,6 +1508,41 @@ $('#gx-relay-edit').addEventListener('click', function(){
    unlocked in memory. */
 let PEND = null;
 const NOTE_MESSAGE = 'A signed message, not a transaction: it moves no funds. This is exactly what will be signed.';
+/* ---------------- Terms of Use ----------------
+   Accepted once per address and version, before the first offer or buy;
+   a new version asks again. Kept on the device. */
+const termsKey = () => 'fw:gram:terms:' + addrOf();
+function termsAccepted(){
+  try { return localStorage.getItem(termsKey()) === TERMS.version; } catch (e) { return false; }
+}
+function openTerms(){
+  const url = new URL(TERMS.url, location.href).href;
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg && tg.openLink) tg.openLink(url); else window.open(url, '_blank', 'noopener');
+}
+function needTerms(){
+  if (termsAccepted()) return Promise.resolve(true);
+  return new Promise(function (resolve) {
+    const box = $('#gx-terms');
+    $('#gx-terms-v').textContent = TERMS.label;
+    function done(ok){
+      box.hidden = true;
+      $('#gx-terms-ok').onclick = null; $('#gx-terms-x').onclick = null;
+      if (ok) { try { localStorage.setItem(termsKey(), TERMS.version); } catch (e) {} }
+      resolve(ok);
+    }
+    $('#gx-terms-ok').onclick = () => done(true);
+    $('#gx-terms-x').onclick = () => done(false);
+    box.hidden = false;
+    $('#gx-terms-ok').focus({ preventScroll: true });
+  });
+}
+['#gx-terms-link', '#gx-terms-full'].forEach(sel => {
+  const a = $(sel);
+  if (a) a.addEventListener('click', e => { e.preventDefault(); openTerms(); });
+});
+if ($('#gx-terms-ver')) $('#gx-terms-ver').textContent = TERMS.label;
+
 const SHEET = () => $('#gx-sheet');
 
 function sheetMode(mode){
