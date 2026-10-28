@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=46c50251';
-import { $, go, tap } from './shell.js?v=46c50251';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=46c50251';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=46c50251';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=46c50251';
-import { S } from './state.js?v=46c50251';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=56cc7e0f';
+import { $, go, tap } from './shell.js?v=56cc7e0f';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=56cc7e0f';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=56cc7e0f';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=56cc7e0f';
+import { S } from './state.js?v=56cc7e0f';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -237,13 +237,44 @@ function face(el, t){
 // pair against LUNC. Read from the pool itself it holds for any pair, and it is
 // one query per pool, kept for as long as the screen is open.
 const DEPTH = {};
-function firstLeg(){
+// The pools a trade can enter first: the pair itself, or for a hop the pools
+// into the middle token - what happens after the first pool is smaller by
+// definition.
+function firstCandidates(){
   const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (pools.length) return pools[0].pair;
+  if (pools.length) return pools;
   const mids = midsBetween(keyOf(FROM), keyOf(TO));
-  // for a hop it is the first pool the trade enters that sets the comfortable
-  // size; what happens after it is smaller by definition
-  return mids.length ? mids[0].first[0].pair : null;
+  return (mids[0] && mids[0].first) || [];
+}
+/* Which of them is the deep one, by what it actually holds.
+   The list is ordered by the feed's liquidity, and a pool the feed does not
+   cover (or every pool, when the feed was not read) has no number and keeps
+   whatever order it arrived in. JURIS has a pool of 330 million LUNC and
+   three small ones; the warning was measured on a small one, said "99.88
+   JURIS costs over 1%" and painted the slider red, while the quote itself -
+   which asks every pool - showed 0.01% for 826,000 JURIS. */
+const BEST = {};
+const legKey = () => keyOf(FROM) + '|' + keyOf(TO);
+function firstLeg(){
+  const c = firstCandidates();
+  return BEST[legKey()] || (c.length ? c[0].pair : null);
+}
+async function pickDeepest(){
+  const k = legKey();
+  if (BEST[k]) return BEST[k];
+  const c = firstCandidates().slice(0, 8);
+  if (!c.length) return null;
+  if (c.length === 1) return (BEST[k] = c[0].pair);
+  const from = keyOf(FROM);
+  const held = await Promise.all(c.map(function (p) {
+    return reserves(p.pair).then(function (r) {
+      const m = r && r.find(x => x.key === from);
+      return m ? Number(m.raw) : 0;
+    }).catch(() => 0);
+  }));
+  let best = 0;
+  held.forEach(function (v, i) { if (v > held[best]) best = i; });
+  return (BEST[k] = c[best].pair);
 }
 
 /* The largest trade this pool takes for under a percent, worked out from what
@@ -272,16 +303,15 @@ function comfortOf(){
 }
 
 async function learnComfort(){
-  const pair = firstLeg();
+  const pair = await pickDeepest();
   if (!pair || COMFORT[pair] !== undefined) return;
   const bal = balOf(FROM);
   if (!(bal > 0)) return;
   COMFORT[pair] = { at: 0, pct: 0 };           // asked, so the next paint waits
   const raw = toRaw(String(bal), decOf(FROM));
-  const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  const first = pools.length ? pools : (midsBetween(keyOf(FROM), keyOf(TO))[0] || {}).first;
-  if (!first || !first.length) { delete COMFORT[pair]; return; }
-  const q = await simulateSwap(first[0].pair, keyOf(FROM), raw, first[0].dex).catch(() => null);
+  const leg = firstCandidates().filter(p => p.pair === pair)[0];
+  if (!leg) { delete COMFORT[pair]; return; }
+  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex).catch(() => null);
   if (!q) { delete COMFORT[pair]; return; }
   const out = Number(q.return_amount), spread = Number(q.spread_amount);
   const fee = Number(q.commission_amount);
@@ -298,7 +328,7 @@ async function learnDepth(pair){
   // the reserve is a fact worth showing; it is simply not what the promise
   // above should have been made of
   learnComfort();
-  if (!pair) pair = firstLeg();
+  if (!pair) pair = (await pickDeepest().catch(() => null)) || firstLeg();
   if (!pair) return;
   if (DEPTH[pair] !== undefined) return;
   DEPTH[pair] = 0;                       // asked, so the next paint does not re-ask
