@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=ee96c48b';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=ee96c48b';
-import { $, go } from './shell.js?v=ee96c48b';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=34498bc8';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=34498bc8';
+import { $, go } from './shell.js?v=34498bc8';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -258,6 +258,24 @@ let IBC_TRACES = true;
 // blinks out to "no price" on every refresh reads as the token having lost its
 // market, which is a far bigger claim than "not asked yet".
 const PRICE_SEEN = {};
+/* The pool each row was last priced from, and when.
+   Every refresh used to build its rows from nothing, so every row was
+   unpriced until its pool had been read again - and for those seconds the
+   list fell back to last-known figures drawn grey. A pool read a minute ago
+   is as good as one read now for a wallet screen, so it is reused, and only
+   pools older than POOL_TTL are asked again, quietly, behind numbers that
+   are already on screen. */
+const POOL_SEEN = {};
+const POOL_TTL = 3 * 60 * 1000;
+let FROM_SNAP = false;
+function reusePools(rows){
+  const now = Date.now();
+  rows.forEach(function (r) {
+    if (!r || r.pool) return;
+    const s = POOL_SEEN[rowKey(r)];
+    if (s && now - s.at < POOL_TTL) { r.pool = s.pool; r.tried = true; }
+  });
+}
 
 // anything that rounds to $0.00 on screen counts as dust
 const DUST = 0.005;
@@ -306,7 +324,7 @@ function renderCore(rows){
     const has = !!r && r.fiat !== null;
     setText(usdEl, has ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014');
     usdEl.classList.toggle('soft', !!(r && r.shaky));
-    setText(cell.querySelector('.core-qty'), fmt(r ? r.t.v : 0));
+    pulse(cell.querySelector('.core-qty'), fmt(r ? r.t.v : 0));
   });
   if (painted) paintIcons(box);
 }
@@ -328,9 +346,22 @@ function rowInner(r){
     '<div class="row-sub"></div></div>';
 }
 
+// A number that changed on its own deserves a glance, not a repaint: one soft
+// pulse on that number, nothing on the ones that did not move.
+function pulse(el, s){
+  if (!el || el.textContent === s) return;
+  const was = el.textContent;
+  el.textContent = s;
+  // nothing pulses on the first fill of a cold open: that is loading, not news
+  if (TOTAL_SHOWN === null || !was || was === '\u2014' || !el.isConnected) return;
+  el.classList.remove('bump');
+  void el.offsetWidth;            // restart the animation if it is mid-way
+  el.classList.add('bump');
+}
+
 function updateRow(el, r){
   const t = r.t;
-  setText(el.querySelector('.row-amt'), fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : ''));
+  pulse(el.querySelector('.row-amt'), fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : ''));
   const fiatEl = el.querySelector('.row-fiat');
   setText(fiatEl, r.fiat !== null ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014');
   fiatEl.classList.toggle('soft', !!r.shaky);
@@ -398,6 +429,28 @@ function syncList(list, shown, emptyMsg){
   for (const k in have) have[k].remove();
   fresh.forEach(el => paintIcons(el));
 }
+/* The total moves to its new value instead of jumping to it - the way a
+   balance changes in any wallet people trust. Only for a real change: a
+   refresh that found the same money draws nothing at all. */
+let TWEEN = 0;
+function tweenTotal(el, from, to){
+  const done = usd(to);
+  if (from === null || from === undefined || !isFinite(from) || el.textContent === done ||
+      Math.abs(to - from) < 0.005 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    TWEEN++;
+    setText(el, done);
+    return;
+  }
+  const id = ++TWEEN, t0 = performance.now(), ms = 450;
+  (function step(now){
+    if (id !== TWEEN) return;
+    const k = Math.min(1, (now - t0) / ms);
+    const e = 1 - Math.pow(1 - k, 3);
+    setText(el, k < 1 ? usd(from + (to - from) * e) : done);
+    if (k < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
 function renderTokens(list, found, px, hint){
   LAST = { found: found, px: px, hint: hint };
 
@@ -440,12 +493,22 @@ function renderTokens(list, found, px, hint){
 
   rows.forEach(function (r) {
     const k = r.t.sym;
+    const key = rowKey(r.t);
+    if (r.t.pool && !FROM_SNAP && (!POOL_SEEN[key] || POOL_SEEN[key].pool !== r.t.pool)) {
+      POOL_SEEN[key] = { pool: r.t.pool, at: Date.now() };
+    }
     if (r.fiat !== null) {
-      if (!settling) PRICE_SEEN[k] = { fiat: r.fiat, sub: r.sub };
-    } else if (settling && PRICE_SEEN[k]) {
-      r.fiat = PRICE_SEEN[k].fiat;
+      // kept per unit, not as a dollar total: after a send the balance has
+      // changed and the old total would be wrong for it. The first price a
+      // token gets is kept even mid-load, so a later pass has something to
+      // stand on; after that only complete readings may redefine it.
+      if (r.t.v > 0 && (!settling || !PRICE_SEEN[k])) PRICE_SEEN[k] = { unit: r.fiat / r.t.v, sub: r.sub };
+    } else if (settling && PRICE_SEEN[k] && PRICE_SEEN[k].unit !== undefined) {
+      // Last known while this pass catches up, drawn the same as any other
+      // price. It is seconds old; greying the whole list for that said
+      // "something is wrong" on every refresh.
+      r.fiat = PRICE_SEEN[k].unit * r.t.v;
       r.sub = PRICE_SEEN[k].sub;
-      r.shaky = true;             // last known, not current - and it says so
     } else if (!settling) {
       // asked in full and no price came back: the old one is now a fiction
       delete PRICE_SEEN[k];
@@ -498,9 +561,13 @@ function renderTokens(list, found, px, hint){
   // list worth two hundred.
   const totalEl = $('#bal-total');
   if (!settling) {
+    const from = TOTAL_SHOWN;
     TOTAL_SHOWN = total;
-    totalEl.textContent = usd(total);
     totalEl.classList.remove('stale');
+    tweenTotal(totalEl, from, total);
+  } else if (TOTAL_SHOWN !== null) {
+    // A complete figure is already on screen. It stays exactly as it is until
+    // the next complete one replaces it - no dimming, no partial sums.
   } else {
     // Dimmed and climbing as prices land. It reads as loading, which is what
     // it is; a frozen figure reads as final, which it is not.
@@ -555,7 +622,9 @@ async function loadBalances(addr, force){
     const snap = cacheGetStale('snap:' + addr);
     if (!warm && snap && Array.isArray(snap.found) && snap.found.length) {
       SWEEPING = false;              // that reading was complete when it was saved
-      renderTokens(list, snap.found, snap.px || {}, 'Checking for changes.');
+      FROM_SNAP = true;              // its pools are hours old: shown, not reused
+      try { renderTokens(list, snap.found, snap.px || {}, ''); }
+      finally { FROM_SNAP = false; }
       SWEEPING = true;
     }
   } catch (e) { /* a bad snapshot is not worth failing the open over */ }
@@ -649,7 +718,7 @@ async function loadBalances(addr, force){
     // would blank every token for a second or two on a timer, which is what the
     // 45 second poll was doing. A cold open has nothing better to show, so it
     // still draws.
-    if (!LAST.found.length) renderTokens(list, found, px, 'Reading your tokens.');
+    if (!LAST.found.length) renderTokens(list, found, px, '');
 
     // The list, and nothing but the list. This is the whole of a normal open.
     // one request, and every logo and decimal below comes for free
@@ -662,6 +731,7 @@ async function loadBalances(addr, force){
     // node does not start refusing.
     const seeded = await mapLimit(firstRound, 10, c => tokenRow(c, addr, undefined, true));
     for (const r of seeded) if (r) found.push(r);
+    reusePools(found);
     remember(addr, seeded.filter(Boolean).map(r => r.contract));
     // From here the list is complete as far as this address knows, so the
     // total is honest even though prices are still arriving.
@@ -718,6 +788,7 @@ async function loadBalances(addr, force){
         if (!hits.length) continue;
         SWEEPING = true;
         const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
+        reusePools(rows);
         for (const r of rows) if (r && !have(r.contract)) found.push(r);
         // kept at once, so a sweep cut short still remembers what it found
         remember(addr, hits.map(h => h.c));

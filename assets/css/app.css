@@ -1200,3 +1200,10 @@ body.sheet-open .tabs{visibility:hidden}
 .txq-row.fail .txq-mid span{color:var(--red);white-space:normal}
 @keyframes txq-spin{to{transform:rotate(360deg)}}
 @keyframes txq-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+/* ---------- quiet refresh ----------
+   A number that changed gets one soft pulse; nothing else on screen moves. */
+.bump{animation:bump .9s ease-out}
+@keyframes bump{0%{color:var(--accent2)}100%{color:inherit}}
+.bal-value{font-variant-numeric:tabular-nums}
+.row-fiat,.row-amt,.core-usd,.core-qty{font-variant-numeric:tabular-nums}

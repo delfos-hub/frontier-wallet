@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=ee96c48b';
+import { $ } from './shell.js?v=34498bc8';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
