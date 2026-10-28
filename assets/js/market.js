@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=56cc7e0f';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=662b1c86';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -610,7 +610,12 @@ const marketComplete = () => MARKET_COMPLETE;
    This is a map, not a price feed. It says which pools exist and where; what
    is in them we still read ourselves.
 */
-const OW_URL = 'https://orbitwire-proxy.vladislav-baydan.workers.dev/pairs';
+// The team's own Cloudflare account first; the original copy on a personal
+// account stays as a fallback until it is retired.
+const OW_URLS = [
+  'https://orbitwire-proxy.delfoshub-team.workers.dev/pairs',
+  'https://orbitwire-proxy.vladislav-baydan.workers.dev/pairs'
+];
 
 let OW = null;
 /* The feed names the exchange, and the exchange decides the dialect.
@@ -633,13 +638,16 @@ async function owMarket(){
   if (OW !== null) return OW;
   let raw = cacheGet('ow');
   if (!raw) {
-    try {
-      const r = await getJSON(OW_URL, 15000);
-      if (r && r.ok && Array.isArray(r.pairs) && r.pairs.length) {
-        raw = r.pairs;
-        cacheSet('ow', raw);
-      }
-    } catch (e) { raw = null; }
+    for (const url of OW_URLS) {
+      try {
+        const r = await getJSON(url, 15000, 1);
+        if (r && r.ok && Array.isArray(r.pairs) && r.pairs.length) {
+          raw = r.pairs;
+          cacheSet('ow', raw);
+          break;
+        }
+      } catch (e) { raw = null; }
+    }
   }
   if (!raw) { OW = false; return false; }   // false, not null: asked and failed
 
