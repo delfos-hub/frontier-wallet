@@ -95,8 +95,8 @@ NETS.mainnet = {
 const GRAM_NET = NETS.testnet;
 
 // The Terms of Use the swap is offered under (terms.html). A new version id
-// asks every user to accept again before their next offer or buy; the draft
-// marker comes off once the team has approved the text.
-const TERMS = { version: '1.0-draft', label: '1.0 (draft)', date: '2026-10-28', url: 'terms.html' };
+// asks every user to accept again before their next offer or buy.
+// 1.0: the text approved by the team on 28 Oct 2026.
+const TERMS = { version: '1.0', label: '1.0', date: '2026-10-28', url: 'terms.html' };
 
 export { GRAM_NET, NETS, TERMS };

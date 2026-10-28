@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=07546db3';
-import { GRAM_NET, TERMS } from './gram-net.js?v=07546db3';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=07546db3';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=07546db3';
-import { S } from './state.js?v=07546db3';
-import { decryptSeed } from './storage.js?v=07546db3';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=07546db3';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=07546db3';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=07546db3';
-import { chime, notify } from './notify.js?v=07546db3';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=33c3db22';
+import { GRAM_NET, TERMS } from './gram-net.js?v=33c3db22';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=33c3db22';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=33c3db22';
+import { S } from './state.js?v=33c3db22';
+import { decryptSeed } from './storage.js?v=33c3db22';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=33c3db22';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=33c3db22';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=33c3db22';
+import { chime, notify } from './notify.js?v=33c3db22';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -94,6 +94,9 @@ function dealLimits(){
 function waitingBuys(){
   return Object.values(buys()).filter(b => ['paying', 'sent', 'announced'].includes(b.stage)).length;
 }
+// where the service fee goes: the pinned treasury (tip) address
+function feeTo(){ return String((POLICY || NET.policy || {}).tip_address || ''); }
+function shortAddr(a){ return a.length > 14 ? a.slice(0, 6) + '\u2026' + a.slice(-6) : a; }
 function openErr(){
   const max = Number((POLICY || NET.policy || {}).max_open_takes_per_taker) || 0;
   const n = waitingBuys();
@@ -1136,7 +1139,10 @@ function quote(){
   $('#gx-bb-sum').innerHTML =
     '<div><span>You pay</span><b>' + human(q.gram + q.tip + RESERVE_NANO, 9) + ' GRAM</b></div>' +
     '<div><span>Price</span><b>' + human(q.gram, 9) + ' GRAM</b></div>' +
-    '<div><span>Relayer fee</span><b>' + human(q.tip, 9) + ' GRAM</b></div>' +
+    // the Terms (section 5) call it the service fee and promise its
+    // recipient is shown: the treasury address pinned in gram-net.js
+    '<div><span>Service fee</span><b>' + human(q.tip, 9) + ' GRAM</b></div>' +
+    '<div><span>Fee goes to</span><b title="' + esc(feeTo()) + '">Delfos Hub treasury ' + esc(shortAddr(feeTo())) + '</b></div>' +
     '<div><span>TON network reserve</span><b>' + human(RESERVE_NANO, 9) + ' GRAM</b></div>' +
     '<div><span>You receive</span><b>' + (q.lunc > 0n ? human(q.lunc, 6) : '0') + ' LUNC, no gas needed</b></div>';
   $('#gx-bb-msg').textContent = q.err || (relayerUrl() ? '' : 'No relayer address is set (bottom of the Buy tab).');

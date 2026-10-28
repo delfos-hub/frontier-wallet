@@ -36,14 +36,15 @@ ok('accepted once this version is stored for this address', accepted() === true)
 me = 'terra1bob';
 ok('another address on the same device has to accept for itself', accepted() === false);
 me = 'terra1alice';
-ok('a new version asks again', make(Object.assign({}, TERMS, { version: '1.0' }))() === false);
-ok('the version is the first one, still a draft', TERMS.version === '1.0-draft' && /1\.0/.test(TERMS.label) && /draft/.test(TERMS.label));
+ok('a new version asks again', make(Object.assign({}, TERMS, { version: '1.1' }))() === false);
+ok('the version is 1.0, the text approved by the team', TERMS.version === '1.0' && TERMS.label === '1.0');
 
 group('the page and the sheet');
 const page = fs.readFileSync(path.join(ROOT, TERMS.url), 'utf8');
 ok('terms.html ships with the wallet', page.length > 5000);
 ok('it shows the same version', page.includes('Version ' + TERMS.label));
-ok('the reviewers\u2019 notes are not in the public page', !/For reviewers|remove before publishing/i.test(page));
+ok('no reviewers\u2019 notes, draft marks or [TBD] left in the public page', !/For reviewers|remove before publishing|\[TBD|\(draft\)/i.test(page));
+ok('the fee is shown as the service fee, with its recipient', /'<div><span>Service fee<\/span>/.test(src) && /Fee goes to/.test(src) && !/Relayer fee/.test(src));
 ok('all twelve sections are there', (page.match(/<h2/g) || []).length === 12);
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 ok('the sheet, its accept button and the link are in index.html', ['id="gx-terms"', 'id="gx-terms-ok"', 'id="gx-terms-link"', 'id="gx-terms-full"'].every(x => html.includes(x)));
