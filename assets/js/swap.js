@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=34498bc8';
-import { $, go, tap } from './shell.js?v=34498bc8';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=34498bc8';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=34498bc8';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=34498bc8';
-import { S } from './state.js?v=34498bc8';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=4e9ba88d';
+import { $, go, tap } from './shell.js?v=4e9ba88d';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=4e9ba88d';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=4e9ba88d';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=4e9ba88d';
+import { S } from './state.js?v=4e9ba88d';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -408,12 +408,20 @@ function sheetRows(side){
     });
     const lunc = pick('LUNC');
     if (lunc && !mine.some(t => t.sym === 'LUNC')) mine.unshift(lunc);
-    return mine;
+    return sortHeld(mine, true);
   }
-  return destinations(FROM).map(function (p) {
+  const all = destinations(FROM).map(function (p) {
     const t = tokenFor(p.key);
     return t ? Object.assign({}, t, { hops: p.hops, via: p.via }) : null;
   }).filter(Boolean);
+  // what you already hold first, by value; then the rest in pool order, which
+  // is deepest first - so the tokens you can actually trade are on top
+  const held = sortHeld(all.filter(t => (t.v || 0) > 0));
+  const rest = all.filter(t => !((t.v || 0) > 0));
+  if (held.length && rest.length) {
+    return [{ head: 'In your wallet' }].concat(held, [{ head: 'All tokens' }], rest);
+  }
+  return held.concat(rest);
 }
 
 // Rows the sheet could not name yet. Asked for once, all at once, and the sheet
@@ -451,9 +459,13 @@ function findBox(){
 let SHEET_SIDE = 'from';
 function drawSheet(){
   const q = (FIND && FIND.value || '').trim().toUpperCase();
-  const all = sheetRows(SHEET_SIDE).filter(t => !q || String(t.sym).toUpperCase().indexOf(q) >= 0);
+  // by ticker, or by contract address for the token two projects both call TERRA
+  const hit = t => !q || String(t.sym).toUpperCase().indexOf(q) >= 0 ||
+    (q.length > 8 && String(t.contract || t.denom || '').toUpperCase().indexOf(q) >= 0);
+  const all = sheetRows(SHEET_SIDE).filter(t => t.head ? !q : hit(t));
   const list = $('#sw-list');
-  list.innerHTML = all.length ? all.map(function (t) {
+  list.innerHTML = all.some(t => !t.head) ? all.map(function (t) {
+    if (t.head) return '<div class="sw-sec">' + t.head + '</div>';
     const f = fiatOf(t);
     return '<button class="sw-item" type="button" data-k="' + keyOf(t) + '">' +
       iconHTML(t) + '<span class="sw-item-s">' + t.sym +
@@ -483,7 +495,7 @@ function openSheet(side){
   sheet.hidden = false;
   // A count is the one thing a search box cannot tell you before you type.
   const n = $('#sw-count');
-  if (n) n.textContent = sheetRows(side).length + ' available';
+  if (n) n.textContent = sheetRows(side).filter(t => !t.head).length + ' available';
 }
 const closeSheet = () => {
   $('#sw-sheet').hidden = true;
@@ -972,6 +984,20 @@ $('#sw-flip').addEventListener('click', () => {
 // экран открывается из консоли на главной
 const btn = document.getElementById('act-swap');
 if (btn) btn.addEventListener('click', () => { fillPickers(); go('swap'); });
+
+// the token page's Swap: that token on the pay side, the rest chosen as usual
+document.addEventListener('frontier:swap-from', function (e) {
+  const t = tokenFor(e.detail && e.detail.key);
+  if (t) {
+    FROM = t;
+    if (TO && keyOf(TO) === keyOf(t)) TO = null;
+    if (TO && !poolsBetween(keyOf(FROM), keyOf(TO)).length) TO = null;
+  }
+  $('#sw-amt').value = ''; $('#sw-range').value = '0';
+  $('#sw-out').textContent = '-'; detail([]);
+  fillPickers();
+  go('swap');
+});
 
 // Two ways to hand a pool an offer, times two dialects.
 //

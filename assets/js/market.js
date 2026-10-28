@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=34498bc8';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=4e9ba88d';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -652,8 +652,12 @@ async function owMarket(){
     // because it is the first guess at which dialect the pool speaks.
     const liq = Number(p.liquidity) || 0;
     const dex = dexDialect(p.dex);
-    (edges[a] = edges[a] || []).push({ to: b, pair: p.pool, liq: liq, dex: dex });
-    (edges[b] = edges[b] || []).push({ to: a, pair: p.pool, liq: liq, dex: dex });
+    // the exchange's own name and the day's volume ride along for the token
+    // screen; routing never reads them
+    const name = String(p.dex || '');
+    const vol = Number(p.volume24h || p.volume_24h || p.volume) || null;
+    (edges[a] = edges[a] || []).push({ to: b, pair: p.pool, liq: liq, dex: dex, name: name, vol: vol });
+    (edges[b] = edges[b] || []).push({ to: a, pair: p.pool, liq: liq, dex: dex, name: name, vol: vol });
     for (const t of [p.base, p.quote]) {
       const k = owKey(t);
       if (t.logo && !logos[k]) logos[k] = t.logo;
@@ -669,6 +673,17 @@ async function owMarket(){
 }
 
 const owLogo = contract => (OW && OW.logos['cw20:' + contract]) || null;
+
+// Every pool the map lists for one asset, deepest first, with the other side
+// named. For the token screen; a swap still goes through peersOf.
+function poolsOf(key){
+  if (!OW || !OW.edges) return [];
+  return (OW.edges[key] || []).filter(e => e.to !== key).map(function (e) {
+    const o = assetOf(e.to) || knownAsset(e.to);
+    return { pair: e.pair, other: e.to, otherSym: (o && o.sym) || (OW.syms[e.to] || '?'),
+             liq: e.liq, vol: e.vol, dex: e.dex, name: e.name };
+  }).sort((x, y) => (y.liq || 0) - (x.liq || 0));
+}
 
 let GRAPH = null;
 
@@ -1004,4 +1019,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, dexDialect, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, dexDialect, poolsOf, infoKey, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };

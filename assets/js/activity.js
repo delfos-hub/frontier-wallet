@@ -4,10 +4,10 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=34498bc8';
-import { DEC, knownAsset } from './market.js?v=34498bc8';
-import { $, go } from './shell.js?v=34498bc8';
-import { S } from './state.js?v=34498bc8';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=4e9ba88d';
+import { DEC, knownAsset } from './market.js?v=4e9ba88d';
+import { $, go } from './shell.js?v=4e9ba88d';
+import { S } from './state.js?v=4e9ba88d';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -377,6 +377,24 @@ async function page(query){
   } catch (e) { return []; }
 }
 
+// One row of the list. The token screen draws the same rows for one token.
+function rowHTML(t, me, dated){
+  TXS[t.txhash] = t;
+  const d = describe(t, me);
+  const failed = Number(t.code) > 0;
+  return '<div class="ac-row" data-hash="' + t.txhash + '">' +
+    '<div class="ac-mark ' + d.kind + (failed ? ' fail' : '') + '">' +
+      '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.code) + '</svg></div>' +
+    '<div class="ac-mid"><div class="ac-t">' + d.title + '</div>' +
+      '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') +
+      (d.sub || short(t.txhash)) + '</div></div>' +
+    '<div class="ac-r"><div class="ac-v' + (d.kind === 'in' || d.gain ? ' in' : '') + '">' +
+      (d.value || '') + '</div><div class="ac-w">' +
+      (dated && dayName(t.timestamp) !== 'Today' ? dayName(t.timestamp) : clock(t.timestamp)) +
+      '</div></div>' +
+    '</div>';
+}
+
 async function load(){
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
   if (!me || LOADED === me) return;
@@ -411,22 +429,12 @@ async function load(){
   list.innerHTML = all.slice(0, 40).map(function (t) {
     // held so the detail panel has the answer without asking the chain again
     TXS[t.txhash] = t;
-    const d = describe(t, me);
     // a heading whenever the date turns over, which is the structure a list of
     // events has and a flat column of rows hides
     let head = '';
     const k = dayKey(t.timestamp);
     if (k !== day) { day = k; head = '<div class="ac-day">' + dayName(t.timestamp) + '</div>'; }
-    const failed = Number(t.code) > 0;
-    return head + '<div class="ac-row" data-hash="' + t.txhash + '">' +
-      '<div class="ac-mark ' + d.kind + (failed ? ' fail' : '') + '">' +
-        '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.dot) + '</svg></div>' +
-      '<div class="ac-mid"><div class="ac-t">' + d.title + '</div>' +
-        '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') +
-        (d.sub || short(t.txhash)) + '</div></div>' +
-      '<div class="ac-r"><div class="ac-v' + (d.kind === 'in' || d.gain ? ' in' : '') + '">' +
-        (d.value || '') + '</div><div class="ac-w">' + clock(t.timestamp) + '</div></div>' +
-      '</div>';
+    return head + rowHTML(t, me);
   }).join('');
   $('#ac-note').textContent = 'The last ' + Math.min(all.length, 40) +
     ' transactions this address signed or received.';
@@ -484,4 +492,4 @@ document.addEventListener('frontier:tx', () => {
   if (a && a.classList.contains('on')) load();
 });
 
-export { load, nameOf, short, showTx, wasmCalls };
+export { load, nameOf, rowHTML, short, showTx, wasmCalls };

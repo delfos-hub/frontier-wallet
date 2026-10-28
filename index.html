@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=34498bc8">
+<link rel="stylesheet" href="assets/css/app.css?v=4e9ba88d">
 </head>
 <body>
 <div id="rt"></div>
@@ -507,6 +507,42 @@
   <button class="btn solid" id="send-review">Check what this would cost</button>
 </section>
 
+<!-- ================= one token (token.js) ================= -->
+<section class="step wpad" id="st-token">
+  <div class="bar">
+    <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  </div>
+  <div class="tk-head">
+    <span class="tk-ico" id="tk-ico"></span>
+    <div class="tk-id"><h1 id="tk-sym"></h1><span id="tk-name"></span></div>
+    <div class="tk-px"><b id="tk-px"></b><span id="tk-px-l"></span></div>
+  </div>
+
+  <div class="tk-balcard">
+    <span class="tk-label">Your balance</span>
+    <b id="tk-bal"></b>
+    <div class="tk-balrow"><span id="tk-bal-usd"></span><span id="tk-share"></span></div>
+  </div>
+
+  <div class="acts tk-acts">
+    <button class="act" id="tk-send" type="button"><i><svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></i>Send</button>
+    <button class="act" id="tk-recv" type="button"><i><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></i>Receive</button>
+    <button class="act" id="tk-swap" type="button"><i><svg viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m14 4 4 4-4 4"/><path d="M20 16H7"/><path d="m10 12-4 4 4 4"/></svg></i>Swap</button>
+  </div>
+
+  <div class="head"><h2>Where it is</h2></div>
+  <div class="tk-card" id="tk-pos"></div>
+
+  <div class="head"><h2>Market</h2></div>
+  <div class="tk-card" id="tk-mkt"></div>
+
+  <div class="head"><h2>About</h2></div>
+  <div class="tk-card" id="tk-about"></div>
+
+  <div class="head"><h2>Recent activity</h2></div>
+  <div class="tk-card tk-acts-list" id="tk-act"></div>
+</section>
+
 <!-- ================= P2P ================= -->
 <!-- The market itself is the widget in a frame (delfos-hub/widgets). This
      page only holds the keys; assets/js/p2p.js answers the frame's requests. -->
@@ -768,16 +804,17 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=34498bc8"></script>
-<script src="assets/js/ads.js?v=34498bc8"></script>
-<script type="module" src="assets/js/swap.js?v=34498bc8"></script>
-<script type="module" src="assets/js/activity.js?v=34498bc8"></script>
-<script type="module" src="assets/js/nft.js?v=34498bc8"></script>
-<script type="module" src="assets/js/p2p.js?v=34498bc8"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=34498bc8"></script>
-<script type="module" src="assets/js/gram.js?v=34498bc8"></script>
-<script type="module" src="assets/js/incoming.js?v=34498bc8"></script>
-<script type="module" src="assets/js/gov.js?v=34498bc8"></script>
-<script type="module" src="assets/js/stake.js?v=34498bc8"></script>
+<script type="module" src="assets/js/app.js?v=4e9ba88d"></script>
+<script src="assets/js/ads.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/swap.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/activity.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/nft.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/p2p.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/gram.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/incoming.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/token.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/gov.js?v=4e9ba88d"></script>
+<script type="module" src="assets/js/stake.js?v=4e9ba88d"></script>
 </body>
 </html>

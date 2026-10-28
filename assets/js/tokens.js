@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=34498bc8';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=34498bc8';
-import { $, go } from './shell.js?v=34498bc8';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=4e9ba88d';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=4e9ba88d';
+import { $, go } from './shell.js?v=4e9ba88d';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -905,7 +905,42 @@ function openWallet(addr){
 // The swap screen needs the same rows the list is drawn from, priced and all.
 // Handing back LAST.found beats asking the chain a second time.
 const heldTokens = () => LAST.found || [];
-export { fiatOf, forget, registry, remember, heldTokens, luncRaw, openWallet, refreshBalances };
+/* One order for every list of held tokens: the home list, the send picker,
+   the swap picker. Worth most first; a token with no price goes after every
+   priced one, ordered by how much of it there is; nothing at zero. The pickers
+   used to keep the order the balances happened to arrive in, with empty rows
+   mixed in. */
+function sortHeld(rows, keepZero){
+  return rows.filter(r => keepZero || (r.v || 0) > 0).map(r => ({ r: r, f: fiatOf(r) }))
+    .sort(function (a, b) {
+      const fa = a.f === null ? -1 : a.f, fb = b.f === null ? -1 : b.f;
+      return (fb - fa) || ((b.r.v || 0) - (a.r.v || 0)) || String(a.r.sym).localeCompare(String(b.r.sym));
+    }).map(x => x.r);
+}
+const luncUsd = () => ((LAST && LAST.px) || {}).LUNC || null;
+const walletUsd = () => TOTAL_SHOWN;
+const tokKey = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.denom);
+
+// A row on the home screen opens that token's own page.
+(function wireRows(){
+  const open = key => { if (key) document.dispatchEvent(new CustomEvent('frontier:token', { detail: { key: key } })); };
+  const list = $('#tok-list');
+  if (list) list.addEventListener('click', function (e) {
+    const li = e.target.closest('li.row[data-k]');
+    if (!li) return;
+    const k = li.getAttribute('data-k');
+    const r = (LAST.found || []).filter(x => rowKey(x) === k)[0];
+    open(r ? tokKey(r) : '');
+  });
+  const core = $('#core');
+  if (core) core.addEventListener('click', function (e) {
+    const c = e.target.closest('.core-cell');
+    if (!c) return;
+    open(c.dataset.sym === 'USTC' ? 'native:uusd' : 'native:uluna');
+  });
+})();
+
+export { fiatOf, forget, registry, remember, heldTokens, luncRaw, luncUsd, openWallet, refreshBalances, sortHeld, tokKey, walletUsd };
 
 // A sweep is two hundred requests. It is worth doing on demand and worth not
 // doing otherwise, so it gets a button that says what it is doing.

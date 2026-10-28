@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=34498bc8';
-import { $, buzz, go, tap } from './shell.js?v=34498bc8';
-import { S } from './state.js?v=34498bc8';
-import { iconHTML, paintIcons } from './chain.js?v=34498bc8';
-import { heldTokens, refreshBalances } from './tokens.js?v=34498bc8';
-import { notify } from './notify.js?v=34498bc8';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=4e9ba88d';
+import { $, buzz, go, tap } from './shell.js?v=4e9ba88d';
+import { S } from './state.js?v=4e9ba88d';
+import { iconHTML, paintIcons } from './chain.js?v=4e9ba88d';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=4e9ba88d';
+import { notify } from './notify.js?v=4e9ba88d';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -257,11 +257,9 @@ const isCw20 = t => !!(t && t.contract);
 const sendKey = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.denom);
 
 function sendable(){
-  const rows = heldTokens().filter(function (r) { return (r.v || 0) > 0; });
-  // LUNC first and always, because it is what the fee is paid in
-  const lunc = rows.filter(function (r) { return r.denom === 'uluna'; })[0];
-  const rest = rows.filter(function (r) { return r.denom !== 'uluna'; });
-  return (lunc ? [lunc] : [SEND_TOK]).concat(rest);
+  // what is here to send, worth most first, nothing at zero
+  const rows = sortHeld(heldTokens());
+  return rows.some(r => r.denom === 'uluna') ? rows : [SEND_TOK].concat(rows);
 }
 
 function balanceOf(t){
@@ -293,7 +291,8 @@ function drawSendList(){
   if (!$('#sd-q')) return;
   const q = ($('#sd-q').value || '').trim().toUpperCase();
   const rows = sendable().filter(function (t) {
-    return !q || String(t.sym).toUpperCase().indexOf(q) >= 0;
+    return !q || String(t.sym).toUpperCase().indexOf(q) >= 0 ||
+      (q.length > 8 && String(t.contract || t.denom || '').toUpperCase().indexOf(q) >= 0);
   });
   $('#sd-list').innerHTML = rows.length ? rows.map(function (t) {
     return '<button class="sw-item" type="button" data-k="' + sendKey(t) + '">' +
@@ -644,6 +643,16 @@ if (btn) {
 }
 
 export { paintSendTok };
+
+// the token page's Send: that token already chosen, a clean form
+document.addEventListener('frontier:send-token', function (e) {
+  const key = e.detail && e.detail.key;
+  const pick = heldTokens().filter(function (r) { return sendKey(r) === key; })[0];
+  if (pick) SEND_TOK = pick;
+  ['#send-to', '#send-amt', '#send-memo'].forEach(function (s) { const el = $(s); if (el) el.value = ''; });
+  paintSendTok();
+  go('send');
+});
 
 export { dryRunNative, sendNative, burnTaxRate, b64, toRaw };
 
