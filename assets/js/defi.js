@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=0e78a9d6';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=0e78a9d6';
-import { $, go, tap } from './shell.js?v=0e78a9d6';
-import { S } from './state.js?v=0e78a9d6';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=0e78a9d6';
-import * as P from './defi-parse.js?v=0e78a9d6';
-import { dryRunSwap, sendSwap } from './tx.js?v=0e78a9d6';
-import { notify } from './notify.js?v=0e78a9d6';
-import { buzz } from './shell.js?v=0e78a9d6';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=0e78a9d6';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=e973c366';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=e973c366';
+import { $, go, tap } from './shell.js?v=e973c366';
+import { S } from './state.js?v=e973c366';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=e973c366';
+import * as P from './defi-parse.js?v=e973c366';
+import { dryRunSwap, sendSwap } from './tx.js?v=e973c366';
+import { notify } from './notify.js?v=e973c366';
+import { buzz } from './shell.js?v=e973c366';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=e973c366';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -143,30 +143,41 @@ async function ask(c, msg){
 
 /* ---------------- tokens: names, decimals, prices ---------------- */
 const META = {};
+/* Name, decimals and logo of a token, from the best place that has them.
+   The wallet's own row comes first and is looked up every time: a scan that
+   started before the balances arrived used to keep a bare entry for good,
+   so VIMA had no price on its staking card and JURIS showed "?" with no
+   logo. A name read from a contract is kept, so the next cold open has it
+   before any query. A silent node never breaks a position: the address
+   stands in for the name until it answers. */
+const heldRow = key => heldTokens().filter(r => tokKey(r) === key)[0];
 async function meta(key){
-  if (META[key]) return META[key];
-  const held = heldTokens().filter(r => tokKey(r) === key)[0];
+  const held = heldRow(key);
+  if (held) {
+    const m = { sym: held.sym, dec: held.dec === undefined ? 6 : held.dec, logo: held.logo };
+    if (!META[key] || META[key].sym !== m.sym) permSet('m:' + key, m);
+    return (META[key] = m);
+  }
+  if (META[key] && !META[key].guess) return META[key];
   const k = knownAsset(key);
   let m = null;
   if (key === 'native:uluna') m = { sym: 'LUNC', dec: 6 };
   else if (key === 'native:uusd') m = { sym: 'USTC', dec: 6 };
-  else if (held) m = { sym: held.sym, dec: held.dec === undefined ? 6 : held.dec, row: held };
   else if (k && k.sym) m = { sym: k.sym, dec: k.dec === undefined ? (DEC[key] === undefined ? 6 : DEC[key]) : k.dec, logo: k.logo };
+  else if (permGet('m:' + key)) m = permGet('m:' + key);
   else if (key.slice(0, 5) === 'cw20:') {
-    let ti = permGet('ti0:' + key);
-    if (ti === undefined) {
-      const d = await q(key.slice(5), { token_info: {} });
-      ti = d ? { sym: d.symbol, dec: d.decimals } : null;
-      if (ti) permSet('ti0:' + key, ti);
-    }
-    m = ti ? { sym: ti.sym, dec: ti.dec } : { sym: key.slice(5, 13).toUpperCase(), dec: 6 };
-  } else m = { sym: key.slice(7, 13).toUpperCase(), dec: 6 };
+    let d = null;
+    try { d = await q(key.slice(5), { token_info: {} }); } catch (e) { /* silent node: try later */ }
+    if (d && d.symbol) { m = { sym: d.symbol, dec: d.decimals === undefined ? 6 : d.decimals }; permSet('m:' + key, m); }
+    else m = { sym: key.slice(5, 13).toUpperCase(), dec: 6, guess: true };
+  } else m = { sym: key.slice(7, 13).toUpperCase(), dec: 6, guess: true };
   return (META[key] = m);
 }
 
 function rowOf(key){
-  const m = META[key] || {};
-  if (m.row) return m.row;
+  const held = heldRow(key);
+  if (held) return held;
+  const m = META[key] || permGet('m:' + key) || {};
   const r = { sym: m.sym || '?', dec: m.dec === undefined ? 6 : m.dec, logo: m.logo };
   if (key.slice(0, 5) === 'cw20:') r.contract = key.slice(5); else r.denom = key.slice(7);
   return r;
@@ -430,6 +441,9 @@ async function scan(full){
     LAST = kept('pos:' + addr) || {};
     FOUND = Object.assign({}, LAST);
     for (const c in FOUND) FOUND[c].stale = true;
+    // the kept positions need their tokens' names before they can be drawn
+    await Promise.all([].concat.apply([], Object.values(FOUND).map(p =>
+      p.holds.concat(p.rewards, p.wants || []).map(x => x.key).concat(p.keys || []))).map(meta));
     draw();
     await readAll(Object.values(jobs), addr, seq);
     draw();
@@ -861,5 +875,12 @@ document.addEventListener('frontier:wallet', function () {
   homeLine(h ? h.n : 0, h ? h.total : 0, h ? h.rewards : 0, h ? h.rows : []);
 });
 document.addEventListener('frontier:locked', function () { FOUND = {}; SEQ++; });
+// balances and prices move on their own schedule; redraw what is on screen so
+// dollar values follow them (the list holds token keys, not frozen prices)
+document.addEventListener('frontier:tx', () => draw());
+setInterval(function () {
+  const e = document.getElementById('st-earn');
+  if (Object.keys(FOUND).length && e && e.classList.contains('on')) draw();
+}, 15000);
 
 export { scan, FOUND };

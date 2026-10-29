@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=0e78a9d6';
-import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=0e78a9d6';
-import { $, go, tap } from './shell.js?v=0e78a9d6';
-import { S } from './state.js?v=0e78a9d6';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=0e78a9d6';
-import { rowHTML } from './activity.js?v=0e78a9d6';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=e973c366';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=e973c366';
+import { $, go, tap } from './shell.js?v=e973c366';
+import { S } from './state.js?v=e973c366';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=e973c366';
+import { rowHTML } from './activity.js?v=e973c366';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
@@ -491,6 +491,8 @@ function drawPositions(t, list, still){
   if (still) html += '<div class="tk-looking"><i></i>Looking in pools and staking contracts</div>';
   else html += '<p class="tk-note">Found from the contracts this address has dealt with. A position missing here can be added by its contract address - send it to the team.</p>';
   box.innerHTML = html;
+  // the letters are placeholders until the logos are fetched and painted in
+  paintIcons(box);
 }
 
 /* ---------------- activity ---------------- */
