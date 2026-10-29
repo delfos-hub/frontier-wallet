@@ -13,15 +13,15 @@
    or a delisting cutoff (reclaim_expired). If it cannot be told, the
    message says only that the order is closed.
 
-   The contract is p2p.js's P2P_CONTRACT (columbus-5). Until it is deployed
-   nothing runs. For a test on another network: localStorage
+   The contract is p2p.js's P2P_CONTRACT (columbus-5, deployed 2026-10-28).
+   For a test on another network: localStorage
    fw:p2p:watch = {"lcd":"...","contract":"...","seller":"..."}. */
-import { KNOWN_IBC, LCD, getJSON } from './chain.js?v=d8d7c593';
-import { notify, badge } from './notify.js?v=d8d7c593';
-import { P2P_CONTRACT, openMarket } from './p2p.js?v=d8d7c593';
-import { $ } from './shell.js?v=d8d7c593';
-import { S } from './state.js?v=d8d7c593';
-import { diffOrders } from './p2p-orders.js?v=d8d7c593';
+import { KNOWN_IBC, LCD, getJSON } from './chain.js?v=f9b3a79a';
+import { notify, badge } from './notify.js?v=f9b3a79a';
+import { P2P_CONTRACT, openMarket } from './p2p.js?v=f9b3a79a';
+import { $ } from './shell.js?v=f9b3a79a';
+import { S } from './state.js?v=f9b3a79a';
+import { diffOrders } from './p2p-orders.js?v=f9b3a79a';
 
 function target(){
   let o = null;

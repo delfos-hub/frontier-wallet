@@ -24,24 +24,28 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=d8d7c593';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d8d7c593';
-import { $, buzz, go, libs, report } from './shell.js?v=d8d7c593';
-import { S } from './state.js?v=d8d7c593';
-import { decryptSeed } from './storage.js?v=d8d7c593';
-import { dryRunSwap, sendSwap } from './tx.js?v=d8d7c593';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=f9b3a79a';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=f9b3a79a';
+import { $, buzz, go, libs, report } from './shell.js?v=f9b3a79a';
+import { S } from './state.js?v=f9b3a79a';
+import { decryptSeed } from './storage.js?v=f9b3a79a';
+import { dryRunSwap, sendSwap } from './tx.js?v=f9b3a79a';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
 
 // Where the widget is served. Its own origin, never a path under ours: a
 // frame on our origin could read the wallet's storage directly and would not
-// need a bridge at all. Production will be https://p2p.delfoshub.com.
+// need a bridge at all. For now the mainnet build on the preview Worker
+// (widgets 0fb4a5f); it moves to its own Delfos domain later.
 const WIDGET_ORIGIN = 'https://widgets-p2p-preview.repegclub.workers.dev';
 
-// The otc-p2p contract on columbus-5. Empty until it is deployed; while it is
-// empty the widget can show the book, and every execute is refused.
-const P2P_CONTRACT = '';
+// The otc-p2p contract on columbus-5: code 11745, no wasm admin, admin = the
+// Admin multisig terra1l74mn5dh8lsun003ukzzm60crgdgav9fff6kx7, treasury and
+// fees = the Treasury multisig terra1freuz0wwhjjxjns0mj2aw3s8va0vwmefhc3zce
+// (widgets#49, config read back from the chain 2026-10-28). Every execute the
+// widget asks for must go to this address (rule 4 above).
+const P2P_CONTRACT = 'terra1k65g4hy99sy6h7f2khrt5rz97ydlemtn4459gj9qhrt79tp83hcsdsq5uj';
 
 const CHANNEL = 'delfos-p2p-wallet';
 
