@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=753c2ce8';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=753c2ce8';
-import { $, go, tap } from './shell.js?v=753c2ce8';
-import { S } from './state.js?v=753c2ce8';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=753c2ce8';
-import * as P from './defi-parse.js?v=753c2ce8';
-import { dryRunSwap, sendSwap } from './tx.js?v=753c2ce8';
-import { notify } from './notify.js?v=753c2ce8';
-import { buzz } from './shell.js?v=753c2ce8';
-import { refreshBalances } from './tokens.js?v=753c2ce8';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=a70d6571';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=a70d6571';
+import { $, go, tap } from './shell.js?v=a70d6571';
+import { S } from './state.js?v=a70d6571';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=a70d6571';
+import * as P from './defi-parse.js?v=a70d6571';
+import { dryRunSwap, sendSwap } from './tx.js?v=a70d6571';
+import { notify } from './notify.js?v=a70d6571';
+import { buzz } from './shell.js?v=a70d6571';
+import { refreshBalances } from './tokens.js?v=a70d6571';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -112,10 +112,10 @@ const NODES = [
 ];
 const REST = {};
 let TURN = 0;
-const REFUSED_BODY = /query wasm contract failed|not found|Generic error|Custom Error|Unauthorized|Overflow|Error parsing|unknown variant|missing field/i;
+const REFUSED_BODY = /query wasm contract failed|Generic error|Custom Error|Unauthorized|Overflow|Error parsing|unknown variant|missing field|StakedAsset|UnstakedAsset/i;
 
 async function ask(c, msg){
-  const path = '/cosmwasm/wasm/v1/contract/' + c + '/smart/' + btoa(JSON.stringify(msg));
+  const path = '/cosmwasm/wasm/v1/contract/' + c + '/smart/' + encodeURIComponent(btoa(JSON.stringify(msg)));
   for (let i = 0; i < NODES.length * 2; i++) {
     const node = NODES[TURN++ % NODES.length];
     if ((REST[node] || 0) > Date.now()) continue;
@@ -126,8 +126,12 @@ async function ask(c, msg){
       if (r.ok) { const j = await r.json(); return { ok: true, data: j ? j.data : null }; }
       let body = '';
       try { body = await r.text(); } catch (x) {}
-      if ((r.status >= 400 && r.status < 500 && r.status !== 429) || REFUSED_BODY.test(body)) return { ok: false, refused: true };
-      REST[node] = Date.now() + 15000;            // busy: let it breathe
+      // Only the contract's own words make a refusal. A node that does not
+      // serve this route answers 404 or 400 too, and reading that as "no"
+      // is how every farm's LP lost its pool: its minter was asked on the
+      // second node, which said 404, and the LP was taken to have none.
+      if (REFUSED_BODY.test(body)) return { ok: false, refused: true };
+      REST[node] = Date.now() + (r.status === 404 || r.status === 400 || r.status === 501 ? 600000 : 15000);
     } catch (e) {
       REST[node] = Date.now() + 60000;            // unreachable or not for browsers
     } finally { clearTimeout(timer); }
