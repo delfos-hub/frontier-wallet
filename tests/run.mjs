@@ -273,6 +273,9 @@ await import('./defi.mjs');
 // several wallets in one store, and the old single-wallet save
 await import('./wallets.mjs');
 
+// one element per id
+await import('./markup.mjs');
+
 // the signed message, in its own file because it is lifted from swap.js rather
 // than imported
 await import('./envelopes.mjs');

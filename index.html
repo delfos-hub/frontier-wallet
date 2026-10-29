@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=c36e8f7f">
+<link rel="stylesheet" href="assets/css/app.css?v=c69395f1">
 </head>
 <body>
 <div id="rt"></div>
@@ -295,37 +295,6 @@
 
 <!-- ================= HOME (placeholder) ================= -->
 <section class="step wpad" id="st-home">
-  <!-- recovery phrase (seed.js) -->
-  <div class="sw-sheet" id="sd-sheet" hidden>
-    <div class="sw-sheet-in">
-      <div class="sw-sheet-top"><span>Recovery phrase</span><button class="sw-x" id="sd-x" type="button">Close</button></div>
-      <div id="sd-step-pin">
-        <div class="warn"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-          <p><b>Anyone with these words owns this wallet.</b> Make sure nobody can see your screen. Frontier never asks for them, and neither does anyone you should trust.</p></div>
-        <div class="field"><label>Enter your PIN</label>
-          <input class="sd-pin" id="sd-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></div>
-        <div class="meter-txt" id="sd-msg"></div>
-      </div>
-      <div id="sd-step-words" hidden>
-        <div class="sd-wrap"><div class="sd-words blur" id="sd-words"></div>
-          <button class="btn solid sd-reveal" id="sd-reveal" type="button" hidden>Reveal</button></div>
-        <p class="tiny">Write them down in this order and keep the paper offline. This closes by itself in a minute.</p>
-        <button class="btn quiet" id="sd-done" type="button">Done</button>
-      </div>
-    </div>
-  </div>
-  <!-- wallet switcher (wallets.js) -->
-  <div class="sw-sheet" id="wl-sheet" hidden>
-    <div class="sw-sheet-in">
-      <div class="sw-sheet-top"><span>Wallets</span><button class="sw-x" id="wl-x" type="button">Close</button></div>
-      <div class="wl-list" id="wl-list"></div>
-      <div class="wl-add">
-        <button class="btn solid" id="wl-create" type="button">Create a new wallet</button>
-        <button class="btn" id="wl-import" type="button">Import a recovery phrase</button>
-        <button class="btn quiet" id="wl-watch" type="button">Watch an address</button>
-      </div>
-    </div>
-  </div>
   <!-- pull to refresh (home-tools.js) -->
   <div class="ptr" id="ptr"><span class="ptr-ic"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></span></div>
   <div class="wtop">
@@ -878,6 +847,41 @@
     <span>Delete all wallets from this device</span></div>
 </section>
 
+<!-- Sheets opened from more than one screen live outside every screen:
+     inside #st-home they were hidden with it, so from Settings the tab bar
+     went away and nothing appeared. -->
+<!-- recovery phrase (seed.js) -->
+  <div class="sw-sheet" id="rp-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Recovery phrase</span><button class="sw-x" id="rp-x" type="button">Close</button></div>
+      <div id="rp-step-pin">
+        <div class="warn"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <p><b>Anyone with these words owns this wallet.</b> Make sure nobody can see your screen. Frontier never asks for them, and neither does anyone you should trust.</p></div>
+        <div class="field"><label>Enter your PIN</label>
+          <input class="sd-pin" id="rp-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></div>
+        <div class="meter-txt" id="rp-msg"></div>
+      </div>
+      <div id="rp-step-words" hidden>
+        <div class="sd-wrap"><div class="sd-words blur" id="rp-words"></div>
+          <button class="btn solid sd-reveal" id="rp-reveal" type="button" hidden>Reveal</button></div>
+        <p class="tiny">Write them down in this order and keep the paper offline. This closes by itself in a minute.</p>
+        <button class="btn quiet" id="rp-done" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+  <!-- wallet switcher (wallets.js) -->
+  <div class="sw-sheet" id="wl-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Wallets</span><button class="sw-x" id="wl-x" type="button">Close</button></div>
+      <div class="wl-list" id="wl-list"></div>
+      <div class="wl-add">
+        <button class="btn solid" id="wl-create" type="button">Create a new wallet</button>
+        <button class="btn" id="wl-import" type="button">Import a recovery phrase</button>
+        <button class="btn quiet" id="wl-watch" type="button">Watch an address</button>
+      </div>
+    </div>
+  </div>
+
 <nav class="tabs" id="tabs">
   <button class="tab sel" data-tab="home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 21v-8h6v8"/></svg>Home</button>
   <button class="tab" data-tab="stake"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/></svg>Stake</button>
@@ -914,21 +918,21 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=c36e8f7f"></script>
-<script src="assets/js/ads.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/swap.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/activity.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/nft.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/wallets.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/seed.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/home-tools.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/p2p.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/gram.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/incoming.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/token.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/defi.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/gov.js?v=c36e8f7f"></script>
-<script type="module" src="assets/js/stake.js?v=c36e8f7f"></script>
+<script type="module" src="assets/js/app.js?v=c69395f1"></script>
+<script src="assets/js/ads.js?v=c69395f1"></script>
+<script type="module" src="assets/js/swap.js?v=c69395f1"></script>
+<script type="module" src="assets/js/activity.js?v=c69395f1"></script>
+<script type="module" src="assets/js/nft.js?v=c69395f1"></script>
+<script type="module" src="assets/js/wallets.js?v=c69395f1"></script>
+<script type="module" src="assets/js/seed.js?v=c69395f1"></script>
+<script type="module" src="assets/js/home-tools.js?v=c69395f1"></script>
+<script type="module" src="assets/js/p2p.js?v=c69395f1"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=c69395f1"></script>
+<script type="module" src="assets/js/gram.js?v=c69395f1"></script>
+<script type="module" src="assets/js/incoming.js?v=c69395f1"></script>
+<script type="module" src="assets/js/token.js?v=c69395f1"></script>
+<script type="module" src="assets/js/defi.js?v=c69395f1"></script>
+<script type="module" src="assets/js/gov.js?v=c69395f1"></script>
+<script type="module" src="assets/js/stake.js?v=c69395f1"></script>
 </body>
 </html>
