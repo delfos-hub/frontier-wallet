@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=3e3cf32f';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=3e3cf32f';
-import { $, go } from './shell.js?v=3e3cf32f';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=cec2b74f';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=cec2b74f';
+import { $, go } from './shell.js?v=cec2b74f';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -439,6 +439,8 @@ function showTotal(el){
   const sum = TOTAL_SHOWN + EXTRA;
   tweenTotal(el, SHOWN_SUM, sum);
   SHOWN_SUM = sum;
+  // the wallet switcher shows each wallet's last total
+  try { if (LAST_ADDR) localStorage.setItem('fw:tot:' + LAST_ADDR, String(sum)); } catch (e) {}
   drawSplit();
 }
 function drawSplit(){
