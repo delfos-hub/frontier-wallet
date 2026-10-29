@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=ef3c39ad';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=ef3c39ad';
-import { $, go, tap } from './shell.js?v=ef3c39ad';
-import { S } from './state.js?v=ef3c39ad';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=ef3c39ad';
-import * as P from './defi-parse.js?v=ef3c39ad';
-import { dryRunSwap, sendSwap } from './tx.js?v=ef3c39ad';
-import { notify } from './notify.js?v=ef3c39ad';
-import { buzz } from './shell.js?v=ef3c39ad';
-import { refreshBalances } from './tokens.js?v=ef3c39ad';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=753c2ce8';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=753c2ce8';
+import { $, go, tap } from './shell.js?v=753c2ce8';
+import { S } from './state.js?v=753c2ce8';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=753c2ce8';
+import * as P from './defi-parse.js?v=753c2ce8';
+import { dryRunSwap, sendSwap } from './tx.js?v=753c2ce8';
+import { notify } from './notify.js?v=753c2ce8';
+import { buzz } from './shell.js?v=753c2ce8';
+import { refreshBalances } from './tokens.js?v=753c2ce8';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -100,15 +100,15 @@ function refusal(e){
 
    One node took every read - balances, prices and a few hundred position
    queries - and answered the burst with 500s and 429s: slow pages, farms
-   "not valued", Juris gone and back. Spread over four nodes the same reads
+   "not valued", Juris gone and back. Spread over two nodes the same reads
    finish several times faster and rarely hit a limit. A node that fails is
    rested (15 s when busy, a minute when unreachable or blocked by CORS) and
    the next one is asked. */
+// Only nodes that answer a browser (checked 29 Oct 2026 with an Origin header):
+// binodes sends no access-control-allow-origin, autostake 404s the LCD paths.
 const NODES = [
   'https://terra-classic-lcd.publicnode.com',
-  'https://lcd.terra-classic.hexxagon.io',
-  'https://api-lunc-lcd.binodes.com',
-  'https://terraclassic-mainnet-lcd.autostake.com'
+  'https://lcd.terra-classic.hexxagon.io'
 ];
 const REST = {};
 let TURN = 0;
@@ -475,8 +475,8 @@ function kindOfPos(p){
 
 async function readAll(list, addr, seq, counted){
   let n = 0;
-  // spread over four nodes (ask) this is eight wide in front, four behind
-  await mapLimit(list, counted ? 4 : 8, async function (j) {
+  // spread over two nodes (ask): six wide in front, three behind
+  await mapLimit(list, counted ? 3 : 6, async function (j) {
     const p = await readJob(j, addr);
     n++;
     if (counted && n % 10 === 0) status('Looking for other positions in the background \u00b7 ' + n + ' of ' + list.length);
