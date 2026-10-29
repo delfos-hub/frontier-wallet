@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=a4472e0a';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=a4472e0a';
-import { $, go } from './shell.js?v=a4472e0a';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=c36e8f7f';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=c36e8f7f';
+import { $, go } from './shell.js?v=c36e8f7f';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -479,6 +479,8 @@ function tweenTotal(el, from, to){
 }
 
 function renderTokens(list, found, px, hint){
+  // a reading of another wallet, finishing after a switch, is not drawn
+  if (found && found.__addr && found.__addr !== LAST_ADDR) return;
   LAST = { found: found, px: px, hint: hint };
 
   const rows = found.map(t => {
@@ -656,6 +658,7 @@ async function loadBalances(addr, force){
   try {
     const snap = cacheGetStale('snap:' + addr);
     if (!warm && snap && Array.isArray(snap.found) && snap.found.length) {
+      snap.found.__addr = addr;
       SWEEPING = false;              // that reading was complete when it was saved
       FROM_SNAP = true;              // its pools are hours old: shown, not reused
       try { renderTokens(list, snap.found, snap.px || {}, ''); }
@@ -690,6 +693,7 @@ async function loadBalances(addr, force){
     }).catch(function () {});
 
     const found = [];
+    found.__addr = addr;
 
     // every native denom the address actually holds, ibc ones resolved to
     // whatever they were before they crossed the bridge
@@ -928,7 +932,32 @@ const onHome = () => {
 setInterval(() => { if (onHome()) refreshBalances(false); }, 45000);
 document.addEventListener('visibilitychange', () => { if (onHome()) refreshBalances(false); });
 
+/* Another wallet: nothing of the previous one may stay on screen.
+   Switching from a watched address back to the main wallet showed the
+   watched address's tokens: openWallet set the new address before
+   loadBalances ran, so loadBalances took it for "the same wallet, read 4 s
+   ago" and returned, and the old list, total and prices stayed. Now the
+   screen is emptied, the new address is read in full, and a pass still
+   running for the old address finishes without drawing anything. */
+async function switchTo(addr){
+  for (let i = 0; RUNNING && i < 200; i++) await nap(300);
+  if (LAST_ADDR === addr) loadBalances(addr, true);
+}
 function openWallet(addr){
+  if (addr !== LAST_ADDR) {
+    LAST = { found: [], px: {}, hint: '' };
+    TOTAL_SHOWN = null; SHOWN_SUM = null; EXTRA = 0; LOADED_AT = 0;
+    const list = $('#tok-list'); if (list) list.innerHTML = '<li class="empty">Loading balances</li>';
+    const tot = $('#bal-total'); if (tot) { tot.textContent = '...'; tot.classList.remove('stale'); }
+    const sp = $('#bal-split'); if (sp) sp.hidden = true;
+    const n = $('#tok-count'); if (n) n.textContent = '';
+    LAST_ADDR = addr;
+    $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
+    go('home');
+    switchTo(addr);
+    document.dispatchEvent(new CustomEvent('frontier:wallet', { detail: { addr: addr } }));
+    return;
+  }
   LAST_ADDR = addr;
   $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
   go('home');

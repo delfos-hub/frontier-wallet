@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=a4472e0a';
-import { $, buzz, go, tap } from './shell.js?v=a4472e0a';
-import { S } from './state.js?v=a4472e0a';
-import { iconHTML, paintIcons } from './chain.js?v=a4472e0a';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=a4472e0a';
-import { notify } from './notify.js?v=a4472e0a';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=c36e8f7f';
+import { $, buzz, go, tap } from './shell.js?v=c36e8f7f';
+import { S } from './state.js?v=c36e8f7f';
+import { iconHTML, paintIcons } from './chain.js?v=c36e8f7f';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=c36e8f7f';
+import { notify } from './notify.js?v=c36e8f7f';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -252,6 +252,8 @@ function luncBalance(){
    arrives - a transfer message to the token's own contract - and the transport
    for that has been here since two step swaps needed it. */
 let SEND_TOK = { sym: 'LUNC', denom: 'uluna', dec: 6, v: 0 };
+// a token chosen in another wallet means nothing in this one
+document.addEventListener('frontier:wallet', () => { SEND_TOK = { sym: 'LUNC', denom: 'uluna', dec: 6, v: 0 }; });
 
 const isCw20 = t => !!(t && t.contract);
 const sendKey = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.denom);
