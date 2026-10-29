@@ -1407,3 +1407,14 @@ li.row[data-k]:active,.core-cell:active{opacity:.75}
 @media (prefers-reduced-motion:reduce){.ad-shine::before{animation:none;display:none}}
 .ads:has(.ad-img){border-color:rgba(123,92,255,.35);box-shadow:0 8px 28px rgba(0,0,0,.35)}
 .ads-ticks .t{background:rgba(232,240,255,.25)}
+
+/* ---------- banners, settled into the page ----------
+   Same width and corners as every other card (no more 10 px past the column
+   on each side), a slimmer 3.4 : 1 picture, and placed below the money: the
+   home screen reads balance, actions, assets, DeFi, then partners. */
+.ads{margin:12px 0 18px;border-radius:var(--r-card);border-color:var(--border);box-shadow:none}
+.ads:has(.ad-img){border-color:var(--border);box-shadow:none}
+.ad.ad-img{aspect-ratio:1200/353}
+.ad.ad-img::after{height:28%;background:linear-gradient(0deg,rgba(11,15,26,.55),transparent)}
+.ads-ticks{bottom:8px;left:12px}
+.ads-ticks .t{width:12px}
