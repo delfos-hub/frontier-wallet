@@ -1,7 +1,13 @@
 <!doctype html>
 <html lang="en">
 <head>
+
 <meta charset="utf-8">
+<!-- Scripts come only from this site: no inline script, no inline handler
+     (onerror=, onclick=), no javascript: link can run, whatever text from the
+     chain ends up on the page. The splash timer moved to assets/js/splash.js
+     for this. -->
+<meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#0B0F1A">
 <!-- The entry document is the one file that cannot carry a version in its
@@ -48,7 +54,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=33c3db22">
+<link rel="stylesheet" href="assets/css/app.css?v=0ba6f1d9">
 </head>
 <body>
 <div id="rt"></div>
@@ -69,26 +75,7 @@
   <div class="fw-tag">Terra Classic Wallet</div>
   </div>
 </div>
-<script>
-// Заставка уходит, когда приложение готово, но не раньше MIN - иначе на быстром
-// соединении она успевает только моргнуть. CAP страхует от вечной заставки:
-// если модуль упал, пользователь всё равно увидит экран, а не пустоту.
-(function () {
-  var el = document.getElementById('fw-splash'), t0 = Date.now(), done = false;
-  var MIN = 1500, CAP = 4000;
-  function hide() {
-    if (done) return; done = true;
-    setTimeout(function () {
-      el.classList.add('gone');
-      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
-    }, Math.max(0, MIN - (Date.now() - t0)));
-  }
-  window.addEventListener('fw:ready', hide);
-  if (document.readyState === 'complete') hide();
-  else window.addEventListener('load', hide);
-  setTimeout(hide, CAP);
-})();
-</script>
+<script src="assets/js/splash.js?v=0ba6f1d9"></script>
 
 <div class="orb"></div>
 
@@ -786,15 +773,15 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=33c3db22"></script>
-<script src="assets/js/ads.js?v=33c3db22"></script>
-<script type="module" src="assets/js/swap.js?v=33c3db22"></script>
-<script type="module" src="assets/js/activity.js?v=33c3db22"></script>
-<script type="module" src="assets/js/nft.js?v=33c3db22"></script>
-<script type="module" src="assets/js/p2p.js?v=33c3db22"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=33c3db22"></script>
-<script type="module" src="assets/js/gram.js?v=33c3db22"></script>
-<script type="module" src="assets/js/gov.js?v=33c3db22"></script>
-<script type="module" src="assets/js/stake.js?v=33c3db22"></script>
+<script type="module" src="assets/js/app.js?v=0ba6f1d9"></script>
+<script src="assets/js/ads.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/swap.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/activity.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/nft.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/p2p.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/gram.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/gov.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/stake.js?v=0ba6f1d9"></script>
 </body>
 </html>
