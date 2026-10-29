@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=332e7f08';
-import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=332e7f08';
-import { $, go, tap } from './shell.js?v=332e7f08';
-import { S } from './state.js?v=332e7f08';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=332e7f08';
-import { rowHTML } from './activity.js?v=332e7f08';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=0e78a9d6';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=0e78a9d6';
+import { $, go, tap } from './shell.js?v=0e78a9d6';
+import { S } from './state.js?v=0e78a9d6';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=0e78a9d6';
+import { rowHTML } from './activity.js?v=0e78a9d6';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
@@ -312,7 +312,7 @@ async function positions(t, seq){
     const b = amt(other.raw, decOf(other.key)) * frac;
     // both sides of a pool are worth the same by construction
     const u = unit !== null ? a * unit * 2 : null;
-    return { frac: frac, a: a, b: b, otherSym: symOf(other.key), usd: u };
+    return { frac: frac, a: a, b: b, otherSym: symOf(other.key), otherKey: other.key, usd: u };
   }
 
   for (const x of lps) {
@@ -325,7 +325,7 @@ async function positions(t, seq){
     if (!v) continue;
     out.push({ kind: 'pool', title: t.sym + ' / ' + v.otherSym + ' pool',
       sub: (x.pool.name || 'Liquidity') + ' \u00b7 ' + pct(v.frac) + ' of the pool',
-      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null });
+      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, otherKey: v.otherKey });
   }
   if (seq === SEQ) drawPositions(t, out, true);
 
@@ -340,7 +340,7 @@ async function positions(t, seq){
     if (!v) continue;
     out.push({ kind: 'pool', title: t.sym + ' / ' + v.otherSym + ' pool',
       sub: (poolSet[c].name || 'Garuda') + ' \u00b7 ' + pct(v.frac) + ' of the pool',
-      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null });
+      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, otherKey: v.otherKey });
   }
   if (seq === SEQ) drawPositions(t, out, true);
 
@@ -379,7 +379,7 @@ async function positions(t, seq){
       const v = lpValue(viaLp, st.amount);
       if (!v) continue;
       out.push({ kind: 'farm', title: t.sym + ' / ' + v.otherSym + ' farm', sub: label + ' \u00b7 ' + cut(c),
-        amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, addr: c });
+        amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, addr: c, otherKey: v.otherKey });
     } else {
       const a = amt(st.amount, t.dec || 6);
       out.push({ kind: 'stake', title: 'Staked on ' + label, sub: cut(c), amount: a,
@@ -445,6 +445,25 @@ const KIND_ICON = {
   wait: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'
 };
 
+// what a position is in, drawn as the token itself: its logo with a small
+// badge for the kind (wallet, staked, unstaking, rewards), or the two logos of
+// a pair for a pool or a farm
+function rowLike(key){
+  const held = heldTokens().filter(r => tokKey(r) === key)[0];
+  if (held) return held;
+  const a = knownAsset(key) || {};
+  const r = { sym: a.sym || symOf(key), logo: a.logo };
+  if (key.slice(0, 5) === 'cw20:') r.contract = key.slice(5); else r.denom = key.slice(7);
+  return r;
+}
+function faceOf(t, p){
+  if ((p.kind === 'pool' || p.kind === 'farm') && p.otherKey) {
+    return '<span class="ea-logos two">' + iconHTML(t) + iconHTML(rowLike(p.otherKey)) + '</span>';
+  }
+  return '<span class="tk-face">' + iconHTML(t) + '<i class="tk-badge ' + p.kind + '"><svg viewBox="0 0 24 24">' +
+    (KIND_ICON[p.kind] || KIND_ICON.wallet) + '</svg></i></span>';
+}
+
 function drawPositions(t, list, still){
   const box = $('#tk-pos');
   // rewards are not more of the token you hold until they are claimed
@@ -462,7 +481,7 @@ function drawPositions(t, list, still){
   html += list.map(function (p) {
     return '<div class="tk-pos' + (p.go ? ' tap' : '') + '"' + (p.go ? ' data-go-to="' + p.go + '"' : '') +
       (p.addr ? ' data-addr="' + p.addr + '"' : '') + '>' +
-      '<div class="tk-pos-i ' + p.kind + '"><svg viewBox="0 0 24 24">' + (KIND_ICON[p.kind] || KIND_ICON.wallet) + '</svg></div>' +
+      faceOf(t, p) +
       '<div class="tk-pos-m"><b>' + esc(p.title) + '</b><span>' + esc(p.sub) + '</span></div>' +
       '<div class="tk-pos-r"><b>' + fmt(p.amount || 0) + ' ' + esc(t.sym) + '</b>' +
       '<span>' + (p.extra ? esc(p.extra) : (p.usd !== null && p.usd !== undefined ? money(p.usd) : '')) + '</span></div>' +

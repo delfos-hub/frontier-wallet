@@ -1418,3 +1418,18 @@ li.row[data-k]:active,.core-cell:active{opacity:.75}
 .ad.ad-img::after{height:28%;background:linear-gradient(0deg,rgba(11,15,26,.55),transparent)}
 .ads-ticks{bottom:8px;left:12px}
 .ads-ticks .t{width:12px}
+
+/* token page positions: the token's own logo with a kind badge */
+.tk-face{position:relative;width:36px;height:36px;flex:none}
+.tk-face .sym{width:36px;height:36px;font-size:12px}
+.tk-badge{--tint:#7B8AA5;position:absolute;right:-4px;bottom:-4px;width:18px;height:18px;border-radius:50%;
+  display:grid;place-items:center;background:var(--tint);border:2px solid var(--surface)}
+.tk-badge svg{width:10px;height:10px;stroke:#0B0F1A;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.tk-badge.wallet{--tint:#00D4FF}.tk-badge.stake{--tint:#7B5CFF}.tk-badge.gift{--tint:#E8C840}.tk-badge.wait{--tint:#FF6B8A}
+.tk-badge.stake svg{stroke:#fff}
+.tk-pos .ea-logos{width:36px;height:36px}
+/* total = wallet + DeFi, split under the number */
+.bal-split{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--muted)}
+.bal-split[hidden]{display:none}
+.bal-split b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.bal-split i{width:3px;height:3px;border-radius:50%;background:var(--muted)}

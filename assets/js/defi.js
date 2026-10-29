@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=332e7f08';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=332e7f08';
-import { $, go, tap } from './shell.js?v=332e7f08';
-import { S } from './state.js?v=332e7f08';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=332e7f08';
-import * as P from './defi-parse.js?v=332e7f08';
-import { dryRunSwap, sendSwap } from './tx.js?v=332e7f08';
-import { notify } from './notify.js?v=332e7f08';
-import { buzz } from './shell.js?v=332e7f08';
-import { refreshBalances } from './tokens.js?v=332e7f08';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=0e78a9d6';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=0e78a9d6';
+import { $, go, tap } from './shell.js?v=0e78a9d6';
+import { S } from './state.js?v=0e78a9d6';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=0e78a9d6';
+import * as P from './defi-parse.js?v=0e78a9d6';
+import { dryRunSwap, sendSwap } from './tx.js?v=0e78a9d6';
+import { notify } from './notify.js?v=0e78a9d6';
+import { buzz } from './shell.js?v=0e78a9d6';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=0e78a9d6';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -801,6 +801,7 @@ function homeLine(n, total, rewards, rows){
   if (sub) sub.textContent = n ? n + (n === 1 ? ' position' : ' positions') + ' \u00b7 Garuda, Terraport, Juris'
                                : 'Staking, farms and pools on DEXes';
   if (r) r.textContent = n && total > 0 ? usd(total) : '';
+  setExtraUsd(n ? total : 0);
   if (rw) rw.textContent = n && rewards >= 0.01 ? '+' + usd(rewards) + ' rewards' : '';
   // up to three logos of what your positions hold, overlapping like a hand of
   // cards; with nothing known yet, the plain mark stays

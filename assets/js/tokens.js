@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=332e7f08';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=332e7f08';
-import { $, go } from './shell.js?v=332e7f08';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=0e78a9d6';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=0e78a9d6';
+import { $, go } from './shell.js?v=0e78a9d6';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -429,6 +429,31 @@ function syncList(list, shown, emptyMsg){
   for (const k in have) have[k].remove();
   fresh.forEach(el => paintIcons(el));
 }
+/* The big number is everything the address owns: the wallet plus what it has
+   working in staking, farms and pools (defi.js reports that part). A wallet
+   holding $0.21 next to $286 in DeFi read as an empty wallet. The line under
+   the number splits the two. TOTAL_SHOWN stays the wallet alone - shares of
+   "your wallet" on the token page are shares of what is spendable. */
+let EXTRA = 0, SHOWN_SUM = null;
+function showTotal(el){
+  const sum = TOTAL_SHOWN + EXTRA;
+  tweenTotal(el, SHOWN_SUM, sum);
+  SHOWN_SUM = sum;
+  drawSplit();
+}
+function drawSplit(){
+  const el = $('#bal-split');
+  if (!el) return;
+  if (!(EXTRA > 0) || TOTAL_SHOWN === null) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = '<span>Wallet <b>' + usd(TOTAL_SHOWN) + '</b></span><i></i><span>DeFi <b>' + usd(EXTRA) + '</b></span>';
+}
+function setExtraUsd(v){
+  EXTRA = v > 0 ? v : 0;
+  const el = $('#bal-total');
+  if (el && TOTAL_SHOWN !== null) showTotal(el); else drawSplit();
+}
+
 /* The total moves to its new value instead of jumping to it - the way a
    balance changes in any wallet people trust. Only for a real change: a
    refresh that found the same money draws nothing at all. */
@@ -566,10 +591,9 @@ function renderTokens(list, found, px, hint){
   // partial figure ($0.20 over a $45 wallet) for exactly that long. Anything
   // the sweep finds only adds a row, and the total follows it.
   if (!waiting) {
-    const from = TOTAL_SHOWN;
     TOTAL_SHOWN = total;
     totalEl.classList.remove('stale');
-    tweenTotal(totalEl, from, total);
+    showTotal(totalEl);
   } else if (TOTAL_SHOWN !== null) {
     // A complete figure is already on screen. It stays exactly as it is until
     // the next complete one replaces it - no dimming, no partial sums.
@@ -945,7 +969,7 @@ const tokKey = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t
   });
 })();
 
-export { fiatOf, forget, registry, remember, heldTokens, luncRaw, luncUsd, openWallet, refreshBalances, sortHeld, tokKey, walletUsd };
+export { fiatOf, forget, registry, remember, heldTokens, luncRaw, luncUsd, openWallet, refreshBalances, setExtraUsd, sortHeld, tokKey, walletUsd };
 
 // A sweep is two hundred requests. It is worth doing on demand and worth not
 // doing otherwise, so it gets a button that says what it is doing.
