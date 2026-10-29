@@ -20,12 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=9a9caa7c';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=9a9caa7c';
-import { $, go, tap } from './shell.js?v=9a9caa7c';
-import { S } from './state.js?v=9a9caa7c';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=9a9caa7c';
-import * as P from './defi-parse.js?v=9a9caa7c';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=330d0ba7';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=330d0ba7';
+import { $, go, tap } from './shell.js?v=330d0ba7';
+import { S } from './state.js?v=330d0ba7';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=330d0ba7';
+import * as P from './defi-parse.js?v=330d0ba7';
+import { dryRunSwap, sendSwap } from './tx.js?v=330d0ba7';
+import { notify } from './notify.js?v=330d0ba7';
+import { buzz } from './shell.js?v=330d0ba7';
+import { refreshBalances } from './tokens.js?v=330d0ba7';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -165,14 +169,18 @@ const READ = {
     if (f.endsAt) stats.push({ label: ended ? 'Ended' : 'Runs until', text: day(f.endsAt) });
     stats.push({ label: 'Unstaking', text: f.unstakeDelay ? 'takes ' + dur(f.unstakeDelay) : 'instant' });
     return { kind: 'farm', label: 'Farm', holds: lp ? lp.sides : [], rewards: f.rewards, notes: notes, stats: stats,
-             share: lp && lp.share, pair: lp && lp.pair, missing: !lp, keys: f.claimed.map(x => x.key) };
+             share: lp && lp.share, pair: lp && lp.pair, missing: !lp, keys: f.claimed.map(x => x.key),
+             data: { staked: f.staked } };
   },
   async pool(c, addr){
     const pos = await q(c, { user_position: { address: addr } });
     if (!pos || !Number(pos.lp_tokens)) return null;
+    const raw0 = await q(c, { pool: {} });
     const res = await reserves(c);
     const p = P.pool(pos, res ? { asset1: keyToGd(res[0].key), asset2: keyToGd(res[1].key) } : {});
+    p.lpToken = raw0 && raw0.liquidity_token;
     return { kind: 'pool', label: 'Liquidity', holds: p.sides.filter(s => s.key), rewards: [], notes: [], share: p.share,
+             data: { lp: p.lp, lpToken: p.lpToken || '', sides: p.sides },
              stats: [{ label: 'Your share of the pool', text: pct(p.share) }, { label: 'LP tokens', text: fmt(amt(p.lp, 6)) }] };
   },
   async stake(c, addr){
@@ -196,7 +204,8 @@ const READ = {
     const since = Number(st.stake.staked_at);
     if (since) stats.push({ label: 'Staked since', text: day(Math.floor(since / 1e9)) });
     return { kind: 'stake', label: 'Staking', holds: [{ key: s.token, raw: s.staked }],
-             rewards: s.reward !== '0' ? [{ key: s.token, raw: s.reward }] : [], notes: notes, stats: stats };
+             rewards: s.reward !== '0' ? [{ key: s.token, raw: s.reward }] : [], notes: notes, stats: stats,
+             data: { staked: s.staked, token: s.token } };
   },
   async grdx(c, addr){
     const a = await q(c, { assets: { staker: addr } });
@@ -226,7 +235,7 @@ const READ = {
     if (d.unlockSeconds) stats.push({ label: 'Unstaking takes', text: dur(d.unlockSeconds) });
     return { kind: 'stake', label: d.staked.length ? 'Staking' : 'Unstaked', holds: d.staked.concat(d.unstakes.map(x => ({ key: x.key, raw: x.raw }))),
              rewards: d.rewards, notes: notes, stats: stats, ready: d.unstakes.some(x => x.ready),
-             keys: d.withdrawn.map(x => x.key) };
+             keys: d.withdrawn.map(x => x.key), data: { staked: d.staked, unstakes: d.unstakes } };
   },
   async juris(c, addr){
     const u = await q(c, { user_info: { address: addr } });
@@ -241,7 +250,8 @@ const READ = {
     j.locks.forEach(l => notes.push(cap(l.tier) + ' lock \u00b7 ' + fmtRaw(JURIS, l.raw) + ' until ' + day(l.release)));
     j.locks.forEach(l => stats.push({ label: cap(l.tier) + ' lock #' + l.id + ', until ' + day(l.release), key: JURIS, raw: l.raw }));
     if (j.power !== '0') stats.push({ label: 'Voting power', text: fmt(Number(j.power)) });
-    return { kind: 'lock', label: 'Tier staking', holds: holds, rewards: [], notes: notes, stats: stats };
+    return { kind: 'lock', label: 'Tier staking', holds: holds, rewards: [], notes: notes, stats: stats,
+             data: { released: j.released } };
   },
   async orders(c, addr){
     const d = await q(c, { user_orders: { address: addr } });
@@ -251,6 +261,7 @@ const READ = {
     return { kind: 'order', label: o.length === 1 ? 'Open order' : o.length + ' open orders',
              holds: o.map(x => x.give), rewards: [], notes: o.map(x => 'Order #' + x.id + (x.get.key ? ' \u2192 ' + ((META[x.get.key] || {}).sym || '') : '')),
              wants: o.map(x => x.get).filter(x => x.key),
+             data: { orders: o },
              stats: o.map(x => ({ label: 'Order #' + x.id + ' sells', key: x.give.key, raw: x.give.raw }))
                .concat(o.filter(x => x.get.key).map(x => ({ label: 'Order #' + x.id + ' for', text: (META[x.get.key] || {}).sym || '' }))) };
   }
@@ -319,7 +330,7 @@ let FOUND = {}, BUSY = false, SEQ = 0;
 async function readJob(j, addr){
   try {
     const p = await READ[j.kind](j.contract, addr);
-    if (p) { p.contract = j.contract; p.platform = PLATFORM[j.kind] || 'Other'; }
+    if (p) { p.contract = j.contract; p.platform = PLATFORM[j.kind] || 'Other'; p.src = j.kind; }
     return p;
   } catch (e) { return null; }
 }
@@ -485,13 +496,162 @@ function card(p){
 }
 
 /* ---------------- one position, on its own page ---------------- */
-const ACTIONS = {
-  farm: ['Claim rewards', 'Unstake', 'Stake more'],
-  pool: ['Withdraw liquidity', 'Add liquidity'],
-  stake: ['Claim rewards', 'Unstake', 'Stake more'],
-  lock: ['Claim rewards'],
-  order: ['Cancel order']
-};
+/* ---------------- what a position lets you do ----------------
+   Every message below was checked against the live contract with a dry run
+   (args-probe.mjs, 29 Oct 2026): the field names, their types, and that the
+   contract accepts them. An action whose fields could not be confirmed is
+   not offered; the position page says to manage it on the platform.
+
+   An action: { id, label, note?, pick?: { max, fmt(frac) }, steps(frac) }
+   pick asks how much (a share of the position, 25/50/75/100%); steps builds
+   the messages for that share. */
+const assetObj = k => ({ asset_type: k.slice(0, 5) === 'cw20:' ? 'cw20' : 'native', address: k.slice(k.indexOf(':') + 1) });
+const part = (r, f) => String(f >= 1 ? r : Math.floor(Number(r) * f));
+
+function actionsOf(p){
+  const c = p.contract, d = p.data || {}, out = [];
+  if (p.src === 'farm') {
+    if (p.rewards.length) out.push({ id: 'claim', label: 'Claim rewards', steps: () => [{ contract: c, msg: { claim_rewards: {} } }] });
+    out.push({ id: 'unstake', label: 'Unstake', pick: true,
+      describe: f => 'LP worth ' + p.holds.map(x => fmt(human({ key: x.key, raw: part(x.raw, f) })) + ' ' + ((META[x.key] || {}).sym || '')).join(' + ') +
+        ' comes back to the wallet; Withdraw liquidity then turns it into the two tokens',
+      steps: f => [{ contract: c, msg: { unstake: { amount: part(d.staked, f) } } }] });
+  }
+  if (p.src === 'stake' && p.rewards.length) {
+    out.push({ id: 'claim', label: 'Claim rewards', steps: () => [{ contract: c, msg: { withdraw: {} } }] });
+  }
+  if (p.src === 'dynamic') {
+    if ((d.unstakes || []).some(u => u.ready)) {
+      const r = d.unstakes.filter(u => u.ready);
+      out.push({ id: 'withdraw', label: 'Withdraw ' + r.map(u => fmt(human(u)) + ' ' + ((META[u.key] || {}).sym || '')).join(' + '),
+        steps: () => [{ contract: c, msg: { withdraw_unlocked: {} } }] });
+    }
+    if (p.rewards.length) out.push({ id: 'claim', label: 'Claim rewards', steps: () => [{ contract: c, msg: { claim_rewards: {} } }] });
+    (d.staked || []).forEach(function (x) {
+      out.push({ id: 'unstake', label: 'Unstake', pick: true,
+        note: 'Unstaked tokens unlock after the waiting period, then a Withdraw button appears here.',
+        describe: f => fmt(human({ key: x.key, raw: part(x.raw, f) })) + ' ' + ((META[x.key] || {}).sym || ''),
+        steps: f => [{ contract: c, msg: { unstake: { asset: assetObj(x.key), amount: part(x.raw, f) } } }] });
+    });
+  }
+  if (p.src === 'juris') {
+    out.push({ id: 'claim', label: 'Claim rewards', steps: () => [{ contract: c, msg: { withdraw_rewards: {} } }] });
+    if (Number(d.released) > 0) out.push({ id: 'released', label: 'Withdraw released',
+      steps: () => [{ contract: c, msg: { withdraw_released: {} } }] });
+  }
+  if (p.src === 'orders') {
+    (d.orders || []).forEach(o => out.push({ id: 'cancel' + o.id, label: 'Cancel order #' + o.id,
+      steps: () => [{ contract: c, msg: { cancel_order: { order_id: Number(o.id) } } }] }));
+  }
+  if (p.src === 'pool' && d.lpToken) {
+    out.push({ id: 'withdraw', label: 'Withdraw liquidity', pick: true,
+      describe: f => d.sides.map(x => fmt(human({ key: x.key, raw: part(x.raw, f) })) + ' ' + ((META[x.key] || {}).sym || '')).join(' + '),
+      // the pool takes the LP through an allowance, then pays both sides; 2%
+      // under the current split is the least it may pay back
+      steps: f => [
+        { contract: d.lpToken, msg: { increase_allowance: { spender: c, amount: part(d.lp, f) } } },
+        { contract: c, msg: { withdraw_liquidity: { lp_amount: part(d.lp, f),
+          min_asset1: String(Math.floor(Number(part(d.sides[0].raw, f)) * 0.98)),
+          min_asset2: String(Math.floor(Number(part(d.sides[1].raw, f)) * 0.98)) } } }] });
+  }
+  return out;
+}
+
+/* One action at a time: choose (if it takes an amount), check what it would
+   cost (a dry run - the contract's own answer, fee included), press again to
+   send. Then the page waits for the block and says how it went. */
+let ACT = null;           // { a, frac, plan, armed }
+
+function drawActions(p){
+  const list = actionsOf(p);
+  const box = $('#ep-actions');
+  if (!list.length) {
+    box.innerHTML = '<p class="tk-note">Nothing to do from the wallet for this position right now; manage it on ' + esc(p.platform) + '.</p>';
+    return;
+  }
+  box.innerHTML = '<div class="ep-btns">' + list.map(a =>
+    '<button class="ep-act' + (ACT && ACT.a.id === a.id ? ' on' : '') + '" type="button" data-act="' + a.id + '">' + esc(a.label) + '</button>').join('') +
+    '</div><div class="ep-panel" id="ep-panel"></div>';
+  if (ACT) drawPanel();
+}
+
+function drawPanel(){
+  const box = $('#ep-panel');
+  if (!box || !ACT) return;
+  const a = ACT.a;
+  let html = '';
+  if (a.pick) {
+    html += '<div class="ep-picks">' + [0.25, 0.5, 0.75, 1].map(f =>
+      '<button type="button" class="ep-pick' + (ACT.frac === f ? ' on' : '') + '" data-frac="' + f + '">' + (f === 1 ? 'All' : f * 100 + '%') + '</button>').join('') + '</div>';
+    if (ACT.frac) html += '<div class="ep-what">' + esc(a.describe(ACT.frac)) + '</div>';
+  }
+  if (a.note) html += '<p class="tk-note">' + esc(a.note) + '</p>';
+  if (ACT.err) html += '<div class="sbad">' + esc(ACT.err) + '</div>';
+  if (ACT.plan) html += '<div class="tk-line"><span>Network fee</span><b>' + fmt(amt(ACT.plan.gasFee, 6)) + ' LUNC</b></div>';
+  const ready = !a.pick || ACT.frac;
+  if (ACT.sending) html += '<button class="btn" type="button" disabled>' + esc(ACT.sending) + '</button>';
+  else if (ACT.plan) html += '<button class="btn solid' + (ACT.armed ? ' danger' : '') + '" type="button" id="ep-go">' +
+    (ACT.armed ? 'Press again to confirm' : 'Confirm ' + esc(a.label.toLowerCase())) + '</button>';
+  else html += '<button class="btn solid" type="button" id="ep-check"' + (ready ? '' : ' disabled') + '>' +
+    (ACT.checking ? 'Checking\u2026' : 'Check what this would cost') + '</button>';
+  box.innerHTML = html;
+}
+
+async function check(){
+  if (!S.MNEMONIC) { ACT.err = 'Unlock the wallet first.'; drawPanel(); return; }
+  ACT.checking = true; ACT.err = ''; drawPanel();
+  try {
+    ACT.steps = ACT.a.steps(ACT.frac || 1);
+    ACT.plan = await dryRunSwap(me(), ACT.steps, S.MNEMONIC);
+  } catch (e) {
+    ACT.err = String(e.message || e);
+  }
+  ACT.checking = false;
+  drawPanel();
+}
+
+async function confirm(){
+  if (!ACT.armed) {
+    ACT.armed = true; drawPanel();
+    const mine = ACT;
+    setTimeout(() => { if (ACT === mine && ACT.armed && !ACT.sending) { ACT.armed = false; drawPanel(); } }, 8000);
+    return;
+  }
+  const a = ACT.a, p = FOUND[OPEN_POS], title = titleOf(p) + ' \u00b7 ' + a.label;
+  ACT.sending = 'Signing and sending\u2026'; drawPanel();
+  let sent;
+  try { sent = await sendSwap(me(), ACT.steps, S.MNEMONIC); }
+  catch (e) { ACT.sending = ''; ACT.armed = false; ACT.plan = null; ACT.err = String(e.message || e); buzz('error'); drawPanel(); return; }
+  buzz('success');
+  ACT.sending = 'Waiting for the block\u2026'; drawPanel();
+  let res = null, err = null;
+  try { res = await sent.wait(); } catch (e) { err = e; }
+  if (err || !res) {
+    notify({ key: 'earn:' + sent.hash, kind: err ? 'warn' : 'info', label: p.platform, title: err ? 'Not done: ' + a.label : 'Still on its way',
+      text: err ? String(err.message || err).replace(/^failed on chain \(code \d+\):\s*/, '').slice(0, 160)
+                : 'Accepted by the network, not in a block yet.' });
+  } else {
+    notify({ key: 'earn:' + sent.hash, kind: 'success', label: p.platform, title: title,
+      text: 'Done in block ' + res.height + '. Balances and the position are being read again.' });
+  }
+  ACT = null;
+  document.dispatchEvent(new CustomEvent('frontier:tx', { detail: { hash: sent.hash } }));
+  refreshBalances(true);
+  // the position has changed; read it again and redraw this page from it
+  const kind = p.src;
+  const again = await readJob({ kind: kind, contract: p.contract }, me());
+  if (again) { await Promise.all(again.holds.concat(again.rewards).map(x => meta(x.key))); FOUND[p.contract] = again; }
+  else delete FOUND[p.contract];
+  // LP unstaked from a farm lands in the wallet: its pool is now a position too
+  if (kind === 'farm' && p.pair) {
+    const pool = await readJob({ kind: 'pool', contract: p.pair }, me());
+    if (pool) { await Promise.all(pool.holds.map(x => meta(x.key))); FOUND[p.pair] = pool; }
+  }
+  draw();
+  if (FOUND[p.contract] && OPEN_POS === p.contract) detail(p.contract);
+  else if (OPEN_POS === p.contract) go('earn');
+}
+
 let OPEN_POS = '';
 
 function amountRow(x, cls){
@@ -526,9 +686,8 @@ function detail(c){
   const stats = (p.stats || []);
   $('#ep-stats-wrap').hidden = !stats.length;
   $('#ep-stats').innerHTML = stats.map(statRow).join('');
-  $('#ep-actions').innerHTML = (ACTIONS[p.kind] || []).map(a =>
-    '<button class="ep-act" type="button" disabled>' + a + '</button>').join('') +
-    '<p class="tk-note">Managing positions from the wallet comes in the next update; for now it is done on ' + esc(p.platform) + '.</p>';
+  if (!ACT || ACT.pos !== c) ACT = null;
+  drawActions(p);
   paintIcons($('#st-epos'));
   go('epos');
 }
@@ -558,6 +717,22 @@ on('#earn-rescan', 'click', function () { tap(); scan(true); });
 on('#earn-list', 'click', function (e) {
   const p = e.target.closest('[data-pos]');
   if (p) { tap(); detail(p.dataset.pos); }
+});
+on('#ep-actions', 'click', function (e) {
+  const p = FOUND[OPEN_POS];
+  if (!p) return;
+  const b = e.target.closest('[data-act]');
+  if (b) {
+    tap();
+    const a = actionsOf(p).filter(x => x.id === b.dataset.act)[0];
+    ACT = a && !(ACT && ACT.a.id === a.id) ? { a: a, pos: OPEN_POS, frac: a.pick ? 0 : 1 } : null;
+    drawActions(p);
+    return;
+  }
+  const f = e.target.closest('[data-frac]');
+  if (f && ACT && !ACT.sending) { tap(); ACT.frac = Number(f.dataset.frac); ACT.plan = null; ACT.armed = false; ACT.err = ''; drawPanel(); return; }
+  if (e.target.closest('#ep-check')) { tap(); check(); return; }
+  if (e.target.closest('#ep-go')) { tap(); confirm(); }
 });
 on('#ep-finder', 'click', function () {
   if (!OPEN_POS) return;
