@@ -1112,6 +1112,11 @@ body.sheet-open .tabs{visibility:hidden}
 .gx-sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px 4px;
   transition:opacity .2s}
 .gx-sheet-note{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 10px}
+.gx-terms-pts{margin:0 0 12px;padding-left:18px;font-size:13px;line-height:1.55}
+.gx-terms-pts li{margin:0 0 8px}
+.gx-sheet-note a{color:var(--accent2)}
+.gx-terms-line{font-size:12px;color:var(--muted);text-align:center;margin:22px 8px 8px}
+.gx-terms-line a{color:var(--accent2)}
 .gx-sheet-foot{flex:none;padding-top:12px;margin:0 -16px;padding-left:16px;padding-right:16px;
   box-shadow:0 -14px 18px -16px rgba(0,0,0,.9)}
 .gx-sheet-foot .pinbox{margin:0;padding:16px 18px 6px}

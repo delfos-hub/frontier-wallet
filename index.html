@@ -744,6 +744,7 @@
     <div class="gx-msg" id="gx-msg"></div>
   </div>
   </div>
+  <p class="gx-terms-line">Swaps follow the <a href="terms.html" id="gx-terms-link">Terms of Use</a>, version <span id="gx-terms-ver"></span>.</p>
 </section>
 
 <!-- A buyer is waiting: shown over any screen. -->
@@ -771,6 +772,26 @@
         <div class="gx-done-btns" id="gx-done-btns"></div>
       </div>
       <div class="gx-msg" id="gx-sheet-msg" style="text-align:center"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Terms of Use: accepted once per version, before the first offer or buy. -->
+<div class="sw-sheet" id="gx-terms" hidden>
+  <div class="sw-sheet-in gx-sheet-in" role="dialog" aria-modal="true" aria-labelledby="gx-terms-title">
+    <div class="sw-sheet-top"><span id="gx-terms-title">Terms of Use</span>
+      <button class="sw-x" id="gx-terms-x" type="button">Cancel</button></div>
+    <div class="gx-sheet-body">
+      <p class="gx-sheet-note">Before your first swap, please read the Terms of Use. The main points:</p>
+      <ul class="gx-terms-pts">
+        <li><b>A swap cannot be undone.</b> Each side's coins stay in a smart contract until the swap completes or its time limit passes.</li>
+        <li><b>A buyer's GRAM can stay locked for about 30 hours</b> if the seller does not answer, and only then comes back.</li>
+        <li><b>Delfos Hub never holds your coins</b> and cannot move them. Every amount and fee is shown before you sign.</li>
+      </ul>
+      <p class="gx-sheet-note"><a href="terms.html" id="gx-terms-full">Read the full Terms of Use</a>, version <b id="gx-terms-v"></b>.</p>
+    </div>
+    <div class="gx-sheet-foot">
+      <button class="btn solid" id="gx-terms-ok" type="button">I accept</button>
     </div>
   </div>
 </div>
