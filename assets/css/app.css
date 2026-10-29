@@ -1389,3 +1389,21 @@ li.row[data-k]:active,.core-cell:active{opacity:.75}
 .earn-r b{font-family:'Rajdhani',sans-serif;font-size:17px;color:#fff;font-variant-numeric:tabular-nums;font-weight:700}
 .earn-r i{font-style:normal;font-size:10.5px;color:var(--green);font-weight:600}
 .earn-r i:empty,.earn-r b:empty{display:none}
+
+/* ---------- banner pictures in the carousel (ads.js) ----------
+   1200 x 464 pictures (2.59 : 1): the slide takes their shape, so nothing is
+   cropped on any phone width. The progress ticks sit on a soft shade at the
+   bottom so they read over a bright picture. */
+.ad.ad-img{padding:0;min-height:0;aspect-ratio:1200/464;display:block;background:#0B0F1A}
+.ad.ad-img img{display:block;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none}
+.ad.ad-img::after{content:"";position:absolute;inset:auto 0 0 0;height:34%;pointer-events:none;
+  background:linear-gradient(0deg,rgba(11,15,26,.75),transparent)}
+/* a slow sheen crossing the banner, once per slide */
+.ad-shine{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.ad-shine::before{content:"";position:absolute;top:-20%;bottom:-20%;width:30%;left:-40%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.10),transparent);transform:skewX(-18deg);
+  animation:ad-sheen 6s ease-in-out infinite}
+@keyframes ad-sheen{0%,55%{left:-40%}85%,100%{left:120%}}
+@media (prefers-reduced-motion:reduce){.ad-shine::before{animation:none;display:none}}
+.ads:has(.ad-img){border-color:rgba(123,92,255,.35);box-shadow:0 8px 28px rgba(0,0,0,.35)}
+.ads-ticks .t{background:rgba(232,240,255,.25)}

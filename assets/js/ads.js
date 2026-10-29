@@ -18,6 +18,13 @@
       ads = ads.slice(0, 8);
 
       track.innerHTML = ads.map(function (a) {
+        // a banner picture fills the whole slide (1200 x 464, about 100 KB as WebP)
+        if (a.image) {
+          return '<div class="ad ad-img" data-url="' + esc(a.url || '') + '">' +
+            '<img src="' + esc(a.image) + '" alt="' + esc(a.alt || a.title || '') + '"' +
+            ' width="1200" height="464" decoding="async"' + '>' +
+            '<div class="ad-shine"></div></div>';
+        }
         return '<div class="ad" data-url="' + esc(a.url || '') + '">' +
           '<div class="glow" style="background:' + esc(a.c1 || '#7B5CFF') + '"></div>' +
           '<div class="tag">' + esc(a.tag) + '</div>' +
