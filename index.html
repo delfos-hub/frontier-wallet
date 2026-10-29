@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=cec2b74f">
+<link rel="stylesheet" href="assets/css/app.css?v=a4472e0a">
 </head>
 <body>
 <div id="rt"></div>
@@ -295,6 +295,25 @@
 
 <!-- ================= HOME (placeholder) ================= -->
 <section class="step wpad" id="st-home">
+  <!-- recovery phrase (seed.js) -->
+  <div class="sw-sheet" id="sd-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Recovery phrase</span><button class="sw-x" id="sd-x" type="button">Close</button></div>
+      <div id="sd-step-pin">
+        <div class="warn"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <p><b>Anyone with these words owns this wallet.</b> Make sure nobody can see your screen. Frontier never asks for them, and neither does anyone you should trust.</p></div>
+        <div class="field"><label>Enter your PIN</label>
+          <input class="sd-pin" id="sd-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></div>
+        <div class="meter-txt" id="sd-msg"></div>
+      </div>
+      <div id="sd-step-words" hidden>
+        <div class="sd-wrap"><div class="sd-words blur" id="sd-words"></div>
+          <button class="btn solid sd-reveal" id="sd-reveal" type="button" hidden>Reveal</button></div>
+        <p class="tiny">Write them down in this order and keep the paper offline. This closes by itself in a minute.</p>
+        <button class="btn quiet" id="sd-done" type="button">Done</button>
+      </div>
+    </div>
+  </div>
   <!-- wallet switcher (wallets.js) -->
   <div class="sw-sheet" id="wl-sheet" hidden>
     <div class="sw-sheet-in">
@@ -842,6 +861,9 @@
   <div class="set" id="set-wallets">
     <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h2"/><path d="M6 6l9-3 1.5 3"/></svg>
     <span>Wallets</span></div>
+  <div class="set" id="set-seed">
+    <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    <span>Recovery phrase</span></div>
   <div class="set" id="btn-lock">
     <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     <span>Lock wallet</span></div>
@@ -892,20 +914,21 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=cec2b74f"></script>
-<script src="assets/js/ads.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/swap.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/activity.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/nft.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/wallets.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/home-tools.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/p2p.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/gram.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/incoming.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/token.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/defi.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/gov.js?v=cec2b74f"></script>
-<script type="module" src="assets/js/stake.js?v=cec2b74f"></script>
+<script type="module" src="assets/js/app.js?v=a4472e0a"></script>
+<script src="assets/js/ads.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/swap.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/activity.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/nft.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/wallets.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/seed.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/home-tools.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/p2p.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/gram.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/incoming.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/token.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/defi.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/gov.js?v=a4472e0a"></script>
+<script type="module" src="assets/js/stake.js?v=a4472e0a"></script>
 </body>
 </html>

@@ -1581,3 +1581,17 @@ button.wname svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-wid
 /* read only: nothing that signs is offered */
 .is-watch #act-send,.is-watch #act-swap,.is-watch #act-p2p,.is-watch #tk-send,.is-watch #tk-swap{opacity:.35;pointer-events:none}
 .is-watch .ep-actions,.is-watch #btn-lock{display:none}
+
+/* ---------- recovery phrase ---------- */
+.sd-pin{width:100%;box-sizing:border-box;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface);
+  color:var(--text);font-size:20px;letter-spacing:.4em;text-align:center;font-family:inherit;outline:none}
+.sd-pin:focus{border-color:var(--accent2)}
+.sd-wrap{position:relative;margin:4px 0 12px}
+.sd-words{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;transition:filter .25s}
+.sd-words span{display:flex;align-items:center;gap:6px;padding:9px 8px;border-radius:10px;border:1px solid var(--border);
+  background:var(--surface);font-size:13.5px;color:var(--text);font-family:ui-monospace,monospace}
+.sd-words i{font-style:normal;font-size:10px;color:var(--muted);min-width:14px}
+.sd-words.blur{filter:blur(7px);user-select:none;pointer-events:none}
+.sd-reveal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:auto;padding:12px 26px}
+.sd-reveal[hidden]{display:none}
+.is-watch #set-seed{display:none}
