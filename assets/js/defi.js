@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=cf89e770';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=cf89e770';
-import { $, go, tap } from './shell.js?v=cf89e770';
-import { S } from './state.js?v=cf89e770';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=cf89e770';
-import * as P from './defi-parse.js?v=cf89e770';
-import { dryRunSwap, sendSwap } from './tx.js?v=cf89e770';
-import { notify } from './notify.js?v=cf89e770';
-import { buzz } from './shell.js?v=cf89e770';
-import { refreshBalances } from './tokens.js?v=cf89e770';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=ccced418';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=ccced418';
+import { $, go, tap } from './shell.js?v=ccced418';
+import { S } from './state.js?v=ccced418';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=ccced418';
+import * as P from './defi-parse.js?v=ccced418';
+import { dryRunSwap, sendSwap } from './tx.js?v=ccced418';
+import { notify } from './notify.js?v=ccced418';
+import { buzz } from './shell.js?v=ccced418';
+import { refreshBalances } from './tokens.js?v=ccced418';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -84,9 +84,21 @@ async function q(c, msg){
    contract has no minter" for good, which is why every Garuda farm said
    "Could not value the LP": its LP token's minter had been asked during a
    burst, got a 429, and was remembered as nobody. */
+/* A contract that answered "no" vs a node that did not answer.
+   publicnode returns a contract's own error as a 500 with the reason in the
+   body, and returns overload as a 500 too - so the status alone said "no" to
+   what was only a busy node, and Juris staking read as "no locks". The body
+   decides: a contract's refusal names the contract or the query. */
+function refusal(e){
+  if (!e || typeof e.status !== 'number') return false;
+  if (e.refused) return true;
+  if (e.status === 429) return false;
+  if (e.status >= 400 && e.status < 500) return true;
+  return /query wasm contract failed|not found|Generic error|Custom Error|Unauthorized|Overflow/i.test(e.body || '');
+}
 async function ask(c, msg){
   try { const r = await smart(c, msg, 2); return { ok: true, data: r ? r.data : null }; }
-  catch (e) { return { ok: false, refused: typeof e.status === 'number' && e.status !== 429 && e.status < 502 }; }
+  catch (e) { return { ok: false, refused: refusal(e) }; }
 }
 
 /* ---------------- tokens: names, decimals, prices ---------------- */
@@ -363,7 +375,8 @@ async function scan(full){
   BUSY = true;
   const seq = ++SEQ;
   const was = kept('found:' + addr) || { at: 0, list: [], swept: 0 };
-  status('Reading your positions\u2026');
+  const n0 = Object.keys(kept('pos:' + addr) || {}).length;
+  status(n0 ? 'Updating ' + n0 + (n0 === 1 ? ' position' : ' positions') + '\u2026' : 'Reading your positions\u2026');
   const jobs = {}, add = (kind, c) => { if (READ[kind] && !jobs[c]) jobs[c] = { kind: kind, contract: c }; };
   FIXED.forEach(j => add(j.kind, j.contract));
   (was.list || []).forEach(j => add(j.kind, j.contract));
@@ -388,6 +401,7 @@ async function scan(full){
     draw();
 
     // then every farm and staking contract there is, now and then
+    status('');
     if (full || Date.now() - (was.swept || 0) > SWEEP_EVERY) {
       const all = [];
       for (const code of SWEEP_CODES) {
@@ -427,7 +441,7 @@ async function readAll(list, addr, seq, counted){
   await mapLimit(list, counted ? 2 : 4, async function (j) {
     const p = await readJob(j, addr);
     n++;
-    if (counted && n % 10 === 0) status('Checking every Garuda farm and staking pool \u00b7 ' + n + ' of ' + list.length);
+    if (counted && n % 10 === 0) status('Looking for other positions in the background \u00b7 ' + n + ' of ' + list.length);
     if (seq !== SEQ) return;
     if (p === FAILED) return;                       // keep the last known one
     if (!p) { if (FOUND[j.contract]) { delete FOUND[j.contract]; draw(); } return; }

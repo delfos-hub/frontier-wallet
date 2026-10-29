@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=cf89e770';
-import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=cf89e770';
-import { $, go, tap } from './shell.js?v=cf89e770';
-import { S } from './state.js?v=cf89e770';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=cf89e770';
-import { rowHTML } from './activity.js?v=cf89e770';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=ccced418';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=ccced418';
+import { $, go, tap } from './shell.js?v=ccced418';
+import { S } from './state.js?v=ccced418';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=ccced418';
+import { rowHTML } from './activity.js?v=ccced418';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
@@ -74,9 +74,21 @@ async function q(contract, msg){
    contract has no minter" for good, which is why every Garuda farm said
    "Could not value the LP": its LP token's minter had been asked during a
    burst, got a 429, and was remembered as nobody. */
+/* A contract that answered "no" vs a node that did not answer.
+   publicnode returns a contract's own error as a 500 with the reason in the
+   body, and returns overload as a 500 too - so the status alone said "no" to
+   what was only a busy node, and Juris staking read as "no locks". The body
+   decides: a contract's refusal names the contract or the query. */
+function refusal(e){
+  if (!e || typeof e.status !== 'number') return false;
+  if (e.refused) return true;
+  if (e.status === 429) return false;
+  if (e.status >= 400 && e.status < 500) return true;
+  return /query wasm contract failed|not found|Generic error|Custom Error|Unauthorized|Overflow/i.test(e.body || '');
+}
 async function ask(c, msg){
   try { const r = await smart(c, msg, 2); return { ok: true, data: r ? r.data : null }; }
-  catch (e) { return { ok: false, refused: typeof e.status === 'number' && e.status !== 429 && e.status < 502 }; }
+  catch (e) { return { ok: false, refused: refusal(e) }; }
 }
 
 function line(k, v, cls){
