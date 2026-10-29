@@ -8,8 +8,8 @@
    One refresh reads everything the home screen shows: balances (forced),
    then tells every other part through 'frontier:refresh' - DeFi positions,
    NFTs, Activity - to read again. */
-import { $, tap, tg } from './shell.js?v=c69395f1';
-import { refreshBalances } from './tokens.js?v=c69395f1';
+import { $, tap, tg } from './shell.js?v=f4f3f32b';
+import { refreshBalances } from './tokens.js?v=f4f3f32b';
 
 /* ---------------- search ---------------- */
 const box = $('#tok-search-box'), input = $('#tok-search'), btn = $('#tok-search-btn'), list = $('#tok-list');
@@ -48,17 +48,30 @@ if (list && typeof MutationObserver === 'function') {
 /* ---------------- refresh ---------------- */
 let BUSY = false;
 const rbtn = $('#bal-refresh');
+/* How a refresh looks: the arrow turns once, a thin light runs along the
+   bottom edge of the balance card while the chain is read, then fills the
+   edge and fades, and "Updated" appears for a moment beside the label. No
+   spinner going round and round - the number itself is what changes. */
+const card = document.querySelector('#st-home .bal');
+const upd = $('#bal-upd');
+let UPD_T = null;
 async function refresh(){
   if (BUSY) return;
   BUSY = true;
-  if (rbtn) rbtn.classList.add('spin');
+  if (rbtn) { rbtn.classList.remove('turn'); void rbtn.offsetWidth; rbtn.classList.add('turn'); }
+  if (card) { card.classList.remove('done'); card.classList.add('loading'); }
   const t0 = Date.now();
   document.dispatchEvent(new CustomEvent('frontier:refresh'));
   try { await refreshBalances(true); } catch (e) { /* the banner reports it */ }
-  // a spinner that flashes for 80 ms reads as "nothing happened"
-  const left = 700 - (Date.now() - t0);
+  // long enough to be seen, short enough not to be waited on
+  const left = 600 - (Date.now() - t0);
   if (left > 0) await new Promise(r => setTimeout(r, left));
-  if (rbtn) rbtn.classList.remove('spin');
+  if (card) { card.classList.remove('loading'); card.classList.add('done'); setTimeout(() => card.classList.remove('done'), 700); }
+  if (upd) {
+    upd.classList.add('on');
+    clearTimeout(UPD_T);
+    UPD_T = setTimeout(() => upd.classList.remove('on'), 2200);
+  }
   BUSY = false;
 }
 if (rbtn) rbtn.addEventListener('click', function () { tap(); refresh(); });
@@ -89,10 +102,9 @@ if (home && ptr) {
     y0 = null;
     if (!go) { ptr.style.height = '0px'; ptr.classList.remove('ready'); return; }
     tap();
-    ptr.style.height = '56px';
-    ptr.classList.add('busy');
-    await refresh();
-    ptr.classList.remove('busy', 'ready');
+    // the pull hands over to the light on the balance card at once
+    ptr.classList.remove('ready');
     ptr.style.height = '0px';
+    await refresh();
   });
 }

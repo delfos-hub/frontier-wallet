@@ -1595,3 +1595,25 @@ button.wname svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-wid
 .sd-reveal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:auto;padding:12px 26px}
 .sd-reveal[hidden]{display:none}
 .is-watch #set-seed{display:none}
+
+/* ---------- refresh, quieter ----------
+   replaces the spinning arrow: one turn on press, a light along the card's
+   bottom edge while reading, "Updated" for a moment when done */
+.bal-refresh{border-color:transparent;background:rgba(255,255,255,.03);opacity:.7;transition:opacity .2s,background .2s}
+.bal-refresh:hover{opacity:1;background:rgba(255,255,255,.06)}
+.bal-refresh.spin svg{animation:none}
+.bal-refresh.turn svg{animation:rf-turn .65s cubic-bezier(.4,.1,.2,1)}
+@keyframes rf-turn{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.bal::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;opacity:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent,#00D4FF 35%,#7B5CFF 65%,transparent);background-size:45% 100%;
+  background-repeat:no-repeat;background-position:-50% 0;transition:opacity .25s}
+.bal.loading::after{opacity:1;animation:rf-run 1.1s cubic-bezier(.45,.05,.55,.95) infinite}
+@keyframes rf-run{from{background-position:-50% 0}to{background-position:150% 0}}
+.bal.done::after{opacity:0;background:linear-gradient(90deg,#00D4FF,#7B5CFF);background-size:100% 100%;
+  animation:rf-done .7s ease-out}
+@keyframes rf-done{0%{opacity:.9;transform:scaleX(.3)}60%{opacity:.9;transform:scaleX(1)}100%{opacity:0;transform:scaleX(1)}}
+.bal-upd{display:inline-block;margin-left:8px;font-size:10px;letter-spacing:.08em;color:var(--green);
+  opacity:0;transform:translateY(2px);transition:opacity .3s,transform .3s}
+.bal-upd.on{opacity:1;transform:none}
+.ptr.busy .ptr-ic svg{animation:none}
+@media (prefers-reduced-motion:reduce){.bal.loading::after{animation:none;background-position:50% 0}.bal-refresh.turn svg{animation:none}}
