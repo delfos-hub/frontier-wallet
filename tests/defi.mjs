@@ -32,6 +32,9 @@ group('a Garuda farm');
   ok('pending, not claimed', f.rewards.length === 1 && f.rewards[0].raw === '1264918472', JSON.stringify(f.rewards));
   ok('the reward token', f.rewards[0].key === 'cw20:' + GRDX_REWARD);
   ok('when it ends', f.endsAt === 1819360800);
+  ok('claimed so far', f.claimed[0].raw === '4293903844');
+  const noClaim = P.farm({}, { staked_amount: '1' }, { rewards: [{ asset: { cw20: 'x' }, pending_rewards: '5' }] }, null);
+  ok('claimed never borrows the pending figure', !noClaim.claimed.length, JSON.stringify(noClaim.claimed));
   const empty = P.farm({}, { staked_amount: '0' }, { rewards: [{ asset: { cw20: 'x' }, pending_rewards: '0' }] }, null);
   ok('an empty farm is empty', empty.staked === '0' && !empty.rewards.length);
 }
@@ -68,6 +71,19 @@ group('Terraport dynamic staking');
   const live = P.dynamicStake({}, { staked_assets: [[{ asset_type: 'cw20', address: 'terra1ex0h' }, '5000000']],
     pending_rewards: [[{ asset_type: 'native', address: 'uluna' }, '42']] });
   ok('a stake in pairs is read', live.staked[0].raw === '5000000' && live.rewards[0].key === 'native:uluna');
+}
+
+group('Terraport: unstaked and waiting to be withdrawn');
+{
+  // the real answer for an address that unstaked 282,943 TERRA on 13 Oct
+  const d = P.dynamicStake({ unlock_period_seconds: 1209600 }, {
+    staked_assets: [], pending_rewards: [[{ asset_type: 'native', address: 'uluna' }, '0']],
+    total_rewards_withdrawn: [[{ asset_type: 'native', address: 'uluna' }, '246616874642'], [{ asset_type: 'native', address: 'uusd' }, '0']],
+    pending_unstakes: [{ asset: { asset_type: 'cw20', address: 'terra1ex0h' }, amount: '282943314837',
+                         unlock_time: 1793141533, time_remaining: 0, is_unlocked: true }] });
+  ok('the unstake is there', d.unstakes.length === 1 && d.unstakes[0].raw === '282943314837');
+  ok('and ready', d.unstakes[0].ready === true && d.unstakes[0].key === 'cw20:terra1ex0h');
+  ok('earned so far, zeros dropped', d.withdrawn.length === 1 && d.withdrawn[0].raw === '246616874642');
 }
 
 group('Juris staking');

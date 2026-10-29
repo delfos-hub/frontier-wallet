@@ -37,7 +37,8 @@ function amounts(list, field){
     if (Array.isArray(x)) { key = assetKey(x[0]); amount = raw(x[1]); }
     else if (x && typeof x === 'object') {
       key = assetKey(x.asset || x.info || x.denom || x);
-      amount = raw(x[field || 'amount'] !== undefined ? x[field || 'amount'] : (x.pending_rewards !== undefined ? x.pending_rewards : x.amount));
+      // a named field means that field: claimed must never fall back to pending
+      amount = field ? raw(x[field]) : raw(x.amount !== undefined ? x.amount : x.pending_rewards);
     }
     if (key && amount !== '0') out.push({ key: key, raw: amount });
   }
@@ -52,6 +53,7 @@ function amounts(list, field){
 function farm(cfg, stake, reward, unstakes){
   cfg = cfg || {};
   const pending = amounts(((reward || {}).rewards) || [], 'pending_rewards');
+  const claimed = amounts(((reward || {}).rewards) || [], 'claimed_rewards');
   const leaving = ((unstakes || {}).unstakes || []).map(function (u) {
     return { raw: raw(u.amount), at: Number(u.release_time || u.unlock_time || u.release || 0) || null };
   }).filter(u => u.raw !== '0');
@@ -59,6 +61,7 @@ function farm(cfg, stake, reward, unstakes){
     lp: cfg.lp_token || '',
     staked: raw((stake || {}).staked_amount),
     rewards: pending,
+    claimed: claimed,
     leaving: leaving,
     endsAt: Number(cfg.end_time) || null,
     unstakeDelay: Number(cfg.unstake_duration) || 0
@@ -106,9 +109,16 @@ function tokenStake(cfg, stake, reward, unstake){
    user_info { staked_assets: [...], pending_rewards: [[asset, amount], ...], ... } */
 function dynamicStake(cfg, user){
   cfg = cfg || {}; user = user || {};
+  // unstaked tokens wait out the unlock period here, then sit until withdrawn
+  const unstakes = (user.pending_unstakes || []).map(function (u) {
+    return { key: assetKey(u.asset), raw: raw(u.amount), at: Number(u.unlock_time) || null,
+             ready: u.is_unlocked === true || Number(u.time_remaining) === 0 };
+  }).filter(u => u.key && u.raw !== '0');
   return {
     staked: amounts(user.staked_assets),
     rewards: amounts(user.pending_rewards),
+    unstakes: unstakes,
+    withdrawn: amounts(user.total_rewards_withdrawn),
     unlockSeconds: Number(cfg.unlock_period_seconds) || 0,
     stakeKeys: (cfg.stake_assets || []).map(x => assetKey(x.asset || x)).filter(Boolean)
   };

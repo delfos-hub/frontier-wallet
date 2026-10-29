@@ -1317,3 +1317,32 @@ li.row[data-k]:active,.core-cell:active{opacity:.75}
 .ea-rew{margin:7px 0 0 48px;font-size:12px;color:var(--muted)}
 .ea-rew b{color:var(--green);font-weight:600}
 .ea-note{margin:6px 0 0 48px;font-size:11.5px;color:var(--muted);line-height:1.5}
+
+/* positions: token logos, detail page */
+.ea-logos{position:relative;display:inline-flex;flex:none;width:36px;height:36px}
+.ea-logos .sym{width:30px;height:30px;font-size:11px;border:2px solid var(--surface);border-radius:50%}
+.ea-logos.two .sym:first-child{position:absolute;left:0;top:0;z-index:2}
+.ea-logos.two .sym:last-child{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px}
+.ea-logos:not(.two) .sym{width:36px;height:36px}
+.ea-logos.big{width:52px;height:52px}
+.ea-logos.big .sym{width:44px;height:44px;font-size:15px}
+.ea-logos.big.two .sym:last-child{width:32px;height:32px}
+.ea-logos.big:not(.two) .sym{width:52px;height:52px}
+.ea-chev{width:14px;height:14px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;flex:none}
+.ea-plus{font-style:normal;color:var(--muted);font-size:12px}
+.ea-holds{align-items:center}
+.ea-tag{margin-left:8px;color:var(--green);font-weight:600}
+.ep-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border)}
+.ep-row:last-child{border-bottom:none}
+.ep-row .sym{width:28px;height:28px;font-size:10px}
+.ep-sym{flex:1;font-size:13.5px;color:var(--text);font-weight:600}
+.ep-amt{display:flex;flex-direction:column;text-align:right}
+.ep-amt b{font-size:13.5px;color:#fff;font-variant-numeric:tabular-nums}
+.ep-amt i{font-style:normal;font-size:11.5px;color:var(--muted)}
+.ep-row.gain .ep-amt b{color:var(--green)}
+#ep-rew-wrap[hidden],#ep-stats-wrap[hidden]{display:none}
+.ep-actions{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 6px}
+.ep-act{flex:1 1 30%;min-width:96px;padding:12px 10px;border-radius:14px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.ep-act:disabled{opacity:.45;cursor:default}
+.ep-finder{text-align:center;border-bottom:none;margin-top:6px}

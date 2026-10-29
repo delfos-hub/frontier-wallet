@@ -48,7 +48,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=3d198aef">
+<link rel="stylesheet" href="assets/css/app.css?v=9a9caa7c">
 </head>
 <body>
 <div id="rt"></div>
@@ -529,7 +529,29 @@
   <div class="ea-bar"><span class="ea-status" id="earn-status" hidden></span>
     <button class="ea-rescan" id="earn-rescan" type="button">Scan again</button></div>
   <div id="earn-list"></div>
-  <p class="tk-note">Garuda farms, pools and staking, GRDX staking, Terraport TERRA staking, Juris tier staking and Garuda limit orders. Tap a position to open its contract. Claiming and unstaking from here are coming next.</p>
+  <p class="tk-note">Garuda farms, pools and staking, GRDX staking, Terraport TERRA staking, Juris tier staking and Garuda limit orders. Tap a position for its details.</p>
+</section>
+
+<!-- ================= one DeFi position (defi.js) ================= -->
+<section class="step wpad" id="st-epos">
+  <div class="bar">
+    <div class="back" data-go="earn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  </div>
+  <div class="tk-head">
+    <span id="ep-logos" class="ea-logos big"></span>
+    <div class="tk-id"><h1 id="ep-title"></h1><span id="ep-sub"></span></div>
+  </div>
+  <div class="tk-balcard">
+    <span class="tk-label">Your position</span>
+    <b id="ep-usd"></b>
+    <div class="tk-balrow"><span id="ep-share"></span></div>
+  </div>
+  <div class="head"><h2>Inside</h2></div>
+  <div class="tk-card" id="ep-holds"></div>
+  <div id="ep-rew-wrap"><div class="head"><h2>Rewards waiting</h2></div><div class="tk-card" id="ep-rew"></div></div>
+  <div id="ep-stats-wrap"><div class="head"><h2>Details</h2></div><div class="tk-card" id="ep-stats"></div></div>
+  <div class="ep-actions" id="ep-actions"></div>
+  <button class="tk-link ep-finder" id="ep-finder" type="button">View contract in explorer</button>
 </section>
 
 <!-- ================= one token (token.js) ================= -->
@@ -829,18 +851,18 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=3d198aef"></script>
-<script src="assets/js/ads.js?v=3d198aef"></script>
-<script type="module" src="assets/js/swap.js?v=3d198aef"></script>
-<script type="module" src="assets/js/activity.js?v=3d198aef"></script>
-<script type="module" src="assets/js/nft.js?v=3d198aef"></script>
-<script type="module" src="assets/js/p2p.js?v=3d198aef"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=3d198aef"></script>
-<script type="module" src="assets/js/gram.js?v=3d198aef"></script>
-<script type="module" src="assets/js/incoming.js?v=3d198aef"></script>
-<script type="module" src="assets/js/token.js?v=3d198aef"></script>
-<script type="module" src="assets/js/defi.js?v=3d198aef"></script>
-<script type="module" src="assets/js/gov.js?v=3d198aef"></script>
-<script type="module" src="assets/js/stake.js?v=3d198aef"></script>
+<script type="module" src="assets/js/app.js?v=9a9caa7c"></script>
+<script src="assets/js/ads.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/swap.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/activity.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/nft.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/p2p.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/gram.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/incoming.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/token.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/defi.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/gov.js?v=9a9caa7c"></script>
+<script type="module" src="assets/js/stake.js?v=9a9caa7c"></script>
 </body>
 </html>
