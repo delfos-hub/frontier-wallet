@@ -20,12 +20,12 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=1c70e573';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=1c70e573';
-import { $, go, tap } from './shell.js?v=1c70e573';
-import { S } from './state.js?v=1c70e573';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=1c70e573';
-import * as P from './defi-parse.js?v=1c70e573';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=3d198aef';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=3d198aef';
+import { $, go, tap } from './shell.js?v=3d198aef';
+import { S } from './state.js?v=3d198aef';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=3d198aef';
+import * as P from './defi-parse.js?v=3d198aef';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -64,6 +64,16 @@ function kept(k){ try { return JSON.parse(localStorage.getItem('fw:earn:' + k) |
 
 async function q(c, msg){
   try { const r = await smart(c, msg, 1); return r ? r.data : null; } catch (e) { return null; }
+}
+
+/* An answer, a refusal, or silence - and only the first two may be kept.
+   A query that timed out or hit a rate limit used to be stored as "this
+   contract has no minter" for good, which is why every Garuda farm said
+   "Could not value the LP": its LP token's minter had been asked during a
+   burst, got a 429, and was remembered as nobody. */
+async function ask(c, msg){
+  try { const r = await smart(c, msg, 2); return { ok: true, data: r ? r.data : null }; }
+  catch (e) { return { ok: false, refused: typeof e.status === 'number' && e.status !== 429 && e.status < 502 }; }
 }
 
 /* ---------------- tokens: names, decimals, prices ---------------- */
@@ -107,16 +117,18 @@ function dollars(x){
 // two sides; the share is staked LP over the LP token's supply.
 async function lpSides(lp, lpRaw){
   if (!lp || !lpRaw || lpRaw === '0') return null;
-  let pair = permGet('minter:' + lp);
+  // a new key: the old one may hold a remembered failure
+  let pair = permGet('minter2:' + lp);
   if (pair === undefined) {
-    const d = await q(lp, { minter: {} });
-    pair = (d && d.minter) || '';
-    permSet('minter:' + lp, pair);
+    const a = await ask(lp, { minter: {} });
+    if (!a.ok && !a.refused) return null;          // no answer: try next time
+    pair = (a.ok && a.data && a.data.minter) || '';
+    permSet('minter2:' + lp, pair);
   }
-  if (!pair) return null;
+  if (!pair) { console.warn('[earn] LP has no minter', lp); return null; }
   const [ti, res] = await Promise.all([q(lp, { token_info: {} }), reserves(pair)]);
   const total = Number(ti && ti.total_supply);
-  if (!total || !res) return null;
+  if (!total || !res) { console.warn('[earn] could not read', !total ? 'LP supply' : 'pool reserves', lp, pair); return null; }
   const f = Number(lpRaw) / total;
   return { pair: pair, share: f, sides: res.map(r => ({ key: r.key, raw: String(Math.floor(Number(r.raw) * f)) })) };
 }

@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=1c70e573';
-import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=1c70e573';
-import { $, go, tap } from './shell.js?v=1c70e573';
-import { S } from './state.js?v=1c70e573';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=1c70e573';
-import { rowHTML } from './activity.js?v=1c70e573';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=3d198aef';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=3d198aef';
+import { $, go, tap } from './shell.js?v=3d198aef';
+import { S } from './state.js?v=3d198aef';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=3d198aef';
+import { rowHTML } from './activity.js?v=3d198aef';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
@@ -67,6 +67,16 @@ function permSet(k, v){ try { localStorage.setItem('fw:perm:' + k, JSON.stringif
 
 async function q(contract, msg){
   try { const r = await smart(contract, msg, 1); return r && r.data; } catch (e) { return null; }
+}
+
+/* An answer, a refusal, or silence - and only the first two may be kept.
+   A query that timed out or hit a rate limit used to be stored as "this
+   contract has no minter" for good, which is why every Garuda farm said
+   "Could not value the LP": its LP token's minter had been asked during a
+   burst, got a 429, and was remembered as nobody. */
+async function ask(c, msg){
+  try { const r = await smart(c, msg, 2); return { ok: true, data: r ? r.data : null }; }
+  catch (e) { return { ok: false, refused: typeof e.status === 'number' && e.status !== 429 && e.status < 502 }; }
 }
 
 function line(k, v, cls){
@@ -254,11 +264,12 @@ async function positions(t, seq){
 
   // which of those contracts are LP tokens, and of which pool
   const minters = await mapLimit(cands, 4, async function (c) {
-    let m = permGet('minter:' + c);
+    let m = permGet('minter2:' + c);
     if (m === undefined) {
-      const d = await q(c, { minter: {} });
-      m = (d && d.minter) || '';
-      permSet('minter:' + c, m);
+      const a = await ask(c, { minter: {} });
+      if (!a.ok && !a.refused) return '';           // no answer: not remembered
+      m = (a.ok && a.data && a.data.minter) || '';
+      permSet('minter2:' + c, m);
     }
     return m;
   });
@@ -338,11 +349,12 @@ async function positions(t, seq){
   });
   const stakers = others.filter((c, i) => /stak|farm|bond|lock|vault|reward|earn|incentive|gauge|deposit/i.test(labels[i] || ''));
   for (const c of stakers) {
-    let cfg = permGet('cfg:' + c);
+    let cfg = permGet('cfg2:' + c);
     if (cfg === undefined) {
-      const d = await q(c, { config: {} });
-      cfg = d ? JSON.stringify(d) : '';
-      permSet('cfg:' + c, cfg);
+      const a = await ask(c, { config: {} });
+      if (!a.ok && !a.refused) continue;            // no answer: try next open
+      cfg = a.ok && a.data ? JSON.stringify(a.data) : '';
+      permSet('cfg2:' + c, cfg);
     }
     const viaLp = lps.filter(x => cfg.indexOf(x.lp) >= 0)[0];
     const direct = t.contract ? cfg.indexOf(t.contract) >= 0 : cfg.indexOf('"' + t.denom + '"') >= 0;
@@ -393,19 +405,22 @@ const STAKE_QUERIES = [
   a => ({ deposit: { address: a } })
 ];
 async function stakedIn(c, addr){
-  const known = permGet('sq:' + c);
-  if (known === -1) return null;                 // asked every way once already
+  const known = permGet('sq2:' + c);
+  if (known === -1) return null;                 // refused every way once already
   const order = known !== undefined ? [STAKE_QUERIES[known]] : STAKE_QUERIES;
+  let silent = false;
   for (let i = 0; i < order.length; i++) {
-    const d = await q(c, order[i](addr));
-    if (!d) continue;
-    if (known === undefined) permSet('sq:' + c, i);
+    const a = await ask(c, order[i](addr));
+    if (!a.ok) { if (!a.refused) silent = true; continue; }
+    const d = a.data || {};
+    if (known === undefined) permSet('sq2:' + c, i);
     return {
       amount: firstNum(d, ['bond_amount', 'staked_amount', 'staked', 'stake', 'amount', 'balance', 'deposit', 'bonded', 'total_staked']) || '0',
       reward: firstNum(d, ['pending_reward', 'pending_rewards', 'reward', 'rewards', 'pending'])
     };
   }
-  if (known === undefined) permSet('sq:' + c, -1);
+  // only a contract that refused every shape is written off; silence is not a no
+  if (known === undefined && !silent) permSet('sq2:' + c, -1);
   return null;
 }
 
