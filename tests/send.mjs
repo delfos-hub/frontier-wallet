@@ -37,8 +37,10 @@ const HELD = [
 // table standing in for the market
 const tokSrc = fs.readFileSync(path.join(SRC, 'tokens.js'), 'utf8');
 const PX = { LUNC: 0.00006, CL8Y: 2, DUST: 1 };
-const sortHeld = new Function('fiatOf', lift(tokSrc, 'function sortHeld(') + '\nreturn sortHeld;')(
-  r => PX[r.sym] === undefined ? null : PX[r.sym] * (r.v || 0));
+const priced = r => PX[r.sym] === undefined ? null : PX[r.sym] * (r.v || 0);
+const sortOf = hide => new Function('fiatOf', 'HIDE_DUST', 'DUST', lift(tokSrc, 'function sortHeld(') + '\nreturn sortHeld;')(
+  priced, hide, 0.005);
+const sortHeld = sortOf(false);
 
 const api = new Function('heldTokens', 'toRaw', 'sortHeld', [
   liftLine(src, 'const isCw20 ='),
@@ -72,6 +74,10 @@ group('one order for every token list');
   const got = sortHeld(rows).map(r => r.sym).join(',');
   ok('priced by value, unpriced after them by amount, zero left out', got === 'CL8Y,LUNC,B,A', got);
   ok('zero is kept only when asked for', sortHeld(rows, true).length === 5);
+  // with "Hide $0" on: unpriced and dust leave every picker, LUNC never does
+  const hid = sortOf(true)([{ sym: 'LUNC', denom: 'uluna', v: 1 }, { sym: 'CL8Y', v: 1 }, { sym: 'UKRW', denom: 'ukrw', v: 5 }, { sym: 'DUST', v: 0.001 }])
+    .map(r => r.sym).join(',');
+  ok('hide $0 keeps priced tokens and LUNC only', hid === 'CL8Y,LUNC', hid);
 }
 
 group('the message a token transfer is');

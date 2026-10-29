@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=3e594b42';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=3e594b42';
-import { $, go } from './shell.js?v=3e594b42';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=3e3cf32f';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=3e3cf32f';
+import { $, go } from './shell.js?v=3e3cf32f';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -569,7 +569,11 @@ function renderTokens(list, found, px, hint){
   renderCore(rows);
   // pinned above, so the list must not repeat them
   const rest = rows.filter(r => CORE_SYMS.indexOf(r.t.sym) < 0);
-  const shown = HIDE_DUST ? rest.filter(r => r.fiat === null || r.fiat >= DUST) : rest;
+  // "Hide $0" hides what is worth nothing *and* what has no price at all: the
+  // dead Terra Classic stables (UKRW, UIDR, UJPY...) and dust with no pool.
+  // They had no price, so the old filter kept them - right where the eye goes.
+  // A CW20 still waiting for its first price stays until it has been asked.
+  const shown = HIDE_DUST ? rest.filter(r => r.fiat !== null ? r.fiat >= DUST : !(r.t.tried || !r.t.contract)) : rest;
 
   syncList(list, shown, rest.length
     ? 'Everything priced here rounds to zero. Turn off hide $0 to see it.'
@@ -940,7 +944,10 @@ const heldTokens = () => LAST.found || [];
    used to keep the order the balances happened to arrive in, with empty rows
    mixed in. */
 function sortHeld(rows, keepZero){
+  // the same "Hide $0" choice holds in the send and swap pickers; LUNC stays,
+  // it is what every fee is paid in
   return rows.filter(r => keepZero || (r.v || 0) > 0).map(r => ({ r: r, f: fiatOf(r) }))
+    .filter(x => !HIDE_DUST || x.r.denom === 'uluna' || (x.f !== null && x.f >= DUST))
     .sort(function (a, b) {
       const fa = a.f === null ? -1 : a.f, fb = b.f === null ? -1 : b.f;
       return (fb - fa) || ((b.r.v || 0) - (a.r.v || 0)) || String(a.r.sym).localeCompare(String(b.r.sym));

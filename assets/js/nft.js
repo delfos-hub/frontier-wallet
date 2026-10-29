@@ -14,10 +14,10 @@
 //     address is kept, so a second visit draws from cache;
 //   - each collection shows four and opens to all of them;
 //   - tapping a card opens it: the picture, its name, traits and contract.
-import { LCD, getJSON, smart } from './chain.js?v=3e594b42';
-import { $, tap } from './shell.js?v=3e594b42';
-import { cacheGet, cacheSet, mapLimit, txCandidates } from './market.js?v=3e594b42';
-import { S } from './state.js?v=3e594b42';
+import { LCD, getJSON, smart } from './chain.js?v=3e3cf32f';
+import { $, tap } from './shell.js?v=3e3cf32f';
+import { cacheGet, cacheSet, mapLimit, txCandidates } from './market.js?v=3e3cf32f';
+import { S } from './state.js?v=3e3cf32f';
 
 const PREVIEW = 4;              // cards per collection before "See all"
 const MAX_IDS = 1000;           // ids read per collection, 100 a page
@@ -224,17 +224,24 @@ async function load(force){
 async function openNft(c, id){
   const col = COLS.filter(x => x.c === c)[0];
   const sheet = $('#nft-sheet'), body = $('#nft-body');
-  body.innerHTML = '<div class="nft-big"><span class="ph"></span></div><div class="tk-skel"></div><div class="tk-skel"></div>';
+  body.innerHTML = '<div class="nft-big sk"></div><div class="tk-skel"></div><div class="tk-skel"></div>';
   sheet.hidden = false;
+  document.body.classList.add('nft-lock');
   const info = await infoOf(c, id) || {};
   const big = info.img ? '<img src="' + esc(web(info.img)) + '" alt="">' : '<span class="ph"></span>';
-  body.innerHTML = '<div class="nft-big">' + big + '</div>' +
-    '<h3 class="nft-title">' + esc(info.name || '#' + id) + '</h3>' +
-    '<div class="nft-sub">' + esc(col ? col.name : '') + ' \u00b7 #' + esc(String(id).slice(0, 32)) + '</div>' +
-    (info.desc ? '<p class="nft-desc">' + esc(info.desc) + '</p>' : '') +
-    (info.traits && info.traits.length ? '<div class="nft-traits">' + info.traits.map(t =>
-      '<div><span>' + esc(t.k) + '</span><b>' + esc(t.v) + '</b></div>').join('') + '</div>' : '') +
-    '<button type="button" class="tk-link" data-url="' + FINDER + esc(c) + '">View collection contract</button>';
+  body.innerHTML =
+    '<div class="nft-big">' + big + '</div>' +
+    '<div class="nft-info">' +
+      '<div class="nft-chip">' + esc(col ? col.name : 'Collection') + '</div>' +
+      '<h3 class="nft-title">' + esc(info.name || '#' + id) + '</h3>' +
+      '<div class="nft-sub">Token ID ' + esc(String(id).slice(0, 40)) + '</div>' +
+      (info.desc ? '<p class="nft-desc">' + esc(info.desc) + '</p>' : '') +
+      (info.traits && info.traits.length ? '<div class="nft-traits-h">Traits</div><div class="nft-traits">' + info.traits.map(t =>
+        '<div><span>' + esc(t.k) + '</span><b>' + esc(t.v) + '</b></div>').join('') + '</div>' : '') +
+      '<button type="button" class="btn quiet nft-link" data-url="' + FINDER + esc(c) + '">View collection in explorer</button>' +
+    '</div>';
+  const img = body.querySelector('.nft-big img');
+  if (img) img.onerror = function () { if (String(info.img).indexOf('ipfs://') === 0) this.src = web(info.img, 1); };
 }
 
 function pane(which){
@@ -252,10 +259,11 @@ $('#nft-grid').addEventListener('click', function (e) {
   const c = e.target.closest('.nft-card[data-c]');
   if (c) { tap(); openNft(c.dataset.c, c.dataset.id); }
 });
-const closeSheet = () => { $('#nft-sheet').hidden = true; };
+const closeSheet = () => { $('#nft-sheet').hidden = true; document.body.classList.remove('nft-lock'); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#nft-sheet').hidden) closeSheet(); });
 $('#nft-x').addEventListener('click', closeSheet);
 $('#nft-sheet').addEventListener('click', function (e) {
-  if (e.target === this) closeSheet();
+  if (e.target === this || e.target.classList.contains('nft-view-in')) { closeSheet(); return; }
   const l = e.target.closest('[data-url]');
   if (l) {
     if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink) Telegram.WebApp.openLink(l.dataset.url);
