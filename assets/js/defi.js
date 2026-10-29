@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=a70d6571';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=a70d6571';
-import { $, go, tap } from './shell.js?v=a70d6571';
-import { S } from './state.js?v=a70d6571';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=a70d6571';
-import * as P from './defi-parse.js?v=a70d6571';
-import { dryRunSwap, sendSwap } from './tx.js?v=a70d6571';
-import { notify } from './notify.js?v=a70d6571';
-import { buzz } from './shell.js?v=a70d6571';
-import { refreshBalances } from './tokens.js?v=a70d6571';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=5ba797fa';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=5ba797fa';
+import { $, go, tap } from './shell.js?v=5ba797fa';
+import { S } from './state.js?v=5ba797fa';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=5ba797fa';
+import * as P from './defi-parse.js?v=5ba797fa';
+import { dryRunSwap, sendSwap } from './tx.js?v=5ba797fa';
+import { notify } from './notify.js?v=5ba797fa';
+import { buzz } from './shell.js?v=5ba797fa';
+import { refreshBalances } from './tokens.js?v=5ba797fa';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -525,7 +525,16 @@ function draw(){
   $('#earn-total').textContent = usd(total);
   $('#earn-count').textContent = list.length ? list.length + (list.length === 1 ? ' position' : ' positions') +
     (rewards >= 0.01 ? ' \u00b7 ' + usd(rewards) + ' in rewards waiting' : '') : '';
-  homeLine(list.length, total);
+  // the home card shows the tokens your biggest positions are in
+  const tops = [];
+  list.slice().sort((a, b) => worth(b).usd - worth(a).usd).forEach(function (p) {
+    const k = p.holds[0] && p.holds[0].key;
+    if (k && tops.indexOf(k) < 0) tops.push(k);
+  });
+  homeLine(list.length, total, rewards, tops.slice(0, 3).map(function (k) {
+    const r = rowOf(k);
+    return { sym: r.sym, contract: r.contract, denom: r.denom, logo: r.logo };
+  }));
 
   if (!list.length) {
     box.innerHTML = BUSY ? skel() : '<div class="tk-none">No staking, farm or pool positions found on Garuda, Terraport or Juris for this address.</div>';
@@ -787,12 +796,25 @@ function detail(c){
 const skel = () => '<div class="tk-card">' + '<div class="tk-skel"></div>'.repeat(4) + '</div>';
 function status(t){ const s = $('#earn-status'); if (s) { s.textContent = t; s.hidden = !t; } }
 
-function homeLine(n, total){
-  const sub = $('#earn-sub'), r = $('#earn-home-total');
-  if (sub) sub.textContent = n ? n + (n === 1 ? ' position' : ' positions') + ' on Garuda, Terraport, Juris' : 'Staking, farms and pools on DEXes';
+function homeLine(n, total, rewards, rows){
+  const sub = $('#earn-sub'), r = $('#earn-home-total'), rw = $('#earn-home-rew'), st = $('#earn-stack');
+  if (sub) sub.textContent = n ? n + (n === 1 ? ' position' : ' positions') + ' \u00b7 Garuda, Terraport, Juris'
+                               : 'Staking, farms and pools on DEXes';
   if (r) r.textContent = n && total > 0 ? usd(total) : '';
+  if (rw) rw.textContent = n && rewards >= 0.01 ? '+' + usd(rewards) + ' rewards' : '';
+  // up to three logos of what your positions hold, overlapping like a hand of
+  // cards; with nothing known yet, the plain mark stays
+  if (st) {
+    if (rows && rows.length) {
+      st.innerHTML = rows.map(x => iconHTML(x)).join('') + (n > rows.length ? '<span class="earn-more">+' + (n - rows.length) + '</span>' : '');
+      st.classList.add('logos');
+      paintIcons(st);
+    } else if (!n) {
+      st.classList.remove('logos');
+    }
+  }
   const addr = me();
-  if (addr) keep('home:' + addr, { n: n, total: total });
+  if (addr) keep('home:' + addr, { n: n, total: total, rewards: rewards || 0, rows: rows || [] });
 }
 
 /* ---------------- wiring ---------------- */
@@ -835,7 +857,7 @@ on('#ep-finder', 'click', function () {
 document.addEventListener('frontier:wallet', function () {
   FOUND = {};
   const h = kept('home:' + me());
-  homeLine(h ? h.n : 0, h ? h.total : 0);
+  homeLine(h ? h.n : 0, h ? h.total : 0, h ? h.rewards : 0, h ? h.rows : []);
 });
 document.addEventListener('frontier:locked', function () { FOUND = {}; SEQ++; });
 
