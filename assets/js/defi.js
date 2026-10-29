@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=330d0ba7';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=330d0ba7';
-import { $, go, tap } from './shell.js?v=330d0ba7';
-import { S } from './state.js?v=330d0ba7';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=330d0ba7';
-import * as P from './defi-parse.js?v=330d0ba7';
-import { dryRunSwap, sendSwap } from './tx.js?v=330d0ba7';
-import { notify } from './notify.js?v=330d0ba7';
-import { buzz } from './shell.js?v=330d0ba7';
-import { refreshBalances } from './tokens.js?v=330d0ba7';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=cf89e770';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=cf89e770';
+import { $, go, tap } from './shell.js?v=cf89e770';
+import { S } from './state.js?v=cf89e770';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=cf89e770';
+import * as P from './defi-parse.js?v=cf89e770';
+import { dryRunSwap, sendSwap } from './tx.js?v=cf89e770';
+import { notify } from './notify.js?v=cf89e770';
+import { buzz } from './shell.js?v=cf89e770';
+import { refreshBalances } from './tokens.js?v=cf89e770';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -66,8 +66,17 @@ function permSet(k, v){ try { localStorage.setItem('fw:perm:' + k, JSON.stringif
 function keep(k, v){ try { localStorage.setItem('fw:earn:' + k, JSON.stringify(v)); } catch (e) {} }
 function kept(k){ try { return JSON.parse(localStorage.getItem('fw:earn:' + k) || 'null'); } catch (e) { return null; } }
 
+/* A refusal is an answer ("this address has nothing here") and comes back
+   as null. Silence - a timeout, a rate limit - is not: it throws, so the
+   position is asked again instead of quietly vanishing. That is how Juris
+   staking went missing from the list: one 429 during the background sweep
+   and the reader saw "no locks". */
+class Silent extends Error {}
 async function q(c, msg){
-  try { const r = await smart(c, msg, 1); return r ? r.data : null; } catch (e) { return null; }
+  const a = await ask(c, msg);
+  if (a.ok) return a.data;
+  if (a.refused) return null;
+  throw new Silent('no answer from ' + c.slice(0, 12));
 }
 
 /* An answer, a refusal, or silence - and only the first two may be kept.
@@ -121,20 +130,25 @@ function dollars(x){
 // two sides; the share is staked LP over the LP token's supply.
 async function lpSides(lp, lpRaw){
   if (!lp || !lpRaw || lpRaw === '0') return null;
-  // a new key: the old one may hold a remembered failure
   let pair = permGet('minter2:' + lp);
   if (pair === undefined) {
     const a = await ask(lp, { minter: {} });
-    if (!a.ok && !a.refused) return null;          // no answer: try next time
+    if (!a.ok && !a.refused) throw new Silent('no answer from LP ' + lp.slice(0, 12));
     pair = (a.ok && a.data && a.data.minter) || '';
     permSet('minter2:' + lp, pair);
   }
   if (!pair) { console.warn('[earn] LP has no minter', lp); return null; }
-  const [ti, res] = await Promise.all([q(lp, { token_info: {} }), reserves(pair)]);
-  const total = Number(ti && ti.total_supply);
-  if (!total || !res) { console.warn('[earn] could not read', !total ? 'LP supply' : 'pool reserves', lp, pair); return null; }
+  // one read gives everything: a Garuda pool reports both reserves and the
+  // LP supply itself; a Terraswap-style one reports assets and total_share
+  const d = await q(pair, { pool: {} });
+  if (!d) { console.warn('[earn] pool refused', pair); return null; }
+  let sides = null;
+  if (d.asset1 && d.reserve1 !== undefined) sides = [{ key: P.assetKey(d.asset1), raw: String(d.reserve1) }, { key: P.assetKey(d.asset2), raw: String(d.reserve2) }];
+  else if (Array.isArray(d.assets)) sides = d.assets.map(a => ({ key: P.assetKey(a.info), raw: String(a.amount) }));
+  const total = Number(d.total_supply || d.total_share);
+  if (!total || !sides) { console.warn('[earn] pool answer not understood', pair, d); return null; }
   const f = Number(lpRaw) / total;
-  return { pair: pair, share: f, sides: res.map(r => ({ key: r.key, raw: String(Math.floor(Number(r.raw) * f)) })) };
+  return { pair: pair, share: f, sides: sides.map(r => ({ key: r.key, raw: String(Math.floor(Number(r.raw) * f)) })) };
 }
 
 /* ---------------- reading one contract for this address ----------------
@@ -325,14 +339,22 @@ async function codeList(code){
 }
 
 /* ---------------- the scan ---------------- */
-let FOUND = {}, BUSY = false, SEQ = 0;
+let FOUND = {}, LAST = {}, BUSY = false, SEQ = 0;
 
+// null = nothing there; FAILED = could not tell, keep what was known
+const FAILED = { failed: true };
 async function readJob(j, addr){
-  try {
-    const p = await READ[j.kind](j.contract, addr);
-    if (p) { p.contract = j.contract; p.platform = PLATFORM[j.kind] || 'Other'; p.src = j.kind; }
-    return p;
-  } catch (e) { return null; }
+  for (let i = 0; i < 3; i++) {
+    try {
+      const p = await READ[j.kind](j.contract, addr);
+      if (p) { p.contract = j.contract; p.platform = PLATFORM[j.kind] || 'Other'; p.src = j.kind; }
+      return p;
+    } catch (e) {
+      if (!(e instanceof Silent)) { console.warn('[earn]', j.kind, j.contract, e); return null; }
+      await new Promise(r => setTimeout(r, 1200 * (i + 1)));
+    }
+  }
+  return FAILED;
 }
 
 async function scan(full){
@@ -348,7 +370,11 @@ async function scan(full){
 
   try {
     // the fast part: fixed contracts and what was found before
-    FOUND = {};
+    // what was there last time is on screen at once, and stays if a read fails
+    LAST = kept('pos:' + addr) || {};
+    FOUND = Object.assign({}, LAST);
+    for (const c in FOUND) FOUND[c].stale = true;
+    draw();
     await readAll(Object.values(jobs), addr, seq);
     draw();
 
@@ -371,6 +397,9 @@ async function scan(full){
       was.swept = Date.now();
     }
     if (seq !== SEQ) return;
+    // a position read nowhere this time (a contract that moved on) goes
+    for (const c in FOUND) if (FOUND[c].stale && !jobs[c]) delete FOUND[c];
+    keep('pos:' + addr, FOUND);
     keep('found:' + addr, { at: Date.now(), swept: was.swept || 0,
       list: Object.values(FOUND).map(p => ({ kind: kindOfPos(p), contract: p.contract })) });
     draw();
@@ -393,11 +422,16 @@ function kindOfPos(p){
 
 async function readAll(list, addr, seq, counted){
   let n = 0;
-  await mapLimit(list, 4, async function (j) {
+  // the background sweep goes two at a time: hundreds of reads at four wide
+  // is exactly what a public node answers with 429
+  await mapLimit(list, counted ? 2 : 4, async function (j) {
     const p = await readJob(j, addr);
     n++;
     if (counted && n % 10 === 0) status('Checking every Garuda farm and staking pool \u00b7 ' + n + ' of ' + list.length);
-    if (p && seq === SEQ) {
+    if (seq !== SEQ) return;
+    if (p === FAILED) return;                       // keep the last known one
+    if (!p) { if (FOUND[j.contract]) { delete FOUND[j.contract]; draw(); } return; }
+    {
       const keys = p.holds.concat(p.rewards, p.wants || []).map(x => x.key).concat(p.keys || []);
       await Promise.all(keys.map(meta));
       FOUND[p.contract] = p;
@@ -482,7 +516,8 @@ function card(p){
     '<span class="ea-amt"><b>' + fmt(human(x)) + '</b> ' + esc((META[x.key] || {}).sym) + '</span>').join('<i class="ea-plus">+</i>');
   const rew = p.rewards.length ? '<div class="ea-rew">Rewards ' + p.rewards.map(x =>
     '<b>' + fmt(human(x)) + ' ' + esc((META[x.key] || {}).sym) + '</b>').join(' + ') + '</div>' : '';
-  const tag = p.ready ? '<span class="ea-tag">ready to withdraw</span>' : '';
+  const tag = (p.ready ? '<span class="ea-tag">ready to withdraw</span>' : '') +
+    (p.stale ? '<span class="ea-stale">updating\u2026</span>' : '');
   return '<div class="ea-pos" data-pos="' + p.contract + '">' +
     '<div class="ea-top">' + logos(p) +
       '<div class="ea-mid"><b>' + esc(titleOf(p)) + '</b><span>' + esc(p.label) +
@@ -601,7 +636,8 @@ async function check(){
   if (!S.MNEMONIC) { ACT.err = 'Unlock the wallet first.'; drawPanel(); return; }
   ACT.checking = true; ACT.err = ''; drawPanel();
   try {
-    ACT.steps = ACT.a.steps(ACT.frac || 1);
+    // every message carries a funds list, empty when no coins ride along
+    ACT.steps = ACT.a.steps(ACT.frac || 1).map(st => Object.assign({ funds: [] }, st));
     ACT.plan = await dryRunSwap(me(), ACT.steps, S.MNEMONIC);
   } catch (e) {
     ACT.err = String(e.message || e);

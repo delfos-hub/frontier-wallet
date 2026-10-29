@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=330d0ba7';
-import { $, buzz, go, tap } from './shell.js?v=330d0ba7';
-import { S } from './state.js?v=330d0ba7';
-import { iconHTML, paintIcons } from './chain.js?v=330d0ba7';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=330d0ba7';
-import { notify } from './notify.js?v=330d0ba7';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=cf89e770';
+import { $, buzz, go, tap } from './shell.js?v=cf89e770';
+import { S } from './state.js?v=cf89e770';
+import { iconHTML, paintIcons } from './chain.js?v=cf89e770';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=cf89e770';
+import { notify } from './notify.js?v=cf89e770';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -668,7 +668,7 @@ const EXEC_URLS = ['/cosmwasm.wasm.v1.MsgExecuteContract',
                    '/terra.wasm.v1beta1.MsgExecuteContract'];
 const msgExec = (sender, contract, msgJson, funds) => cat([
   fStr(1, sender), fStr(2, contract), fBytes(3, enc.encode(msgJson)),
-  ...funds.map(c => fBytes(5, coin(c)))
+  ...(funds || []).map(c => fBytes(5, coin(c)))
 ]);
 /* One signature, one or more messages.
    Cosmos runs the messages of a transaction in order and commits them together
