@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=f4f3f32b';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=f4f3f32b';
-import { $, go, tap } from './shell.js?v=f4f3f32b';
-import { S } from './state.js?v=f4f3f32b';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=f4f3f32b';
-import * as P from './defi-parse.js?v=f4f3f32b';
-import { dryRunSwap, sendSwap } from './tx.js?v=f4f3f32b';
-import { notify } from './notify.js?v=f4f3f32b';
-import { buzz } from './shell.js?v=f4f3f32b';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=f4f3f32b';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=9e8b1817';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=9e8b1817';
+import { $, go, tap } from './shell.js?v=9e8b1817';
+import { S } from './state.js?v=9e8b1817';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=9e8b1817';
+import * as P from './defi-parse.js?v=9e8b1817';
+import { dryRunSwap, sendSwap } from './tx.js?v=9e8b1817';
+import { notify } from './notify.js?v=9e8b1817';
+import { buzz } from './shell.js?v=9e8b1817';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=9e8b1817';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -164,11 +164,11 @@ async function meta(key){
   if (key === 'native:uluna') m = { sym: 'LUNC', dec: 6 };
   else if (key === 'native:uusd') m = { sym: 'USTC', dec: 6 };
   else if (k && k.sym) m = { sym: k.sym, dec: k.dec === undefined ? (DEC[key] === undefined ? 6 : DEC[key]) : k.dec, logo: k.logo };
-  else if (permGet('m:' + key)) m = permGet('m:' + key);
+  else if (permGet('m:' + key)) { m = permGet('m:' + key); m = Object.assign({}, m, { sym: clean(m.sym, 16) }); }
   else if (key.slice(0, 5) === 'cw20:') {
     let d = null;
     try { d = await q(key.slice(5), { token_info: {} }); } catch (e) { /* silent node: try later */ }
-    if (d && d.symbol) { m = { sym: d.symbol, dec: d.decimals === undefined ? 6 : d.decimals }; permSet('m:' + key, m); }
+    if (d && d.symbol) { m = { sym: clean(d.symbol, 16), dec: d.decimals === undefined ? 6 : d.decimals }; permSet('m:' + key, m); }
     else m = { sym: key.slice(5, 13).toUpperCase(), dec: 6, guess: true };
   } else m = { sym: key.slice(7, 13).toUpperCase(), dec: 6, guess: true };
   return (META[key] = m);

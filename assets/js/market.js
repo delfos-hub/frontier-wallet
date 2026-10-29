@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, dbg, getJSON, smart } from './chain.js?v=f4f3f32b';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=9e8b1817';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -100,7 +100,7 @@ function knownAsset(key){
     // the issuer first, as with everything else it publishes. A feed reports
     // whatever string the contract carries, and a contract's internal name is
     // not always the one the token is traded under.
-    sym: pick('sym', [list, feed, kept]),
+    sym: clean(pick('sym', [list, feed, kept]), 16) || null,
     // the issuer's list first for both: it is the only authority on either
     dec: pick('dec', [list, feed, kept]),
     logo: pick('logo', [list, feed, kept])
@@ -114,7 +114,7 @@ async function learnAsset(key){
   const r = await smart(key.slice(5), { token_info: {} }, 1).catch(() => null);
   const d = r && r.data;
   if (!d || !d.symbol) return null;
-  const a = { key: key, sym: d.symbol,
+  const a = { key: key, sym: clean(d.symbol, 16),
               dec: d.decimals === undefined ? 6 : d.decimals, logo: null };
   // Into DEC as well, and this is the point of the whole call: legRate scales
   // a reserve by ten to the power of what it finds there, and finding nothing
@@ -669,7 +669,7 @@ async function owMarket(){
     for (const t of [p.base, p.quote]) {
       const k = owKey(t);
       if (t.logo && !logos[k]) logos[k] = t.logo;
-      if (t.symbol && !syms[k]) syms[k] = t.symbol;
+      if (t.symbol && !syms[k]) syms[k] = clean(t.symbol, 16);
       if (t.decimals !== undefined && t.decimals !== null) decs[k] = t.decimals;
       if (k.slice(0, 5) === 'cw20:' && !seen[k]) { seen[k] = 1; tokens.push(k.slice(5)); }
     }

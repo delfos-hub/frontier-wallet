@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=f4f3f32b';
-import { DEC, knownAsset as marketAsset } from './market.js?v=f4f3f32b';
-import { $, go } from './shell.js?v=f4f3f32b';
-import { fiatOf, heldTokens } from './tokens.js?v=f4f3f32b';
-import { S } from './state.js?v=f4f3f32b';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=9e8b1817';
+import { DEC, knownAsset as marketAsset } from './market.js?v=9e8b1817';
+import { $, go } from './shell.js?v=9e8b1817';
+import { fiatOf, heldTokens } from './tokens.js?v=9e8b1817';
+import { S } from './state.js?v=9e8b1817';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -334,9 +334,11 @@ function feeOf(t){
   return f.length ? coins(f) : '';
 }
 
+// every value here is text from the chain - a memo, a symbol, a log - and is
+// escaped; a memo is whatever the sender typed, markup included
 function row(k, v, cls){
   return '<div class="tx-line' + (cls ? ' ' + cls : '') + '">' +
-         '<span>' + k + '</span><b>' + v + '</b></div>';
+         '<span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>';
 }
 
 function openTx(hash){
@@ -351,18 +353,18 @@ function openTx(hash){
 
   let html =
     '<div class="tx-head">' + face(l, failed) +
-      '<div><b>' + l.title + '</b><i>' + new Date(t.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</i></div></div>';
+      '<div><b>' + esc(l.title) + '</b><i>' + new Date(t.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</i></div></div>';
 
   if (failed) {
     html += '<div class="tx-fail">The chain rejected this one. Nothing moved.' +
-            (t.raw_log ? '<p>' + String(t.raw_log).slice(0, 200) + '</p>' : '') + '</div>';
+            (t.raw_log ? '<p>' + esc(String(t.raw_log).slice(0, 200)) + '</p>' : '') + '</div>';
   }
 
   if (l.flows.length && !failed) {
     html += '<div class="tx-flows">' + l.flows.slice(0, 8).map(function (f) {
       const w = worthOf(f);
       return '<div class="tx-flow ' + (f.raw > 0 ? 'in' : 'out') + '">' + iconHTML(rowOfKey(f.key)) +
-        '<span>' + (f.raw > 0 ? 'Received' : 'Paid') + '</span><b>' + amountText(f) + '<i>' + (w ? usd(Math.abs(w)) : '') + '</i></b></div>';
+        '<span>' + (f.raw > 0 ? 'Received' : 'Paid') + '</span><b>' + esc(amountText(f)) + '<i>' + (w ? usd(Math.abs(w)) : '') + '</i></b></div>';
     }).join('') + '</div>';
   }
   if (l.place) html += row('Where', l.place);
@@ -370,7 +372,7 @@ function openTx(hash){
     html += '<div class="tx-moves">' + moves.slice(0, 8).map(function (mv) {
       return row(mv.mine ? 'Received' : 'Sent',
                  (mv.mine ? '+' : '-') + mv.text, mv.mine ? 'in' : 'out') +
-             '<p class="tx-who">' + (mv.mine ? 'from ' : 'to ') + short(mv.other) + '</p>';
+             '<p class="tx-who">' + (mv.mine ? 'from ' : 'to ') + esc(short(mv.other)) + '</p>';
     }).join('') + '</div>';
   }
 
@@ -379,7 +381,7 @@ function openTx(hash){
   if (feeOf(t)) html += row('Network fee', feeOf(t));
   if (t.gas_used) html += row('Gas', t.gas_used + ' of ' + (t.gas_wanted || '?'));
   if (memo) html += row('Memo', memo);
-  html += '<div class="tx-hash" id="tx-hash">' + hash + '</div>';
+  html += '<div class="tx-hash" id="tx-hash">' + esc(hash) + '</div>';
 
   $('#tx-body').innerHTML = html;
   paintIcons($('#tx-body'));
@@ -487,7 +489,8 @@ function placeOf(c, me){
   return place ? place + (pair ? ' \u00b7 ' + pair : '') : '';
 }
 function prettyLabel(l){
-  l = String(l).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // a contract's label is whatever its deployer typed
+  l = clean(l, 60).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (/router/i.test(l)) return 'Swap router' + (/terraport/i.test(l) ? ' \u00b7 Terraport' : /garuda/i.test(l) ? ' \u00b7 Garuda' : '');
   return l.length > 28 ? l.slice(0, 27) + '\u2026' : l;
 }
@@ -604,11 +607,11 @@ function rowHTML(t, me, dated){
   const failed = Number(t.code) > 0;
   const when = dated && dayName(t.timestamp) !== 'Today' ? dayName(t.timestamp) : clock(t.timestamp);
   const dollars = l.usd ? usd(Math.abs(l.usd)) : '';
-  return '<div class="ac-row" data-hash="' + t.txhash + '">' + face(l, failed) +
-    '<div class="ac-mid"><div class="ac-t">' + l.title + '</div>' +
-      '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') + (l.sub || short(t.txhash)) + '</div></div>' +
-    '<div class="ac-r"><div class="ac-v' + (l.topIn && !failed ? ' in' : '') + '">' + (failed ? '' : l.top) + '</div>' +
-      '<div class="ac-w">' + (l.below && !failed ? l.below : (dollars && !failed ? dollars + ' \u00b7 ' : '') + when) + '</div></div>' +
+  return '<div class="ac-row" data-hash="' + esc(t.txhash) + '">' + face(l, failed) +
+    '<div class="ac-mid"><div class="ac-t">' + esc(l.title) + '</div>' +
+      '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') + esc(l.sub || short(t.txhash)) + '</div></div>' +
+    '<div class="ac-r"><div class="ac-v' + (l.topIn && !failed ? ' in' : '') + '">' + (failed ? '' : esc(l.top)) + '</div>' +
+      '<div class="ac-w">' + esc(l.below && !failed ? l.below : (dollars && !failed ? dollars + ' \u00b7 ' : '') + when) + '</div></div>' +
     '</div>';
 }
 
@@ -682,9 +685,9 @@ function render(){
 
 function pendingRow(j){
   const l = { kind: 'out', main: { key: j.key, raw: -1 } };
-  return '<div class="ac-row pending" data-hash="' + j.hash + '">' + face(l, false, true) +
-    '<div class="ac-mid"><div class="ac-t">Sending</div><div class="ac-s">to ' + short(j.to) + '</div></div>' +
-    '<div class="ac-r"><div class="ac-v">-' + j.amount + ' ' + j.sym + '</div>' +
+  return '<div class="ac-row pending" data-hash="' + esc(j.hash) + '">' + face(l, false, true) +
+    '<div class="ac-mid"><div class="ac-t">Sending</div><div class="ac-s">to ' + esc(short(j.to)) + '</div></div>' +
+    '<div class="ac-r"><div class="ac-v">-' + esc(j.amount + ' ' + j.sym) + '</div>' +
     '<div class="ac-w pend">' + (j.state === 'slow' ? 'not in a block yet' : 'waiting for the block') + '</div></div></div>';
 }
 

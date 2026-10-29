@@ -280,4 +280,7 @@ await import('./markup.mjs');
 // than imported
 await import('./envelopes.mjs');
 
+// text from the chain is never markup
+await import('./escape.mjs');
+
 report();
