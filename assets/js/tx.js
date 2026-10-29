@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=e973c366';
-import { $, buzz, go, tap } from './shell.js?v=e973c366';
-import { S } from './state.js?v=e973c366';
-import { iconHTML, paintIcons } from './chain.js?v=e973c366';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=e973c366';
-import { notify } from './notify.js?v=e973c366';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=eef273d6';
+import { $, buzz, go, tap } from './shell.js?v=eef273d6';
+import { S } from './state.js?v=eef273d6';
+import { iconHTML, paintIcons } from './chain.js?v=eef273d6';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=eef273d6';
+import { notify } from './notify.js?v=eef273d6';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -497,6 +497,9 @@ const cut = a => !a ? '' : a.slice(0, 10) + '\u2026' + a.slice(-4);
 const nap = ms => new Promise(r => setTimeout(r, ms));
 
 function drawJobs(){
+  // Activity shows sends on their way too
+  document.dispatchEvent(new CustomEvent('frontier:pending', { detail: { jobs: JOBS.map(j => ({
+    hash: j.hash, key: sendKey(j.tok), sym: j.sym, amount: j.amount, to: j.to, state: j.state })) } }));
   const box = $('#txq');
   if (!box) return;
   box.hidden = !JOBS.length;
