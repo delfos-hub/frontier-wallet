@@ -1281,3 +1281,39 @@ li.row[data-k]:active,.core-cell:active{opacity:.75}
 /* token page console: swap marked like the home one */
 #tk-swap{color:#E8F0FF}
 #tk-swap svg{stroke:#00D4FF}
+
+/* ---------- DeFi positions (defi.js) ---------- */
+.earn-entry{display:flex;align-items:center;gap:12px;width:100%;margin:12px 0 4px;padding:13px 14px;cursor:pointer;
+  background:linear-gradient(135deg,rgba(0,255,176,.08),rgba(123,92,255,.10));border:1px solid var(--border);
+  border-radius:var(--r-card);font-family:inherit;color:var(--text);text-align:left}
+.earn-entry:active{transform:scale(.985)}
+.earn-ic{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;flex:none;background:rgba(0,255,176,.12)}
+.earn-ic svg{width:18px;height:18px;stroke:#00FFB0;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.earn-mid{flex:1;min-width:0;display:flex;flex-direction:column}
+.earn-mid b{font-size:13.5px;color:#fff}
+.earn-mid span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.earn-r{font-family:'Rajdhani',sans-serif;font-size:16px;color:#fff;font-variant-numeric:tabular-nums}
+.earn-chev{width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;flex:none}
+.ea-h{margin:0;font-size:20px}
+.ea-bar{display:flex;align-items:center;gap:10px;margin:-6px 2px 8px}
+.ea-status{flex:1;font-size:11.5px;color:var(--muted)}
+.ea-status[hidden]{display:block;visibility:hidden}
+.ea-rescan{background:none;border:1px solid var(--border);border-radius:999px;color:var(--accent2);font-family:inherit;
+  font-size:11px;padding:5px 12px;cursor:pointer}
+.ea-sum{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ea-card{padding:2px 14px}
+.ea-pos{padding:13px 0;border-bottom:1px solid var(--border);cursor:pointer}
+.ea-pos:last-child{border-bottom:none}
+.ea-top{display:flex;align-items:center;gap:12px}
+.ea-mid{flex:1;min-width:0;display:flex;flex-direction:column}
+.ea-mid b{font-size:13.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ea-mid span{font-size:11px;color:var(--muted)}
+.ea-share{margin-left:8px;color:var(--accent2)}
+.ea-usd{font-family:'Rajdhani',sans-serif;font-size:16px;color:#fff;font-variant-numeric:tabular-nums;flex:none}
+.ea-holds{display:flex;flex-wrap:wrap;gap:6px 14px;margin:9px 0 0 48px}
+.ea-amt{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.ea-amt b{color:var(--text);font-variant-numeric:tabular-nums}
+.ea-amt .sym{width:18px;height:18px;font-size:8px}
+.ea-rew{margin:7px 0 0 48px;font-size:12px;color:var(--muted)}
+.ea-rew b{color:var(--green);font-weight:600}
+.ea-note{margin:6px 0 0 48px;font-size:11.5px;color:var(--muted);line-height:1.5}

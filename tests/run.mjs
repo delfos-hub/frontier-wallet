@@ -267,6 +267,9 @@ await import('./activity.mjs');
 // the two step quote, lifted from swap.js like the envelopes below
 await import('./hop.mjs');
 
+// what the staking, farm and pool contracts answer
+await import('./defi.mjs');
+
 // the signed message, in its own file because it is lifted from swap.js rather
 // than imported
 await import('./envelopes.mjs');
