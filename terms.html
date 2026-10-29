@@ -176,8 +176,7 @@ offer’s available balance.</p>
 unanswered buys</h3>
 <p><strong>Seller balance.</strong> An offer is accepted only if the
 seller’s balance covers that offer together with the seller’s other
-offers and pending acceptances. The seller must also maintain sufficient
-additional LUNC for the burn tax and network gas.</p>
+offers and pending acceptances. The seller must also maintain sufficient additional LUNC for the burn tax and network gas. A seller may have at most 5 live offers at a time.</p>
 <p><strong>Abuse prevention.</strong> The offers service permits no more
 than 3 waiting acceptances per address and 20 announcements per minute
 per IP address. Each acceptance requires an actual GRAM lock lasting
@@ -185,8 +184,7 @@ approximately 30 hours. Buyers must check their pending transactions
 before authorising any further payment.</p>
 <p><strong>Unanswered acceptances.</strong> An unanswered acceptance
 counts as a miss. A seller’s offers are hidden when, over the preceding
-30 days, the seller has at least 3 misses and the number of misses
-exceeds one fifth of the number of responses. Offers become visible
+30 days, the seller has at least 3 misses and those misses are more than one fifth of all acceptances received in that period, answered or not. Offers become visible
 again automatically when these conditions cease to apply, whether
 through additional responses or expiry of older misses from the 30 day
 period. Sellers may enable Telegram alerts in the wallet to help them
@@ -252,7 +250,7 @@ network’s native coin to pay claim gas. The fallback procedures and
 dependencies below continue to apply.</p>
 <p><strong>Functions.</strong> The relayer uses the secret supplied by
 the buyer’s wallet to claim LUNC for the buyer, then releases GRAM to
-the seller. It also submits refunds after locks expire.</p>
+the seller. It also submits refunds after expiry for the swaps it is aware of, which are the swaps a seller has answered.</p>
 <p><strong>Payout restrictions.</strong> The relayer cannot redirect
 contract payouts. Claimed LUNC is paid only to the buyer, claimed GRAM
 only to the seller, and refunds only to the party that originally locked
@@ -273,9 +271,7 @@ remains open.</p>
 the relayer endpoint built into the application.</p>
 <h2 id="7-refunds-and-recovery">7. Refunds and recovery</h2>
 <p>If a swap does not complete, funds that remain unclaimed may be
-refunded after the relevant lock expires. When available, the relayer
-submits refunds automatically. Users may also initiate a refund in
-Frontier:</p>
+refunded after the relevant lock expires. For the swaps it is aware of (those a seller has answered), the relayer submits refunds automatically. When a seller never answers an acceptance, which is the most common case, nothing is refunded automatically: the buyer requests the refund in Frontier after the GRAM lock expires. Users may always initiate a refund in Frontier:</p>
 <ul>
 <li><p>Buyer: select "Get my GRAM back" after the GRAM lock expires. The
 lock pays its own network fee; no separate payment is required.</p></li>
@@ -442,8 +438,7 @@ advice.</p>
 amendments and closure</h2>
 <p><strong>Transaction limits.</strong> Applicable transaction limits
 are those activated and displayed in the service before a transaction is
-initiated. A launch range of 5 to 500 GRAM per swap applies only once
-implemented and verified in both the offers service and Frontier.</p>
+initiated. During the launch period, each swap must be between 5 and 500 GRAM; the offers service and Frontier both enforce this range.</p>
 <p><strong>Changes to service parameters.</strong> Delfos Hub may change
 transaction limits, time limits and service fees for new offers and
 swaps. A swap already initiated remains subject to the immutable
