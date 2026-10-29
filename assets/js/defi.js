@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=ccced418';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=ccced418';
-import { $, go, tap } from './shell.js?v=ccced418';
-import { S } from './state.js?v=ccced418';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=ccced418';
-import * as P from './defi-parse.js?v=ccced418';
-import { dryRunSwap, sendSwap } from './tx.js?v=ccced418';
-import { notify } from './notify.js?v=ccced418';
-import { buzz } from './shell.js?v=ccced418';
-import { refreshBalances } from './tokens.js?v=ccced418';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=ef3c39ad';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=ef3c39ad';
+import { $, go, tap } from './shell.js?v=ef3c39ad';
+import { S } from './state.js?v=ef3c39ad';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=ef3c39ad';
+import * as P from './defi-parse.js?v=ef3c39ad';
+import { dryRunSwap, sendSwap } from './tx.js?v=ef3c39ad';
+import { notify } from './notify.js?v=ef3c39ad';
+import { buzz } from './shell.js?v=ef3c39ad';
+import { refreshBalances } from './tokens.js?v=ef3c39ad';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -96,8 +96,44 @@ function refusal(e){
   if (e.status >= 400 && e.status < 500) return true;
   return /query wasm contract failed|not found|Generic error|Custom Error|Unauthorized|Overflow/i.test(e.body || '');
 }
+/* Contract reads for this screen go to several public nodes in turn.
+
+   One node took every read - balances, prices and a few hundred position
+   queries - and answered the burst with 500s and 429s: slow pages, farms
+   "not valued", Juris gone and back. Spread over four nodes the same reads
+   finish several times faster and rarely hit a limit. A node that fails is
+   rested (15 s when busy, a minute when unreachable or blocked by CORS) and
+   the next one is asked. */
+const NODES = [
+  'https://terra-classic-lcd.publicnode.com',
+  'https://lcd.terra-classic.hexxagon.io',
+  'https://api-lunc-lcd.binodes.com',
+  'https://terraclassic-mainnet-lcd.autostake.com'
+];
+const REST = {};
+let TURN = 0;
+const REFUSED_BODY = /query wasm contract failed|not found|Generic error|Custom Error|Unauthorized|Overflow|Error parsing|unknown variant|missing field/i;
+
 async function ask(c, msg){
-  try { const r = await smart(c, msg, 2); return { ok: true, data: r ? r.data : null }; }
+  const path = '/cosmwasm/wasm/v1/contract/' + c + '/smart/' + btoa(JSON.stringify(msg));
+  for (let i = 0; i < NODES.length * 2; i++) {
+    const node = NODES[TURN++ % NODES.length];
+    if ((REST[node] || 0) > Date.now()) continue;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 9000);
+    try {
+      const r = await fetch(node + path, { signal: ctl.signal });
+      if (r.ok) { const j = await r.json(); return { ok: true, data: j ? j.data : null }; }
+      let body = '';
+      try { body = await r.text(); } catch (x) {}
+      if ((r.status >= 400 && r.status < 500 && r.status !== 429) || REFUSED_BODY.test(body)) return { ok: false, refused: true };
+      REST[node] = Date.now() + 15000;            // busy: let it breathe
+    } catch (e) {
+      REST[node] = Date.now() + 60000;            // unreachable or not for browsers
+    } finally { clearTimeout(timer); }
+  }
+  // every node resting: fall back to the wallet's own reader, once
+  try { const r = await smart(c, msg, 1); return { ok: true, data: r ? r.data : null }; }
   catch (e) { return { ok: false, refused: refusal(e) }; }
 }
 
@@ -142,12 +178,13 @@ function dollars(x){
 // two sides; the share is staked LP over the LP token's supply.
 async function lpSides(lp, lpRaw){
   if (!lp || !lpRaw || lpRaw === '0') return null;
-  let pair = permGet('minter2:' + lp);
+  let pair = permGet('minter3:' + lp) || undefined;
   if (pair === undefined) {
     const a = await ask(lp, { minter: {} });
     if (!a.ok && !a.refused) throw new Silent('no answer from LP ' + lp.slice(0, 12));
     pair = (a.ok && a.data && a.data.minter) || '';
-    permSet('minter2:' + lp, pair);
+    // an LP token always has a minter: only an actual one is remembered
+    if (pair) permSet('minter3:' + lp, pair);
   }
   if (!pair) { console.warn('[earn] LP has no minter', lp); return null; }
   // one read gives everything: a Garuda pool reports both reserves and the
@@ -179,8 +216,10 @@ const READ = {
     if (!st || !Number(st.staked_amount)) return null;
     let cfg = permGet('cfg:' + c);
     if (cfg === undefined) { cfg = await q(c, { config: {} }); if (cfg) permSet('cfg:' + c, cfg); }
+    // an instant-unstake farm has nothing pending to ask about
+    const instant = cfg && !Number(cfg.unstake_duration);
     const [rw, un, tot] = await Promise.all([q(c, { reward_info: { address: addr } }),
-      q(c, { pending_unstakes: { address: addr } }), q(c, { total_staked: {} })]);
+      instant ? null : q(c, { pending_unstakes: { address: addr } }), q(c, { total_staked: {} })]);
     const f = P.farm(cfg, st, rw, un);
     const lp = await lpSides(f.lp, f.staked);
     const notes = [], stats = [];
@@ -436,9 +475,8 @@ function kindOfPos(p){
 
 async function readAll(list, addr, seq, counted){
   let n = 0;
-  // the background sweep goes two at a time: hundreds of reads at four wide
-  // is exactly what a public node answers with 429
-  await mapLimit(list, counted ? 2 : 4, async function (j) {
+  // spread over four nodes (ask) this is eight wide in front, four behind
+  await mapLimit(list, counted ? 4 : 8, async function (j) {
     const p = await readJob(j, addr);
     n++;
     if (counted && n % 10 === 0) status('Looking for other positions in the background \u00b7 ' + n + ' of ' + list.length);
