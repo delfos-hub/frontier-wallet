@@ -1467,3 +1467,63 @@ li.row[data-k]:active,.core-cell:active{opacity:.75}
 .tx-flow b{display:flex;flex-direction:column;align-items:flex-end;font-size:13.5px;font-variant-numeric:tabular-nums}
 .tx-flow b i{font-style:normal;font-weight:400;font-size:11px;color:var(--muted)}
 .tx-flow.in b{color:var(--green)}
+
+/* ---------- token list header: title, count, three quiet icon tools ---------- */
+.tl-head{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 10px}
+.tl-head h2{display:flex;align-items:center;gap:8px;margin:0}
+.tl-n{font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:700;color:var(--muted);
+  background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
+.tl-n:empty{display:none}
+.tl-tools{display:flex;gap:6px}
+.ic-btn{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;cursor:pointer;
+  background:var(--surface);border:1px solid var(--border);color:var(--muted);transition:border-color .15s,color .15s}
+.ic-btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ic-btn:active{transform:scale(.94)}
+.ic-btn.on{color:var(--accent2);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.08)}
+.ic-btn .ic-slash{display:none}
+#dust-toggle.on .ic-slash{display:inline}
+.tl-search{margin:-2px 0 10px}
+.tl-search[hidden]{display:none}
+.tl-search input{width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-family:inherit;font-size:13.5px;outline:none}
+.tl-search input:focus{border-color:var(--accent2)}
+.tl-or{display:flex;align-items:center;gap:10px;margin:14px 0 10px;color:var(--muted);font-size:11px}
+.tl-or::before,.tl-or::after{content:"";flex:1;height:1px;background:var(--border)}
+/* ---------- refresh: button on the balance card, pull on a phone ---------- */
+.bal-refresh{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+  background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;z-index:2}
+.bal-refresh svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bal-refresh:hover{color:var(--text)}
+.bal-refresh.spin svg{animation:rf-spin .8s linear infinite}
+@keyframes rf-spin{to{transform:rotate(360deg)}}
+.ptr{height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;transition:height .18s ease}
+.ptr-ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:1px solid var(--border)}
+.ptr-ic svg{width:17px;height:17px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;transform:rotate(var(--turn,0deg))}
+.ptr.ready .ptr-ic svg{stroke:var(--accent2)}
+.ptr.busy .ptr-ic svg{stroke:var(--accent2);animation:rf-spin .8s linear infinite}
+/* ---------- NFTs: by collection, four then all, a detail sheet ---------- */
+.nft-grid{display:block}
+.nft-empty{text-align:center;color:var(--muted);font-size:13px;padding:36px 16px}
+.nft-col-sec{margin-bottom:18px}
+.nft-col-head{display:flex;align-items:center;gap:8px;margin:0 2px 9px}
+.nft-col-head b{font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nft-col-head span{font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:700;color:var(--muted);
+  border:1px solid var(--border);border-radius:999px;padding:0 7px}
+.nft-more{margin-left:auto;background:none;border:none;color:var(--accent2);font-family:inherit;font-size:12px;cursor:pointer;flex:none}
+.nft-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button.nft-card{padding:0;text-align:left;font-family:inherit;color:inherit;cursor:pointer}
+.nft-card .nft-art .ph{width:38%;aspect-ratio:1;border-radius:50%;background:#1B2338}
+.nft-art.ok{background:#0B0F1A}
+.nft-card.sk .nft-art,.nft-line{background:linear-gradient(90deg,var(--surface2),var(--border),var(--surface2));
+  background-size:200% 100%;animation:tk-sh 1.2s linear infinite}
+.nft-line{height:10px;border-radius:5px;width:60%}
+.nft-big{aspect-ratio:1;border-radius:16px;overflow:hidden;background:#12182A;display:grid;place-items:center;margin-bottom:12px}
+.nft-big img{width:100%;height:100%;object-fit:contain}
+.nft-big .ph{width:30%;aspect-ratio:1;border-radius:50%;background:#1B2338}
+.nft-title{margin:0 0 2px;font-size:18px}
+.nft-sub{font-size:12px;color:var(--muted);margin-bottom:10px}
+.nft-desc{font-size:12.5px;color:var(--muted);line-height:1.55;margin:0 0 12px}
+.nft-traits{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.nft-traits div{border:1px solid var(--border);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.nft-traits span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.nft-traits b{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

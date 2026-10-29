@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=eef273d6';
-import { DEC, knownAsset as marketAsset } from './market.js?v=eef273d6';
-import { $, go } from './shell.js?v=eef273d6';
-import { fiatOf, heldTokens } from './tokens.js?v=eef273d6';
-import { S } from './state.js?v=eef273d6';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=3e594b42';
+import { DEC, knownAsset as marketAsset } from './market.js?v=3e594b42';
+import { $, go } from './shell.js?v=3e594b42';
+import { fiatOf, heldTokens } from './tokens.js?v=3e594b42';
+import { S } from './state.js?v=3e594b42';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -765,6 +765,8 @@ async function showTx(hash){
   openTx(hash);
 }
 document.addEventListener('frontier:show-tx', e => showTx(e.detail && e.detail.hash));
+
+document.addEventListener('frontier:refresh', () => { LOADED = ''; });
 
 // something moved: the list is stale, and if it is on screen, read it again
 document.addEventListener('frontier:tx', () => {
