@@ -3,6 +3,8 @@
    Every test here corresponds to something that was found by deploying, taking
    a screenshot, reading a console log and guessing - several of them more than
    once. They run in about a second. */
+import fs from 'fs';
+import path from 'path';
 import { loadMarket, ok, near, group, report } from './harness.mjs';
 import { A, META, POOLS } from './fixture.mjs';
 
@@ -215,6 +217,47 @@ group('pool dialects');
   ok('and the better side is the one quoted', both.via === 'book', both.via);
   ok('the answer says which side it came from',
      both.via === 'book' || both.via === 'pool');
+}
+
+group('only pool code is quoted or signed for');
+{
+  // A pool address comes from the map or a factory listing; neither proves it
+  // runs pool code, and a contract that keeps the offer answers a simulation
+  // just as well.
+  const { mod, chain } = await loadMarket();
+  await mod.owMarket();
+  await mod.graph();
+
+  chain.codes.P_USTC_LUNC = 666;
+  const before = chain.calls.smart;
+  const fake = await mod.simulateSwap('P_USTC_LUNC', A.USTC, '1000000', 'ts').catch(e => e);
+  ok('a contract on a code that is not a pool is not quoted',
+     fake instanceof Error && /not a known pool contract \(code 666\)/.test(fake.message), String(fake && fake.message));
+  ok('and it is never asked for a price', chain.calls.smart === before, String(chain.calls.smart - before));
+
+  delete chain.codes.P_USTC_LUNC;
+  const real = await mod.simulateSwap('P_USTC_LUNC', A.USTC, '1000000', 'ts');
+  ok('a pool on a listed code is quoted', real.dialect === 'ts');
+  let reads = chain.calls.getJSON;
+  await mod.simulateSwap('P_USTC_LUNC', A.USTC, '2000000', 'ts');
+  ok('the code is read once a session, not on every quote', chain.calls.getJSON === reads, String(chain.calls.getJSON - reads));
+
+  // the quote is taken, then the pool is migrated before the user signs
+  chain.codes.P_USTC_LUNC = 777;
+  await mod.checkPool('P_USTC_LUNC');   // the session answer still stands for quoting
+  const late = await mod.checkPool('P_USTC_LUNC', true).catch(e => e);
+  ok('a pool migrated since the quote is refused when read again', late instanceof Error && /code 777/.test(late.message), String(late && late.message));
+  const after = await mod.checkPool('P_USTC_LUNC').catch(e => e);
+  ok('and stays refused for the rest of the session', after instanceof Error);
+
+  const missing = await mod.checkPool('terra1nothere', true).catch(e => e);
+  ok('an address the chain does not know is refused', missing instanceof Error);
+
+  // swap.js: every leg is read again, from the chain, right before signing
+  const src = fs.readFileSync(path.resolve('assets/js/swap.js'), 'utf8');
+  const go = src.slice(src.indexOf("$('#cf-go').addEventListener"));
+  const check = go.indexOf('checkPool(leg.pair, true)'), sign = go.indexOf('sendSwap(');
+  ok('the swap re-checks every leg before it signs', check > 0 && sign > check && /for \(const leg of QUOTE\.legs\)/.test(go.slice(0, check)));
 }
 
 group('two hops: candidates are filtered before they are capped');
