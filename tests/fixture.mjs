@@ -174,8 +174,14 @@ const side = key => ({
   type: key.slice(0, 5) === 'cw20:' ? 'CW20' : 'NATIVE'
 });
 
+// Every fixture pool runs code 1, the one pool code the stub chain.js lists.
+// A test changes chain.codes to play a contract that is not a pool, or a pool
+// migrated to other code.
+export const POOL_CODES = { 1: 'FixtureSwap' };
+
 export function makeChain(){
   const calls = { smart: 0, getJSON: 0, byMsg: {} };
+  const codes = {};
 
   function poolOf(addr){ return POOLS[addr] || null; }
 
@@ -234,8 +240,13 @@ export function makeChain(){
         };
       }) };
     }
+    const ci = url.match(/\/cosmwasm\/wasm\/v1\/contract\/([^/]+)$/);
+    if (ci) {
+      if (!POOLS[ci[1]] && codes[ci[1]] === undefined) throw fail(404, 'no such contract');
+      return { contract_info: { code_id: String(codes[ci[1]] !== undefined ? codes[ci[1]] : 1) } };
+    }
     throw fail(501, 'no such endpoint');
   }
 
-  return { smart, getJSON, calls };
+  return { smart, getJSON, calls, codes };
 }

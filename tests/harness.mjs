@@ -13,7 +13,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { makeChain, FACTORIES, TOKENLIST } from './fixture.mjs';
+import { makeChain, FACTORIES, POOL_CODES, TOKENLIST } from './fixture.mjs';
 
 const SRC = path.resolve(process.argv[2] || 'assets/js');
 let seq = 0;
@@ -25,6 +25,7 @@ export const LCD = 'https://lcd.test';
 export const THIN_LUNC = 500000;
 export const EXTRA_PAIRS = [];
 export const FACTORIES = globalThis.__FACTORIES;
+export const POOL_CODES = globalThis.__POOL_CODES;
 export const amt = (raw, dec) => Number(raw || 0) / Math.pow(10, dec);
 // diagnostics are off in the build and off here; a test that needs them can
 // swap this for console.info
@@ -56,6 +57,7 @@ export async function loadMarket(opts = {}){
 
   globalThis.__CHAIN = chain;
   globalThis.__FACTORIES = opts.factories || FACTORIES;
+  globalThis.__POOL_CODES = opts.poolCodes || POOL_CODES;
   globalThis.localStorage = store;
   globalThis.fetch = async (url) => {
     if (String(url).indexOf('cl8y-tokens.json') >= 0) {
