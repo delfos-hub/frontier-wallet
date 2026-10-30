@@ -1,14 +1,14 @@
-import { amt, fmt } from './chain.js?v=4e8ec444';
-import { finish } from './crypto.js?v=4e8ec444';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=4e8ec444';
+import { amt, fmt } from './chain.js?v=cfc5f6f3';
+import { finish } from './crypto.js?v=cfc5f6f3';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=cfc5f6f3';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=4e8ec444';
-import { S } from './state.js?v=4e8ec444';
-import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=4e8ec444';
-import { enter, switchLink } from './wallets.js?v=4e8ec444';
-import { paintSendTok } from './tx.js?v=4e8ec444';
-import { luncRaw, openWallet } from './tokens.js?v=4e8ec444';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=cfc5f6f3';
+import { S } from './state.js?v=cfc5f6f3';
+import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=cfc5f6f3';
+import { enter, switchLink } from './wallets.js?v=cfc5f6f3';
+import { paintSendTok } from './tx.js?v=cfc5f6f3';
+import { luncRaw, openWallet } from './tokens.js?v=cfc5f6f3';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -129,13 +129,31 @@ $('#act-send').addEventListener('click', () => {
 // pop-ups (notify.js) wait while the wallet is locked or gone
 const locked = () => document.dispatchEvent(new CustomEvent('frontier:locked'));
 
-$('#btn-lock').addEventListener('click', () => {
+function lockWallet(){
   if (S.SAVED && S.SAVED.watch) return;          // nothing to lock: no key here
   S.MNEMONIC = null; S.PASS = null; locked();
   $('#pu').value = ''; dots('pinrowU', 0); $('#umsg').textContent = '';
   go('unlock');
   $('#pu').focus();
+}
+$('#btn-lock').addEventListener('click', lockWallet);
+
+/* Auto-lock. An unlocked wallet keeps its phrase in memory, and Send asks for
+   no PIN while it is open; so it locks itself after IDLE_MS without a touch,
+   and on coming back after HIDDEN_MS in the background. The background grace
+   is long enough to confirm a payment in a TON wallet and return. */
+const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000;
+let lastTouch = Date.now(), hiddenAt = 0;
+['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev =>
+  document.addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true, capture: true }));
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (S.MNEMONIC && hiddenAt && Date.now() - hiddenAt >= HIDDEN_MS) lockWallet();
+  hiddenAt = 0; lastTouch = Date.now();
 });
+setInterval(() => {
+  if (S.MNEMONIC && !document.hidden && Date.now() - lastTouch >= IDLE_MS) lockWallet();
+}, 30 * 1000);
 
 $('#btn-reset').addEventListener('click', async () => {
   if (!confirm('Delete every wallet from this device? Only their recovery phrases can bring them back.')) return;
