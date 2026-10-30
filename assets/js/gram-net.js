@@ -76,7 +76,7 @@ NETS.mainnet = {
   tonExplorer: 'https://tonviewer.com/',
   terraExplorer: 'https://finder.terraclassic.community/columbus-5/tx/',
   policy: {
-    tip_address: 'REPLACE_WITH_TON_TREASURY_MULTISIG',
+    tip_address: 'EQCJoQe2ZL8tMvcT4LUNzVYana45p1kFDr8upKfiN5qWyJjX',   // TON treasury multisig, 2-of-3 (Joker, Pablo, Nans)
     min_tip: '50000000',              // 0.05 GRAM
     fee_bps: 30,                      // 0.3%
     answer_window_sec: 1800,
