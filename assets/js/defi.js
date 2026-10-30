@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=4e8ec444';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=4e8ec444';
-import { $, go, tap } from './shell.js?v=4e8ec444';
-import { S } from './state.js?v=4e8ec444';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=4e8ec444';
-import * as P from './defi-parse.js?v=4e8ec444';
-import { dryRunSwap, sendSwap } from './tx.js?v=4e8ec444';
-import { notify } from './notify.js?v=4e8ec444';
-import { buzz } from './shell.js?v=4e8ec444';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=4e8ec444';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=fe408064';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=fe408064';
+import { $, go, tap } from './shell.js?v=fe408064';
+import { S } from './state.js?v=fe408064';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=fe408064';
+import * as P from './defi-parse.js?v=fe408064';
+import { dryRunSwap, sendSwap } from './tx.js?v=fe408064';
+import { notify } from './notify.js?v=fe408064';
+import { buzz } from './shell.js?v=fe408064';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=fe408064';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -53,7 +53,13 @@ const FIXED = [
 ];
 // the kinds worth reading for every contract of their code
 const SWEEP_CODES = ['10913', '10920'];
-const SWEEP_EVERY = 6 * 3600 * 1000;
+// The sweep asks every farm and staking contract of these codes whether this
+// address has a position: a few hundred reads, three or four minutes. A new
+// position always comes from a transaction of this address, so the history
+// step finds it; the sweep only adds positions older than the history the
+// nodes keep, and those do not appear again. So it runs once per address,
+// and again only when asked (the refresh).
+const SWEEP_EVERY = Infinity;
 
 const me = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
