@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=662b1c86';
-import { GRAM_NET } from './gram-net.js?v=662b1c86';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=662b1c86';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=662b1c86';
-import { S } from './state.js?v=662b1c86';
-import { decryptSeed } from './storage.js?v=662b1c86';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=662b1c86';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=662b1c86';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=662b1c86';
-import { chime, notify } from './notify.js?v=662b1c86';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=b87675e6';
+import { GRAM_NET, TERMS } from './gram-net.js?v=b87675e6';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=b87675e6';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=b87675e6';
+import { S } from './state.js?v=b87675e6';
+import { decryptSeed } from './storage.js?v=b87675e6';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=b87675e6';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=b87675e6';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=b87675e6';
+import { chime, notify } from './notify.js?v=b87675e6';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -94,6 +94,9 @@ function dealLimits(){
 function waitingBuys(){
   return Object.values(buys()).filter(b => ['paying', 'sent', 'announced'].includes(b.stage)).length;
 }
+// where the service fee goes: the pinned treasury (tip) address
+function feeTo(){ return String((POLICY || NET.policy || {}).tip_address || ''); }
+function shortAddr(a){ return a.length > 14 ? a.slice(0, 6) + '\u2026' + a.slice(-6) : a; }
 function openErr(){
   const max = Number((POLICY || NET.policy || {}).max_open_takes_per_taker) || 0;
   const n = waitingBuys();
@@ -564,6 +567,7 @@ function preview(){ showTon(); follow(); }
 $('#gx-post').addEventListener('click', async function(){
   const f = readForm();
   if (f.errs.length) { say('#gx-msg', f.errs[0], true); buzz('error'); return; }
+  if (!(await needTerms())) { say('#gx-msg', 'Accept the Terms of Use to publish an offer.', true); return; }
   try { localStorage.setItem(tonKey(), f.ton); } catch (e) {}
   const expires = now() + f.hours * 3600 - 120;     // 2 min under the limit: a phone clock may run ahead
   const payload = JSON.stringify({
@@ -1135,7 +1139,10 @@ function quote(){
   $('#gx-bb-sum').innerHTML =
     '<div><span>You pay</span><b>' + human(q.gram + q.tip + RESERVE_NANO, 9) + ' GRAM</b></div>' +
     '<div><span>Price</span><b>' + human(q.gram, 9) + ' GRAM</b></div>' +
-    '<div><span>Relayer fee</span><b>' + human(q.tip, 9) + ' GRAM</b></div>' +
+    // the Terms (section 5) call it the service fee and promise its
+    // recipient is shown: the treasury address pinned in gram-net.js
+    '<div><span>Service fee</span><b>' + human(q.tip, 9) + ' GRAM</b></div>' +
+    '<div><span>Fee goes to</span><b title="' + esc(feeTo()) + '">Delfos Hub treasury ' + esc(shortAddr(feeTo())) + '</b></div>' +
     '<div><span>TON network reserve</span><b>' + human(RESERVE_NANO, 9) + ' GRAM</b></div>' +
     '<div><span>You receive</span><b>' + (q.lunc > 0n ? human(q.lunc, 6) : '0') + ' LUNC, no gas needed</b></div>';
   $('#gx-bb-msg').textContent = q.err || (relayerUrl() ? '' : 'No relayer address is set (bottom of the Buy tab).');
@@ -1151,6 +1158,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
   if (!q || q.err) return;
   const me = addrOf();
   if (!me) { say('#gx-bb-msg', 'Open a wallet first.', true); return; }
+  if (!(await needTerms())) { say('#gx-bb-msg', 'Accept the Terms of Use to buy.', true); return; }
   const btn = this; btn.disabled = true;
   let id = null;
   try {
@@ -1506,6 +1514,41 @@ $('#gx-relay-edit').addEventListener('click', function(){
    unlocked in memory. */
 let PEND = null;
 const NOTE_MESSAGE = 'A signed message, not a transaction: it moves no funds. This is exactly what will be signed.';
+/* ---------------- Terms of Use ----------------
+   Accepted once per address and version, before the first offer or buy;
+   a new version asks again. Kept on the device. */
+const termsKey = () => 'fw:gram:terms:' + addrOf();
+function termsAccepted(){
+  try { return localStorage.getItem(termsKey()) === TERMS.version; } catch (e) { return false; }
+}
+function openTerms(){
+  const url = new URL(TERMS.url, location.href).href;
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg && tg.openLink) tg.openLink(url); else window.open(url, '_blank', 'noopener');
+}
+function needTerms(){
+  if (termsAccepted()) return Promise.resolve(true);
+  return new Promise(function (resolve) {
+    const box = $('#gx-terms');
+    $('#gx-terms-v').textContent = TERMS.label;
+    function done(ok){
+      box.hidden = true;
+      $('#gx-terms-ok').onclick = null; $('#gx-terms-x').onclick = null;
+      if (ok) { try { localStorage.setItem(termsKey(), TERMS.version); } catch (e) {} }
+      resolve(ok);
+    }
+    $('#gx-terms-ok').onclick = () => done(true);
+    $('#gx-terms-x').onclick = () => done(false);
+    box.hidden = false;
+    $('#gx-terms-ok').focus({ preventScroll: true });
+  });
+}
+['#gx-terms-link', '#gx-terms-full'].forEach(sel => {
+  const a = $(sel);
+  if (a) a.addEventListener('click', e => { e.preventDefault(); openTerms(); });
+});
+if ($('#gx-terms-ver')) $('#gx-terms-ver').textContent = TERMS.label;
+
 const SHEET = () => $('#gx-sheet');
 
 function sheetMode(mode){
