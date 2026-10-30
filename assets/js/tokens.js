@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=f9b3a79a';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=f9b3a79a';
-import { $, go } from './shell.js?v=f9b3a79a';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=45a8df49';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=45a8df49';
+import { $, go } from './shell.js?v=45a8df49';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -38,8 +38,9 @@ async function tokenRow(c, addr, known, keep){
        expire before it appeared. */
     const pub = knownAsset('cw20:' + c);
     const own = KNOWN_CW20[c];   // our own naming wins over any list
-    const d = { symbol: (own && own.sym) || (pub && pub.sym) || fixed.sym,
-                decimals: fixed.dec, name: (own && own.note) || fixed.note };
+    // cleaned on every read, so a record cached before this rule is safe too
+    const d = { symbol: clean((own && own.sym) || (pub && pub.sym) || fixed.sym, 16) || '?',
+                decimals: fixed.dec, name: clean((own && own.note) || fixed.note, 40) };
     if (own && own.logo) fixed = Object.assign({}, fixed, { logo: own.logo });
     else if (pub && pub.logo && !fixed.logo) fixed = Object.assign({}, fixed, { logo: pub.logo });
     DEC['cw20:' + c] = d.decimals;
@@ -617,14 +618,14 @@ async function loadBalances(addr, force){
         // one place where the cost is visible - before anything is drawn.
         const seen = cacheGetStale('ibc:' + b.denom);
         if (seen && seen.sym) {
-          sym = seen.sym;
-          note = seen.note;
+          sym = clean(seen.sym, 16);
+          note = clean(seen.note, 60);
         } else if (IBC_TRACES) {
           try {
             const tr = await getJSON(LCD + '/ibc/apps/transfer/v1/denom_traces/' + b.denom.slice(4));
             const base = tr.denom_trace.base_denom;
-            sym = (base.startsWith('u') ? base.slice(1) : base).toUpperCase();
-            note = tr.denom_trace.path;
+            sym = clean((base.startsWith('u') ? base.slice(1) : base).toUpperCase(), 16);
+            note = clean(tr.denom_trace.path, 60);
             cacheSet('ibc:' + b.denom, { sym: sym, note: note });
           } catch (e) {
             // not "this denom is unknown" but "this node does not do this"

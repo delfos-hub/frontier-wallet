@@ -30,6 +30,8 @@ export const amt = (raw, dec) => Number(raw || 0) / Math.pow(10, dec);
 // swap this for console.info
 export const DEBUG = false;
 export const dbg = () => {};
+export const clean = (s, n) => String(s == null ? '' : s).replace(/[<>"'&]/g, '').trim().slice(0, n || 32);
+export const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 export const smart = (addr, msg, tries) => C().smart(addr, msg, tries);
 export const getJSON = (url, ms, tries) => C().getJSON(url, ms, tries);
 `;

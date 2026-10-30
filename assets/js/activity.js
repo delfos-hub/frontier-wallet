@@ -4,10 +4,10 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, fmt, getJSON } from './chain.js?v=f9b3a79a';
-import { DEC, knownAsset } from './market.js?v=f9b3a79a';
-import { $ } from './shell.js?v=f9b3a79a';
-import { S } from './state.js?v=f9b3a79a';
+import { LCD, amt, esc, fmt, getJSON } from './chain.js?v=45a8df49';
+import { DEC, knownAsset } from './market.js?v=45a8df49';
+import { $ } from './shell.js?v=45a8df49';
+import { S } from './state.js?v=45a8df49';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -297,10 +297,13 @@ function feeOf(t){
   return f.length ? coins(f) : '';
 }
 
+// every value here is text from the chain - a memo, a symbol, a log - and is
+// escaped; a memo is whatever the sender typed, markup included
 function row(k, v, cls){
   return '<div class="tx-line' + (cls ? ' ' + cls : '') + '">' +
-         '<span>' + k + '</span><b>' + v + '</b></div>';
+         '<span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>';
 }
+const kindClass = k => String(k || '').replace(/[^a-z]/g, '');
 
 function openTx(hash){
   const t = TXS[hash];
@@ -312,20 +315,20 @@ function openTx(hash){
   const memo = memoOf(t);
 
   let html =
-    '<div class="tx-head"><div class="ac-mark ' + d.kind + (failed ? ' fail' : '') + '">' +
+    '<div class="tx-head"><div class="ac-mark ' + kindClass(d.kind) + (failed ? ' fail' : '') + '">' +
       '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.code) + '</svg></div>' +
-      '<div><b>' + d.title + '</b><i>' + new Date(t.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</i></div></div>';
+      '<div><b>' + esc(d.title) + '</b><i>' + new Date(t.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</i></div></div>';
 
   if (failed) {
     html += '<div class="tx-fail">The chain rejected this one. Nothing moved.' +
-            (t.raw_log ? '<p>' + String(t.raw_log).slice(0, 200) + '</p>' : '') + '</div>';
+            (t.raw_log ? '<p>' + esc(String(t.raw_log).slice(0, 200)) + '</p>' : '') + '</div>';
   }
 
   if (moves.length) {
     html += '<div class="tx-moves">' + moves.slice(0, 8).map(function (mv) {
       return row(mv.mine ? 'Received' : 'Sent',
                  (mv.mine ? '+' : '-') + mv.text, mv.mine ? 'in' : 'out') +
-             '<p class="tx-who">' + (mv.mine ? 'from ' : 'to ') + short(mv.other) + '</p>';
+             '<p class="tx-who">' + (mv.mine ? 'from ' : 'to ') + esc(short(mv.other)) + '</p>';
     }).join('') + '</div>';
   }
 
@@ -334,7 +337,7 @@ function openTx(hash){
   if (feeOf(t)) html += row('Network fee', feeOf(t));
   if (t.gas_used) html += row('Gas', t.gas_used + ' of ' + (t.gas_wanted || '?'));
   if (memo) html += row('Memo', memo);
-  html += '<div class="tx-hash" id="tx-hash">' + hash + '</div>';
+  html += '<div class="tx-hash" id="tx-hash">' + esc(hash) + '</div>';
 
   $('#tx-body').innerHTML = html;
   $('#tx-sheet').hidden = false;
@@ -389,14 +392,14 @@ async function load(){
     const k = dayKey(t.timestamp);
     if (k !== day) { day = k; head = '<div class="ac-day">' + dayName(t.timestamp) + '</div>'; }
     const failed = Number(t.code) > 0;
-    return head + '<div class="ac-row" data-hash="' + t.txhash + '">' +
-      '<div class="ac-mark ' + d.kind + (failed ? ' fail' : '') + '">' +
+    return head + '<div class="ac-row" data-hash="' + esc(t.txhash) + '">' +
+      '<div class="ac-mark ' + kindClass(d.kind) + (failed ? ' fail' : '') + '">' +
         '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.dot) + '</svg></div>' +
-      '<div class="ac-mid"><div class="ac-t">' + d.title + '</div>' +
+      '<div class="ac-mid"><div class="ac-t">' + esc(d.title) + '</div>' +
         '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') +
-        (d.sub || short(t.txhash)) + '</div></div>' +
+        esc(d.sub || short(t.txhash)) + '</div></div>' +
       '<div class="ac-r"><div class="ac-v' + (d.kind === 'in' || d.gain ? ' in' : '') + '">' +
-        (d.value || '') + '</div><div class="ac-w">' + clock(t.timestamp) + '</div></div>' +
+        esc(d.value || '') + '</div><div class="ac-w">' + clock(t.timestamp) + '</div></div>' +
       '</div>';
   }).join('');
   $('#ac-note').textContent = 'The last ' + Math.min(all.length, 40) +
