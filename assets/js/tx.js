@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=4e8ec444';
-import { $, buzz, go, tap } from './shell.js?v=4e8ec444';
-import { S } from './state.js?v=4e8ec444';
-import { iconHTML, paintIcons } from './chain.js?v=4e8ec444';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=4e8ec444';
-import { notify } from './notify.js?v=4e8ec444';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=cfc5f6f3';
+import { $, buzz, go, tap } from './shell.js?v=cfc5f6f3';
+import { S } from './state.js?v=cfc5f6f3';
+import { iconHTML, paintIcons } from './chain.js?v=cfc5f6f3';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=cfc5f6f3';
+import { notify } from './notify.js?v=cfc5f6f3';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -342,6 +342,27 @@ function cw20Step(t, to, human){
            msg: { transfer: { recipient: to, amount: toRaw(human, t.dec || 6) } } };
 }
 
+/* A bech32 address (BIP-173) ends in a 6-character checksum over its prefix
+   and data. A changed or swapped character fails it, so an address that only
+   looks right is caught before anything is signed. */
+const B32 = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function bech32Ok(addr, hrp){
+  const a = String(addr || '');
+  if (a !== a.toLowerCase() || a.length > 90) return false;
+  const sep = a.lastIndexOf('1');
+  if (sep < 1 || a.slice(0, sep) !== hrp || a.length - sep - 1 < 6) return false;
+  const data = [];
+  for (const ch of a.slice(sep + 1)) { const v = B32.indexOf(ch); if (v < 0) return false; data.push(v); }
+  const G = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  let chk = 1;
+  const step = v => { const top = chk >>> 25; chk = ((chk & 0x1ffffff) << 5) ^ v; for (let i = 0; i < 5; i++) if ((top >>> i) & 1) chk ^= G[i]; };
+  for (const c of hrp) step(c.charCodeAt(0) >>> 5);
+  step(0);
+  for (const c of hrp) step(c.charCodeAt(0) & 31);
+  data.forEach(step);
+  return chk === 1;
+}
+
 async function review(){
   const out = $('#send-out');
   const to = $('#send-to').value.trim();
@@ -352,6 +373,11 @@ async function review(){
 
   if (!/^terra1[0-9a-z]{38,58}$/.test(to)) {
     out.innerHTML = '<div class="sbad">That does not look like a Terra Classic address.</div>';
+    return;
+  }
+  // the last six characters are a checksum: a mistyped or altered address fails it
+  if (!bech32Ok(to, 'terra')) {
+    out.innerHTML = '<div class="sbad">This address has a typo: its checksum does not match. Copy it again from the source.</div>';
     return;
   }
   if (to === from) {
@@ -647,7 +673,7 @@ if (btn) {
   if (mx) mx.addEventListener('click', fillMax);
 }
 
-export { paintSendTok };
+export { paintSendTok, bech32Ok };
 
 // the token page's Send: that token already chosen, a clean form
 document.addEventListener('frontier:send-token', function (e) {

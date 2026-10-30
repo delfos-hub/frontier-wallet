@@ -1,31 +1,38 @@
-import { $, report, tg } from './shell.js?v=4e8ec444';
-import { S } from './state.js?v=4e8ec444';
+import { $, report, tg } from './shell.js?v=cfc5f6f3';
+import { S } from './state.js?v=cfc5f6f3';
 
 /* ---------------- storage ----------------
-   SecureStorage is backed by the iOS Keychain and the Android Keystore,
-   so the encrypted key never reaches a server. The cost is that it is
-   DEVICE LOCAL: a new phone or a reinstall means the recovery phrase is
-   the only way back. That is why the backup step is not optional.
+   The encrypted key is kept on this device only, in the best place the client
+   offers: the iOS Keychain / Android Keystore (SecureStorage, 8.0), else
+   Telegram's storage on the device (DeviceStorage, 9.0), else this page's own
+   storage. Being device local, a new phone or a reinstall means the recovery
+   phrase is the only way back - that is why the backup step is not optional.
+
+   Telegram's CloudStorage is never written: it is kept on Telegram's servers,
+   and an encrypted key that leaves the phone can be attacked offline. Earlier
+   versions fell back to it on clients without SecureStorage (and on desktop
+   clients that refuse SecureStorage); such a copy is moved to this device on
+   the next open and then deleted from the cloud (load below).
 ------------------------------------------- */
 const KEY = 'frontier_wallet_v1';
 const Store = (() => {
-  let mem = null, kind = 'memory', api = null;
-  // CloudStorage lands in the SDK object long before the client can answer it,
-  // so existence is not the question - the version is. Cloud storage arrived
-  // in 6.9; asking a 6.0 desktop client throws on every save.
+  let mem = null, kind = 'memory', api = null, rung = 0;
   const atLeast = v => !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
-  if (tg && tg.SecureStorage && atLeast('8.0')) {
-    kind = 'secure'; api = tg.SecureStorage;
-  } else if (tg && tg.CloudStorage && atLeast('6.9')) {
-    kind = 'cloud'; api = tg.CloudStorage;
-  } else {
-    // Falling back to memory meant the wallet did not survive a reload on those
-    // clients. What is stored is the PIN-encrypted blob, not the phrase, so
-    // localStorage is a weaker place than the Keychain but not an open one.
-    kind = 'local';
+  // best first; each entry gives the store or null when this client has none
+  const LADDER = [
+    ['secure', () => (tg && tg.SecureStorage && atLeast('8.0')) ? tg.SecureStorage : null],
+    ['device', () => (tg && tg.DeviceStorage && atLeast('9.0')) ? tg.DeviceStorage : null]
+  ];
+  function pick(from){
+    for (let i = from; i < LADDER.length; i++) {
+      const s = LADDER[i][1]();
+      if (s) { rung = i; kind = LADDER[i][0]; api = s; return; }
+    }
+    rung = LADDER.length; kind = 'local'; api = null;
   }
-  const call = (fn, ...args) => new Promise((res, rej) => {
-    try { fn.call(api, ...args, (err, val) => err ? rej(err) : res(val)); }
+  pick(0);
+  const callOn = (target, fn, ...args) => new Promise((res, rej) => {
+    try { fn.call(target, ...args, (err, val) => err ? rej(err) : res(val)); }
     catch (e) { rej(e); }
   });
 
@@ -34,54 +41,88 @@ const Store = (() => {
   // you use it - because the thing behind it is a phone's keychain. So when a
   // store refuses, we move to the next one rather than report and stop.
   function stepDown(){
-    if (kind === 'secure' && tg && tg.CloudStorage && atLeast('6.9')) {
-      kind = 'cloud'; api = tg.CloudStorage;
-      return true;
-    }
-    if (kind === 'secure' || kind === 'cloud') {
-      kind = 'local'; api = null;
-      return true;
-    }
-    return false;
+    if (kind === 'local' || kind === 'memory') return false;
+    pick(rung + 1);
+    return true;
   }
-  return {
+
+  // what this device holds, from the current store down to the page's own
+  async function readHere(){
+    if (api) {
+      try {
+        const v = await callOn(api, api.getItem, KEY);
+        if (v) return v;
+      } catch (e) { stepDown(); return readHere(); }
+    }
+    try {
+      const v = localStorage.getItem(KEY);
+      if (v) return v;
+    } catch (e) {}
+    return mem;
+  }
+
+  // an older version's copy in Telegram's cloud, read once and then removed
+  const cloud = () => (tg && tg.CloudStorage && atLeast('6.9')) ? tg.CloudStorage : null;
+  async function fromCloud(){
+    const c = cloud();
+    if (!c) return null;
+    try { return (await callOn(c, c.getItem, KEY)) || null; } catch (e) { return null; }
+  }
+  async function dropCloud(){
+    const c = cloud();
+    if (!c) return;
+    try { await callOn(c, c.removeItem, KEY); } catch (e) {}
+  }
+  let swept = false;
+
+  const store = {
     get kind(){ return kind; },
+    // true when v was kept on this device; false when only memory holds it
+    // (private mode, a full quota), which does not survive a reload
     async save(v){
-      // three attempts at most, one per rung of the ladder
-      for (let i = 0; i < 3; i++) {
+      // one attempt per rung of the ladder at most
+      for (let i = 0; i <= LADDER.length; i++) {
         if (api) {
-          try { await call(api.setItem, KEY, v); return; }
+          try { await callOn(api, api.setItem, KEY, v); return true; }
           catch (e) { if (!stepDown()) break; continue; }
         }
         if (kind === 'local') {
-          try { localStorage.setItem(KEY, v); return; }
+          try { localStorage.setItem(KEY, v); return true; }
           catch (e) { /* private mode or a full quota - memory is what is left */ }
         }
         break;
       }
       mem = v;
+      return false;
     },
     async load(){
-      // A wallet saved before this fix is sitting in whichever store answered
-      // last time, so every rung is checked rather than only the current one.
-      if (api) {
-        try {
-          const v = await call(api.getItem, KEY);
-          if (v) return v;
-        } catch (e) { stepDown(); return this.load(); }
+      let v = await readHere();
+      if (!swept) {
+        swept = true;
+        const c = await fromCloud();
+        if (c) {
+          if (!v) {
+            // move it here, and drop the cloud copy only once it is kept here
+            // and reads back: if this device cannot keep it, the cloud copy is
+            // the only one that survives a reload, so it stays
+            const kept = await store.save(c);
+            if (kept && (await readHere()) === c) await dropCloud();
+            v = c;
+          } else {
+            await dropCloud();                    // the device already has the current one
+          }
+        }
       }
-      try {
-        const v = localStorage.getItem(KEY);
-        if (v) return v;
-      } catch (e) {}
-      return mem;
+      return v;
     },
     async clear(){
-      if (api) { try { await call(api.removeItem, KEY); } catch (e) {} return; }
+      await dropCloud();                          // never leave a copy behind
+      if (api) { try { await callOn(api, api.removeItem, KEY); } catch (e) {} return; }
       if (kind === 'local') { try { localStorage.removeItem(KEY); } catch (e) {} return; }
       mem = null;
     }
   };
+  return store;
 })();
 
 const short = a => a.slice(0, 11) + '\u2026' + a.slice(-6);
@@ -90,7 +131,7 @@ function showStore(){
   const el = $('#store-kind');
   if (!el) return;
   const label = Store.kind === 'secure' ? 'device keychain'
-              : Store.kind === 'cloud'  ? 'telegram cloud'
+              : Store.kind === 'device' ? 'Telegram storage on this device'
               : Store.kind === 'local' ? 'this device\u2019s browser storage'
               : 'memory only, nothing is saved';
   el.innerHTML = 'stored in <b>' + label + '</b>';
