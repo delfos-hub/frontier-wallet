@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=a68de7eb';
+import { $ } from './shell.js?v=63ae27b1';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -95,6 +95,14 @@ async function chainLogo(contract, mkt){
 }
 
 const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+/* Text that someone else wrote - a token's symbol or name, a memo, a chain's
+   error - is data, never markup. clean() is applied where such names enter
+   the wallet, so every list that shows them is safe however it draws them;
+   esc() is for free text shown as it was sent (memos, logs). */
+const clean = (s, n) => String(s == null ? '' : s).replace(/[<>"'`&\u0000-\u001f]/g, '').trim().slice(0, n || 32);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"'`]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' })[c]);
 
 // A ticker with no local file is a fact about this build, not a network
 // hiccup, so asking again on the next render only produces the same 404. What
@@ -312,4 +320,4 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, dbg, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
+export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, dbg, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
