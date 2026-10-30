@@ -69,7 +69,9 @@ globalThis.location = { origin: 'https://delfos-hub.github.io' };
 globalThis.atob = s => Buffer.from(s, 'base64').toString('binary');
 
 async function load(contract){
-  const src = shipped.replace("const P2P_CONTRACT = '';", "const P2P_CONTRACT = '" + contract + "';");
+  // whatever address ships (empty before the deploy, columbus-5's after),
+  // the test runs against its own
+  const src = shipped.replace(/const P2P_CONTRACT = '[^']*';/, "const P2P_CONTRACT = '" + contract + "';");
   const f = path.join(dir, 'p2p-' + Math.random().toString(36).slice(2) + '.js');
   fs.writeFileSync(f, src);
   return import(pathToFileURL(f).href);
