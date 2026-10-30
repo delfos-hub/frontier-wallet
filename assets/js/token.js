@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=4e8ec444';
-import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=4e8ec444';
-import { $, go, tap } from './shell.js?v=4e8ec444';
-import { S } from './state.js?v=4e8ec444';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=4e8ec444';
-import { rowHTML } from './activity.js?v=4e8ec444';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=fe408064';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=fe408064';
+import { $, go, tap } from './shell.js?v=fe408064';
+import { S } from './state.js?v=fe408064';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=fe408064';
+import { rowHTML } from './activity.js?v=fe408064';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
@@ -267,6 +267,13 @@ async function positions(t, seq){
   }
   if (seq === SEQ) drawPositions(t, out, true);
 
+  // What the DeFi tab has already found for this address (kept on the device)
+  // shows at once, before the slower reads below; a contract the reads below
+  // find again replaces its line.
+  const fromEarn = earnedWith(addr, unit);
+  fromEarn.forEach(p => out.push(p));
+  if (seq === SEQ && fromEarn.length) drawPositions(t, out, true);
+
   // Everything below comes from the address's own history.
   const cands = await txCandidates(addr).catch(() => []);
   if (seq !== SEQ) return;
@@ -274,7 +281,9 @@ async function positions(t, seq){
   const poolSet = {};
   pools.forEach(p => { poolSet[p.pair] = p; });
 
-  // which of those contracts are LP tokens, and of which pool
+  // which of those contracts are LP tokens, and of which pool; their labels
+  // are read at the same time (both are kept, so a second visit asks nothing)
+  const labelsP = mapLimit(cands, 4, labelOf);
   const minters = await mapLimit(cands, 4, async function (c) {
     let m = permGet('minter2:' + c);
     if (m === undefined) {
@@ -325,7 +334,7 @@ async function positions(t, seq){
     if (!v) continue;
     out.push({ kind: 'pool', title: t.sym + ' / ' + v.otherSym + ' pool',
       sub: (x.pool.name || 'Liquidity') + ' \u00b7 ' + pct(v.frac) + ' of the pool',
-      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, otherKey: v.otherKey });
+      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, otherKey: v.otherKey, addr: x.pair });
   }
   if (seq === SEQ) drawPositions(t, out, true);
 
@@ -340,7 +349,7 @@ async function positions(t, seq){
     if (!v) continue;
     out.push({ kind: 'pool', title: t.sym + ' / ' + v.otherSym + ' pool',
       sub: (poolSet[c].name || 'Garuda') + ' \u00b7 ' + pct(v.frac) + ' of the pool',
-      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, otherKey: v.otherKey });
+      amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, otherKey: v.otherKey, addr: c });
   }
   if (seq === SEQ) drawPositions(t, out, true);
 
@@ -350,43 +359,44 @@ async function positions(t, seq){
   lps.forEach(x => { skip[x.lp] = 1; skip[x.pair] = 1; });
   if (t.contract) skip[t.contract] = 1;
   const others = cands.filter(c => !skip[c] && !poolSet[c] && !minters[cands.indexOf(c)]);
-  const labels = await mapLimit(others, 4, async function (c) {
-    let l = permGet('label:' + c);
-    if (l === undefined) {
-      try { const r = await getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + c, 10000, 1); l = ((r && r.contract_info) || {}).label || ''; }
-      catch (e) { return ''; }
-      permSet('label:' + c, l);
-    }
-    return l;
-  });
+  const allLabels = await labelsP;
+  const labels = others.map(c => allLabels[cands.indexOf(c)]);
   const stakers = others.filter((c, i) => /stak|farm|bond|lock|vault|reward|earn|incentive|gauge|deposit/i.test(labels[i] || ''));
-  for (const c of stakers) {
+  // the staking contracts are read side by side, four at a time
+  const found = [];
+  await mapLimit(stakers, 4, async function (c) {
     let cfg = permGet('cfg2:' + c);
     if (cfg === undefined) {
       const a = await ask(c, { config: {} });
-      if (!a.ok && !a.refused) continue;            // no answer: try next open
+      if (!a.ok && !a.refused) return;            // no answer: try next open
       cfg = a.ok && a.data ? JSON.stringify(a.data) : '';
       permSet('cfg2:' + c, cfg);
     }
     const viaLp = lps.filter(x => cfg.indexOf(x.lp) >= 0)[0];
     const direct = t.contract ? cfg.indexOf(t.contract) >= 0 : cfg.indexOf('"' + t.denom + '"') >= 0;
-    if (!viaLp && !direct) continue;
+    if (!viaLp && !direct) return;
     const st = await stakedIn(c, addr);
-    if (!st || !(Number(st.amount) > 0)) continue;
+    if (!st || !(Number(st.amount) > 0)) return;
     const label = labels[others.indexOf(c)] || 'Staking contract';
     if (viaLp) {
       await perLp(viaLp);
       const v = lpValue(viaLp, st.amount);
-      if (!v) continue;
-      out.push({ kind: 'farm', title: t.sym + ' / ' + v.otherSym + ' farm', sub: label + ' \u00b7 ' + cut(c),
+      if (!v) return;
+      found.push({ kind: 'farm', title: t.sym + ' / ' + v.otherSym + ' farm', sub: label + ' \u00b7 ' + cut(c),
         amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, addr: c, otherKey: v.otherKey });
     } else {
       const a = amt(st.amount, t.dec || 6);
-      out.push({ kind: 'stake', title: 'Staked on ' + label, sub: cut(c), amount: a,
+      found.push({ kind: 'stake', title: 'Staked on ' + label, sub: cut(c), amount: a,
         usd: unit !== null ? a * unit : null, addr: c,
         extra: st.reward && Number(st.reward) > 0 ? 'reward ' + fmt(amt(st.reward, 6)) : '' });
     }
-  }
+  });
+  // a contract read here replaces what the DeFi tab had for it
+  found.forEach(p => {
+    const i = out.findIndex(x => x.fromEarn && x.addr === p.addr);
+    if (i >= 0) out.splice(i, 1);
+    out.push(p);
+  });
   if (seq === SEQ) drawPositions(t, out, false);
 }
 
@@ -402,6 +412,37 @@ function firstNum(d, names){
     }
   }
   return null;
+}
+
+// A contract's label, kept: a label does not change.
+async function labelOf(c){
+  let l = permGet('label:' + c);
+  if (l === undefined) {
+    try { const r = await getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + c, 10000, 1); l = ((r && r.contract_info) || {}).label || ''; }
+    catch (e) { return ''; }
+    permSet('label:' + c, l);
+  }
+  return l;
+}
+
+// The positions the DeFi tab found and kept on this device (fw:earn:pos:<addr>)
+// that hold this token: staked, in a farm, a pool or an open order.
+function earnedWith(addr, unit){
+  let kept = null;
+  try { kept = JSON.parse(localStorage.getItem('fw:earn:pos:' + addr) || 'null'); } catch (e) {}
+  const out = [];
+  Object.values(kept || {}).forEach(function (p) {
+    const mine = (p.holds || []).filter(h => h.key === KEY);
+    if (!mine.length || !p.contract) return;
+    const raw = mine.reduce((a, h) => a + Number(h.raw || 0), 0);
+    if (!(raw > 0)) return;
+    const a = amt(String(raw), decOf(KEY));
+    const kind = p.kind === 'farm' ? 'farm' : p.kind === 'pool' ? 'pool' : p.kind === 'order' ? 'wait' : 'stake';
+    out.push({ kind: kind, title: (p.label || 'Position') + (p.platform ? ' \u00b7 ' + p.platform : ''),
+      sub: cut(p.contract), amount: a, usd: unit !== null ? a * unit : null,
+      addr: p.contract, fromEarn: true });
+  });
+  return out;
 }
 
 // The query shapes the staking contracts on this chain answer to. One of
@@ -465,6 +506,10 @@ function faceOf(t, p){
 }
 
 function drawPositions(t, list, still){
+  // a line kept by the DeFi tab gives way to the same contract read here
+  const readHere = {};
+  list.forEach(p => { if (!p.fromEarn && p.addr) readHere[p.addr] = 1; });
+  list = list.filter(p => !(p.fromEarn && readHere[p.addr]));
   const box = $('#tk-pos');
   // rewards are not more of the token you hold until they are claimed
   const counted = list.filter(p => p.kind !== 'gift');
