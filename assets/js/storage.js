@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=0ba6f1d9';
-import { S } from './state.js?v=0ba6f1d9';
+import { $, report, tg } from './shell.js?v=4e8ec444';
+import { S } from './state.js?v=4e8ec444';
 
 /* ---------------- storage ----------------
    SecureStorage is backed by the iOS Keychain and the Android Keystore,
@@ -112,13 +112,111 @@ function showStore(){
   }
 }
 
-async function saveWallet(addr, blob){
-  S.SAVED = { addr, blob };          // without this, Lock right after setup had nothing to unlock
-  $('#unlock-addr').textContent = short(addr);
-  try { await Store.save(JSON.stringify({ addr, blob })); }
-  catch (e) { report('save', e); }
+/* ---------------- the wallet book ----------------
+   Several wallets on one device, each with its own encrypted phrase and its
+   own PIN, plus read-only "watch" addresses with no key at all. One of them
+   is active; S.SAVED is always that one, so every module that reads
+   S.SAVED.addr or S.SAVED.blob keeps working unchanged.
+
+   Stored as { v:2, active, list:[{ id, name, addr, blob? , watch? }] } under
+   the same key as before. A wallet saved by an earlier version is a bare
+   { addr, blob }; it is read as a book of one, named "Main", and written back
+   in the new shape on the next save - nothing to do for the person. */
+let BOOK = null;
+
+function parseBook(raw){
+  if (!raw) return null;
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { return null; }
+  if (d && d.v === 2 && Array.isArray(d.list)) return d;
+  if (d && d.addr) return { v: 2, active: 'w1', list: [{ id: 'w1', name: 'Main', addr: d.addr, blob: d.blob }] };
+  return null;
+}
+const newId = () => 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const activeEntry = () => BOOK && (BOOK.list.filter(w => w.id === BOOK.active)[0] || BOOK.list[0]) || null;
+
+async function persist(){
+  try {
+    if (BOOK && BOOK.list.length) await Store.save(JSON.stringify(BOOK));
+    else await Store.clear();
+  } catch (e) { report('save', e); }
   showStore();
 }
+
+function useActive(){
+  const w = activeEntry();
+  S.SAVED = w ? (w.watch ? { addr: w.addr, watch: true, name: w.name, id: w.id }
+                         : { addr: w.addr, blob: w.blob, name: w.name, id: w.id }) : null;
+  const ua = $('#unlock-addr');
+  if (ua && w) ua.textContent = w.name + ' \u00b7 ' + short(w.addr);
+  return S.SAVED;
+}
+
+async function loadBook(){
+  BOOK = parseBook(await Store.load());
+  return useActive();
+}
+
+function nextName(watch){
+  const n = BOOK ? BOOK.list.filter(w => !!w.watch === !!watch).length : 0;
+  return watch ? 'Watch ' + (n + 1) : (n ? 'Wallet ' + (n + 1) : 'Main');
+}
+
+// a wallet with a key: created, imported, or unlocked again
+async function saveWallet(addr, blob){
+  if (!BOOK) BOOK = { v: 2, active: '', list: [] };
+  let w = BOOK.list.filter(x => x.addr === addr && !x.watch)[0];
+  if (!w) {
+    // a watched address that now gets its phrase becomes a full wallet
+    const watched = BOOK.list.filter(x => x.addr === addr && x.watch)[0];
+    if (watched) { w = watched; delete w.watch; }
+    else { w = { id: newId(), name: nextName(false), addr: addr }; BOOK.list.push(w); }
+  }
+  w.blob = blob;
+  BOOK.active = w.id;
+  useActive();
+  await persist();
+}
+
+async function addWatch(addr){
+  if (!BOOK) BOOK = { v: 2, active: '', list: [] };
+  let w = BOOK.list.filter(x => x.addr === addr)[0];
+  if (!w) { w = { id: newId(), name: nextName(true), addr: addr, watch: true }; BOOK.list.push(w); }
+  BOOK.active = w.id;
+  useActive();
+  await persist();
+  return w;
+}
+
+async function setActive(id){
+  if (!BOOK || !BOOK.list.some(w => w.id === id)) return null;
+  BOOK.active = id;
+  const w = useActive();
+  await persist();
+  return w;
+}
+
+async function renameWallet(id, name){
+  const w = BOOK && BOOK.list.filter(x => x.id === id)[0];
+  if (!w) return;
+  w.name = String(name || '').trim().slice(0, 24) || w.name;
+  if (BOOK.active === id) useActive();
+  await persist();
+}
+
+// removes one wallet; the next one becomes active, or none is left
+async function removeWallet(id){
+  if (!BOOK) return null;
+  BOOK.list = BOOK.list.filter(w => w.id !== id);
+  if (BOOK.active === id) BOOK.active = BOOK.list[0] ? BOOK.list[0].id : '';
+  const w = useActive();
+  await persist();
+  return w;
+}
+
+async function clearBook(){ BOOK = null; S.SAVED = null; await Store.clear(); }
+const wallets = () => (BOOK ? BOOK.list.slice() : []);
+const activeId = () => (BOOK ? BOOK.active : '');
 
 async function decryptSeed(blob, pin){
   const u8 = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
@@ -131,4 +229,4 @@ async function decryptSeed(blob, pin){
   return new TextDecoder().decode(pt);
 }
 
-export { Store, decryptSeed, saveWallet, short, showStore };
+export { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, parseBook, removeWallet, renameWallet, saveWallet, setActive, short, showStore, wallets };

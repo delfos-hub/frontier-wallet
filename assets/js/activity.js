@@ -4,10 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, esc, fmt, getJSON } from './chain.js?v=0ba6f1d9';
-import { DEC, knownAsset } from './market.js?v=0ba6f1d9';
-import { $ } from './shell.js?v=0ba6f1d9';
-import { S } from './state.js?v=0ba6f1d9';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=4e8ec444';
+import { DEC, knownAsset as marketAsset } from './market.js?v=4e8ec444';
+import { $, go } from './shell.js?v=4e8ec444';
+import { fiatOf, heldTokens } from './tokens.js?v=4e8ec444';
+import { S } from './state.js?v=4e8ec444';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -79,6 +80,16 @@ function coins(list){
    For a trade that crossed two pools the first offer and the last return are
    the two ends of what the owner did; everything between them is the middle
    token appearing and disappearing inside the same transaction. */
+/* A token the market map does not name is still one the wallet may hold, and
+   the wallet knows what it is called: TERRA came out as "TERRA1EX" here while
+   the home list a tab away said TERRA. */
+function knownAsset(k){
+  const m = marketAsset(k);
+  if (m) return m;
+  const r = heldTokens().filter(x => (x.contract ? 'cw20:' + x.contract : 'native:' + x.denom) === k)[0];
+  return r ? { sym: r.sym, dec: r.dec === undefined ? 6 : r.dec } : null;
+}
+
 const keyFor = a => !a ? '' :
   (String(a).slice(0, 6) === 'terra1' ? 'cw20:' + a : 'native:' + a);
 
@@ -215,6 +226,18 @@ function describe(t, me){
   }
   if (type.indexOf('MsgExecuteContract') >= 0) {
     const intent = intentOf(m);
+    /* A token transfer is a send like any other, and was drawn as one only by
+       name: no amount, no ticker, and the token's own contract where the
+       recipient should be. The message has all three. */
+    const tr = m.msg && m.msg.transfer;
+    if (intent === 'transfer' && tr && tr.amount) {
+      const tk = nameOf(m.contract);
+      const mine = m.sender === me;
+      return { kind: mine ? 'out' : 'in',
+               title: (mine ? 'Sent' : 'Received') + extra,
+               sub: mine ? 'to ' + short(tr.recipient) : 'from ' + short(m.sender),
+               value: (mine ? '-' : '+') + fmt(amt(tr.amount, tk.dec)) + ' ' + tk.sym };
+    }
     const swap = intent === 'swap' || intent === 'execute_swap_operations' ||
                  intent === 'swap_operations';
     const verb = VERB[intent];
@@ -287,6 +310,20 @@ function transfersIn(t, me){
   return out;
 }
 
+// Token moves are not transfer events; each token contract logs its own
+// from / to / amount, and that is where a CW20 send shows up.
+function tokenMoves(t, me){
+  const out = [];
+  for (const c of wasmCalls(t)) {
+    if (!c.amount || !c.at || (c.action !== 'transfer' && c.action !== 'send')) continue;
+    if (c.to !== me && c.from !== me) continue;
+    const tk = nameOf(c.at);
+    out.push({ mine: c.to === me, other: c.to === me ? c.from : c.to,
+               text: fmt(amt(c.amount, tk.dec)) + ' ' + tk.sym });
+  }
+  return out;
+}
+
 function memoOf(t){
   const m = ((t.tx || {}).body || {}).memo || '';
   return m.trim();
@@ -311,20 +348,28 @@ function openTx(hash){
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
   const d = describe(t, me);
   const failed = Number(t.code) > 0;
-  const moves = transfersIn(t, me);
+  const moves = transfersIn(t, me).concat(tokenMoves(t, me));
+  const l = look(t, me);
   const memo = memoOf(t);
 
   let html =
-    '<div class="tx-head"><div class="ac-mark ' + kindClass(d.kind) + (failed ? ' fail' : '') + '">' +
-      '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.code) + '</svg></div>' +
-      '<div><b>' + esc(d.title) + '</b><i>' + new Date(t.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</i></div></div>';
+    '<div class="tx-head">' + face(l, failed) +
+      '<div><b>' + esc(l.title) + '</b><i>' + new Date(t.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</i></div></div>';
 
   if (failed) {
     html += '<div class="tx-fail">The chain rejected this one. Nothing moved.' +
             (t.raw_log ? '<p>' + esc(String(t.raw_log).slice(0, 200)) + '</p>' : '') + '</div>';
   }
 
-  if (moves.length) {
+  if (l.flows.length && !failed) {
+    html += '<div class="tx-flows">' + l.flows.slice(0, 8).map(function (f) {
+      const w = worthOf(f);
+      return '<div class="tx-flow ' + (f.raw > 0 ? 'in' : 'out') + '">' + iconHTML(rowOfKey(f.key)) +
+        '<span>' + (f.raw > 0 ? 'Received' : 'Paid') + '</span><b>' + esc(amountText(f)) + '<i>' + (w ? usd(Math.abs(w)) : '') + '</i></b></div>';
+    }).join('') + '</div>';
+  }
+  if (l.place) html += row('Where', l.place);
+  if (moves.length && !l.flows.length) {
     html += '<div class="tx-moves">' + moves.slice(0, 8).map(function (mv) {
       return row(mv.mine ? 'Received' : 'Sent',
                  (mv.mine ? '+' : '-') + mv.text, mv.mine ? 'in' : 'out') +
@@ -340,72 +385,324 @@ function openTx(hash){
   html += '<div class="tx-hash" id="tx-hash">' + esc(hash) + '</div>';
 
   $('#tx-body').innerHTML = html;
+  paintIcons($('#tx-body'));
   $('#tx-sheet').hidden = false;
   CURRENT = hash;
 }
 
 let CURRENT = '';
 
-async function page(query){
+/* ================= how a transaction looks =================
+   What the list used to show was the transaction's own terms: the contract
+   it called, the name of the function, a "+2" for extra messages. What a
+   person wants to see is what happened to their money, where, and in which
+   token. Everything below reads that from the transaction itself:
+
+     flows    every coin and token that came in or went out of this address,
+              netted per token (the network fee is not a flow; it has its
+              own line in the details)
+     place    which product the contract belongs to - Garuda farm, Terraport
+              staking - from the same code ids the DeFi screen uses
+     group    which filter it falls under: transfers, swaps, DeFi, staking
+
+   describe() above still names the action; this only dresses it. */
+const tokKeyOf = r => r.contract ? 'cw20:' + r.contract : 'native:' + r.denom;
+function permGet(k){ try { const v = localStorage.getItem('fw:perm:' + k); return v === null ? undefined : JSON.parse(v); } catch (e) { return undefined; } }
+function permSet(k, v){ try { localStorage.setItem('fw:perm:' + k, JSON.stringify(v)); } catch (e) {} }
+
+function flows(t, me){
+  const net = {};
+  const add = (k, n) => { if (k && n) net[k] = (net[k] || 0) + n; };
+  for (const lg of (t.logs || [])) {
+    for (const e of (lg.events || [])) {
+      if (e.type !== 'transfer') continue;
+      let to = '', from = '', what = '';
+      for (const a of (e.attributes || [])) {
+        if (a.key === 'recipient') to = a.value;
+        if (a.key === 'sender') from = a.value;
+        if (a.key === 'amount') what = a.value;
+      }
+      if (!what || to === FEE_COLLECTOR) continue;
+      for (const part of what.split(',')) {
+        const mm = /^(\d+)(.+)$/.exec(part.trim());
+        if (!mm) continue;
+        if (to === me) add('native:' + mm[2], Number(mm[1]));
+        if (from === me) add('native:' + mm[2], -Number(mm[1]));
+      }
+    }
+  }
+  for (const c of wasmCalls(t)) {
+    if (!c.at || !c.amount || !/^\d+$/.test(c.amount)) continue;
+    const k = 'cw20:' + c.at, n = Number(c.amount);
+    if (c.action === 'transfer' || c.action === 'send' || c.action === 'transfer_from' || c.action === 'send_from') {
+      if (c.to === me) add(k, n);
+      if ((c.from || c.owner) === me) add(k, -n);
+    } else if (c.action === 'mint' && c.to === me) add(k, n);
+    else if (c.action === 'burn' && c.from === me) add(k, -n);
+  }
+  return Object.keys(net).filter(k => net[k]).map(k => ({ key: k, raw: net[k] }))
+    .sort((a, b) => Math.abs(worthOf(b)) - Math.abs(worthOf(a)) || Math.abs(b.raw) - Math.abs(a.raw));
+}
+
+// a token's row from the wallet when it holds it, otherwise what the market knows
+function rowOfKey(k){
+  const held = heldTokens().filter(r => tokKeyOf(r) === k)[0];
+  if (held) return held;
+  const n = nameOf(k.slice(k.indexOf(':') + 1));
+  const r = { sym: n.sym, dec: n.dec };
+  const a = marketAsset(k);
+  if (a && a.logo) r.logo = a.logo;
+  if (k.slice(0, 5) === 'cw20:') r.contract = k.slice(5); else r.denom = k.slice(7);
+  return r;
+}
+function human(f){ return Math.abs(f.raw) / Math.pow(10, rowOfKey(f.key).dec === undefined ? 6 : rowOfKey(f.key).dec); }
+function worthOf(f){
+  const r = rowOfKey(f.key);
+  const u = fiatOf(Object.assign({}, r, { v: 1 }));
+  return u === null ? 0 : u * human(f) * Math.sign(f.raw);
+}
+const symOfKey = k => rowOfKey(k).sym;
+const amountText = f => (f.raw > 0 ? '+' : '-') + fmt(human(f)) + ' ' + symOfKey(f.key);
+
+/* Where it happened. Same code ids as the DeFi screen; a contract seen for
+   the first time is looked up once in the background and the list redrawn. */
+const PLACE_FIXED = {
+  terra1x44ptyv7zp9e289jxqu6x5asxazhjc8gvuj9ltfs6mzvjfuzn8lqluk4u7: 'Terraport staking',
+  terra1rta0rnaxz9ww6hnrj9347vdn66gkgxcmcwgpm2jj6qulv8adc52s95qa5y: 'Juris staking',
+  terra15gk54rgdzd4xltxxzfe52y0jlhf7eh0wjvkkr877uvketw8ut90sr7ej8m: 'Garuda order book',
+  terra1dttut659lxn35m7elu794rglzjzmph3a7v8cs6866qn0csa05u7sk0jg3s: 'GRDX staking'
+};
+const PLACE_CODE = { '10913': 'Garuda farm', '10899': 'Garuda farm', '10907': 'Garuda pool',
+  '10920': 'Garuda staking', '10715': 'Terraport staking', '11230': 'Juris staking', '11408': 'Garuda order book' };
+const UNKNOWN = {};
+function placeOf(c, me){
+  if (!c) return '';
+  if (PLACE_FIXED[c]) return PLACE_FIXED[c];
+  const code = permGet('code:' + c);
+  let place = code && PLACE_CODE[code];
+  if (!place) {
+    const lab = permGet('label:' + c);
+    if (lab) place = prettyLabel(lab);
+    else if (code === undefined) UNKNOWN[c] = 1;
+  }
+  // a farm or pool the DeFi screen knows is named by its pair
+  const pair = pairOf(c, me);
+  return place ? place + (pair ? ' \u00b7 ' + pair : '') : '';
+}
+function prettyLabel(l){
+  // a contract's label is whatever its deployer typed
+  l = clean(l, 60).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/router/i.test(l)) return 'Swap router' + (/terraport/i.test(l) ? ' \u00b7 Terraport' : /garuda/i.test(l) ? ' \u00b7 Garuda' : '');
+  return l.length > 28 ? l.slice(0, 27) + '\u2026' : l;
+}
+function pairOf(c, me){
+  try {
+    const pos = JSON.parse(localStorage.getItem('fw:earn:pos:' + me) || 'null');
+    const p = pos && pos[c];
+    if (!p || !p.holds || p.holds.length !== 2) return '';
+    return p.holds.map(h => symOfKey(h.key)).join(' / ');
+  } catch (e) { return ''; }
+}
+async function learnPlaces(){
+  const list = Object.keys(UNKNOWN).slice(0, 24);
+  if (!list.length) return;
+  list.forEach(c => { delete UNKNOWN[c]; });
+  let got = 0;
+  for (const c of list) {
+    try {
+      const r = await getJSON(LCD + '/cosmwasm/wasm/v1/contract/' + c, 10000, 1);
+      const ci = (r && r.contract_info) || {};
+      permSet('code:' + c, String(ci.code_id || ''));
+      if (ci.label) permSet('label:' + c, ci.label);
+      got++;
+    } catch (e) { /* asked again next time */ }
+  }
+  if (got) render();
+}
+
+const STAKING_MSG = /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/;
+const DEFI_INTENT = /stake|bond|claim|reward|harvest|liquidity|withdraw|deposit|order|redeem|release/;
+function look(t, me){
+  const msgs = ((t.tx || {}).body || {}).messages || [];
+  const m = msgs[0] || {};
+  const type = String(m['@type'] || '');
+  const d = describe(t, me);
+  const intent = type.indexOf('MsgExecuteContract') >= 0 ? intentOf(m) : '';
+  const f = flows(t, me);
+  const ins = f.filter(x => x.raw > 0), outs = f.filter(x => x.raw < 0);
+  const swap = d.kind === 'swap' || /swap/.test(intent);
+  let title = d.title.replace(/ \+\d+$/, ''), kind = d.kind, group = 'other';
+  if (swap) { title = 'Swapped'; kind = 'swap'; group = 'swaps'; }
+  else if (type.indexOf('MsgSend') >= 0 || intent === 'transfer') group = 'transfers';
+  else if (STAKING_MSG.test(type)) group = 'staking';
+  else if (intent && (DEFI_INTENT.test(intent) || PLACE_FIXED[m.contract] || PLACE_CODE[permGet('code:' + m.contract)])) group = 'defi';
+  if (intent === 'cancel_order') {
+    const id = m.msg.cancel_order && m.msg.cancel_order.order_id;
+    title = 'Cancelled order' + (id !== undefined ? ' #' + id : ''); kind = 'cancel';
+  }
+  if (intent === 'withdraw_unlocked' || intent === 'withdraw_released') { title = 'Withdrew'; kind = 'in'; }
+  if (intent === 'withdraw' && ins.length && PLACE_CODE[permGet('code:' + m.contract)] === 'Garuda staking') { title = 'Claimed rewards'; kind = 'gift'; }
+  if (msgs.length > 1 && !swap) title += msgs.every(x => x['@type'] === m['@type']) ? ' \u00d7' + msgs.length : '';
+  // where: the product for a contract call, the other person for a transfer
+  let sub = d.sub;
+  const place = m.contract ? placeOf(m.contract, me) : '';
+  if (swap) {
+    const a = outs[0], b = ins[0];
+    sub = a && b ? symOfKey(a.key) + ' \u2192 ' + symOfKey(b.key) : d.sub;
+    if (place && !/router/i.test(place)) sub += ' \u00b7 ' + place.replace(/ \u00b7 .*/, '');
+  } else if (place) sub = place;
+  // what happened to the money
+  let top = '', below = '', topIn = false, msgKey = '';
+  if (swap) {
+    if (ins[0]) { top = amountText(ins[0]); topIn = true; }
+    if (outs[0]) below = amountText(outs[0]);
+  } else if (ins.length) {
+    top = amountText(ins[0]); topIn = true;
+    if (ins.length > 1) top += ' +' + (ins.length - 1);
+    if (outs.length) below = amountText(outs[0]);
+  } else if (outs.length) {
+    top = amountText(outs[0]);
+    if (outs.length > 1) top += ' +' + (outs.length - 1);
+  } else if (d.value) {
+    top = d.value;
+  } else {
+    // an unstake moves nothing yet; the amount is in the message
+    const body = m.msg && intent && m.msg[intent];
+    if (body && body.amount && body.asset && body.asset.address) {
+      const k = (body.asset.asset_type === 'cw20' ? 'cw20:' : 'native:') + body.asset.address;
+      top = fmt(human({ key: k, raw: Number(body.amount) })) + ' ' + symOfKey(k);
+      msgKey = k;
+    }
+  }
+  const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0 } : null));
+  const second = swap ? ins[0] : null;
+  const usdMain = main ? worthOf(main) : 0;
+  return { title: title, kind: kind, group: group, sub: sub, top: top, topIn: topIn, below: below,
+           main: main, second: second, usd: usdMain, flows: f, place: place };
+}
+
+const BADGE = {
+  in: '<path d="M12 5v14"/><path d="m6 13 6 6 6-6"/>',
+  out: '<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>',
+  gift: '<path d="M4 11h16v9H4z"/><path d="M12 11v9"/><path d="M4 7h16v4H4z"/><path d="M12 7c-2-4-6-3-5 0M12 7c2-4 6-3 5 0"/>',
+  stake: '<path d="m12 4 8 4.5-8 4.5-8-4.5Z"/><path d="m4 15 8 4.5 8-4.5"/>',
+  cancel: '<path d="M6 6l12 12M18 6 6 18"/>',
+  code: '<path d="M9 7 4.5 12 9 17"/><path d="M15 7l4.5 5-4.5 5"/>',
+  wait: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  fail: '<path d="M12 7v6"/><path d="M12 17h.01"/>'
+};
+function face(l, failed, pending){
+  if (l.kind === 'swap' && l.main && l.second) {
+    return '<span class="ac-face pair">' + iconHTML(rowOfKey(l.main.key)) + iconHTML(rowOfKey(l.second.key)) + '</span>';
+  }
+  const b = pending ? 'wait' : failed ? 'fail' : (BADGE[l.kind] ? l.kind : 'code');
+  const logo = l.main ? iconHTML(rowOfKey(l.main.key))
+    : '<span class="ac-plain"><svg viewBox="0 0 24 24">' + (ICON[l.kind] || ICON.code) + '</svg></span>';
+  return '<span class="ac-face">' + logo + '<i class="ac-badge ' + b + '"><svg viewBox="0 0 24 24">' + BADGE[b] + '</svg></i></span>';
+}
+
+// One row of the list. The token screen draws the same rows for one token.
+function rowHTML(t, me, dated){
+  TXS[t.txhash] = t;
+  const l = look(t, me);
+  const failed = Number(t.code) > 0;
+  const when = dated && dayName(t.timestamp) !== 'Today' ? dayName(t.timestamp) : clock(t.timestamp);
+  const dollars = l.usd ? usd(Math.abs(l.usd)) : '';
+  return '<div class="ac-row" data-hash="' + esc(t.txhash) + '">' + face(l, failed) +
+    '<div class="ac-mid"><div class="ac-t">' + esc(l.title) + '</div>' +
+      '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') + esc(l.sub || short(t.txhash)) + '</div></div>' +
+    '<div class="ac-r"><div class="ac-v' + (l.topIn && !failed ? ' in' : '') + '">' + (failed ? '' : esc(l.top)) + '</div>' +
+      '<div class="ac-w">' + esc(l.below && !failed ? l.below : (dollars && !failed ? dollars + ' \u00b7 ' : '') + when) + '</div></div>' +
+    '</div>';
+}
+
+/* ================= the list ================= */
+let ALL = [], FILTER = 'all', SHOWN = 40, PAGE_OFF = 0, PENDING = [], MORE = true;
+const GROUPS = [['all', 'All'], ['transfers', 'Transfers'], ['swaps', 'Swaps'], ['defi', 'DeFi'], ['staking', 'Staking']];
+
+async function page(query, offset){
   try {
     const r = await getJSON(LCD + '/cosmos/tx/v1beta1/txs?query=' + encodeURIComponent(query) +
-      '&pagination.limit=25&order_by=ORDER_BY_DESC', 20000);
+      '&pagination.limit=25' + (offset ? '&pagination.offset=' + offset : '') + '&order_by=ORDER_BY_DESC', 20000);
     return r.tx_responses || [];
   } catch (e) { return []; }
+}
+
+async function fetchMore(me){
+  const lists = await Promise.all([
+    page("message.sender='" + me + "'", PAGE_OFF),
+    page("transfer.recipient='" + me + "'", PAGE_OFF),
+    page("wasm.to='" + me + "'", PAGE_OFF)
+  ]);
+  PAGE_OFF += 25;
+  MORE = lists.some(l => l.length === 25);
+  const seen = {};
+  ALL.forEach(t => { seen[t.txhash] = 1; });
+  for (const t of lists[0].concat(lists[1], lists[2])) {
+    if (!t || seen[t.txhash]) continue;
+    seen[t.txhash] = 1;
+    ALL.push(t);
+  }
+  ALL.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+
+function render(){
+  const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+  const list = $('#ac-list');
+  const chips = $('#ac-chips');
+  if (chips) chips.innerHTML = GROUPS.map(g =>
+    '<button type="button" class="ac-chip' + (FILTER === g[0] ? ' on' : '') + '" data-f="' + g[0] + '">' + g[1] + '</button>').join('');
+  const rows = ALL.map(t => ({ t: t, l: look(t, me) }))
+    .filter(x => FILTER === 'all' || x.l.group === FILTER).slice(0, SHOWN);
+  // sends still waiting for their block go on top, as the first thing today
+  const pend = FILTER === 'all' || FILTER === 'transfers' ? PENDING : [];
+  if (!rows.length && !pend.length) {
+    list.innerHTML = '<div class="empty">' + (ALL.length ? 'Nothing of this kind in the history read so far.' : 'Nothing on chain for this address yet.') + '</div>';
+  } else {
+    // day headings, each with what that day did to the wallet in dollars
+    const days = {};
+    rows.forEach(x => { const k = dayKey(x.t.timestamp); (days[k] = days[k] || []).push(x); });
+    let html = '';
+    if (pend.length) {
+      html += '<div class="ac-day"><span>On the way</span></div>' + pend.map(pendingRow).join('');
+    }
+    for (const k of Object.keys(days)) {
+      const xs = days[k];
+      let inn = 0, out = 0;
+      xs.forEach(x => { if (Number(x.t.code) > 0) return; x.l.flows.forEach(f => { const w = worthOf(f); if (w > 0) inn += w; else out -= w; }); });
+      const tag = inn >= 0.01 && out < 0.01 ? '+' + usd(inn) + ' in'
+        : out >= 0.01 && inn < 0.01 ? '-' + usd(out) + ' out'
+        : inn + out >= 0.01 ? (inn - out >= 0 ? '+' : '-') + usd(Math.abs(inn - out)) + ' net' : '';
+      html += '<div class="ac-day"><span>' + dayName(xs[0].t.timestamp) + '</span><em>' + tag + '</em></div>';
+      html += xs.map(x => rowHTML(x.t, me)).join('');
+    }
+    if (MORE || ALL.length > SHOWN) html += '<button type="button" class="ac-more" id="ac-more">Load more</button>';
+    list.innerHTML = html;
+    paintIcons(list);
+  }
+  $('#ac-note').textContent = ALL.length ? ALL.length + ' transactions read so far.' : '';
+  learnPlaces();
+}
+
+function pendingRow(j){
+  const l = { kind: 'out', main: { key: j.key, raw: -1 } };
+  return '<div class="ac-row pending" data-hash="' + esc(j.hash) + '">' + face(l, false, true) +
+    '<div class="ac-mid"><div class="ac-t">Sending</div><div class="ac-s">to ' + esc(short(j.to)) + '</div></div>' +
+    '<div class="ac-r"><div class="ac-v">-' + esc(j.amount + ' ' + j.sym) + '</div>' +
+    '<div class="ac-w pend">' + (j.state === 'slow' ? 'not in a block yet' : 'waiting for the block') + '</div></div></div>';
 }
 
 async function load(){
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
   if (!me || LOADED === me) return;
   const list = $('#ac-list');
-  list.innerHTML = '<div class="empty">Reading the chain</div>';
-
-  // sent and received are two different questions to the same index
-  const [mine, got] = await Promise.all([
-    page("message.sender='" + me + "'"),
-    page("transfer.recipient='" + me + "'")
-  ]);
-
-  const seen = {}, all = [];
-  for (const t of mine.concat(got)) {
-    if (!t || seen[t.txhash]) continue;
-    seen[t.txhash] = 1;
-    all.push(t);
-  }
-  all.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-  if (!all.length) {
-    list.innerHTML = '<div class="empty">Nothing on chain for this address yet.</div>';
-    $('#ac-note').textContent = '';
-    LOADED = me;
-    return;
-  }
-
-  let day = '';
-  list.innerHTML = all.slice(0, 40).map(function (t) {
-    // held so the detail panel has the answer without asking the chain again
-    TXS[t.txhash] = t;
-    const d = describe(t, me);
-    // a heading whenever the date turns over, which is the structure a list of
-    // events has and a flat column of rows hides
-    let head = '';
-    const k = dayKey(t.timestamp);
-    if (k !== day) { day = k; head = '<div class="ac-day">' + dayName(t.timestamp) + '</div>'; }
-    const failed = Number(t.code) > 0;
-    return head + '<div class="ac-row" data-hash="' + esc(t.txhash) + '">' +
-      '<div class="ac-mark ' + kindClass(d.kind) + (failed ? ' fail' : '') + '">' +
-        '<svg viewBox="0 0 24 24">' + (ICON[d.kind] || ICON.dot) + '</svg></div>' +
-      '<div class="ac-mid"><div class="ac-t">' + esc(d.title) + '</div>' +
-        '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') +
-        esc(d.sub || short(t.txhash)) + '</div></div>' +
-      '<div class="ac-r"><div class="ac-v' + (d.kind === 'in' || d.gain ? ' in' : '') + '">' +
-        esc(d.value || '') + '</div><div class="ac-w">' + clock(t.timestamp) + '</div></div>' +
-      '</div>';
-  }).join('');
-  $('#ac-note').textContent = 'The last ' + Math.min(all.length, 40) +
-    ' transactions this address signed or received.';
+  if (!ALL.length || LOADED_FOR !== me) list.innerHTML = '<div class="empty">Reading the chain</div>';
+  ALL = []; PAGE_OFF = 0; SHOWN = 40; MORE = true; LOADED_FOR = me;
+  await fetchMore(me);
   LOADED = me;
+  render();
 }
+let LOADED_FOR = '';
 
 function openLink(url){
   if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink)
@@ -413,9 +710,31 @@ function openLink(url){
   else window.open(url, '_blank', 'noopener');
 }
 
-$('#ac-list').addEventListener('click', e => {
+$('#ac-list').addEventListener('click', async e => {
+  if (e.target.closest('#ac-more')) {
+    const b = e.target.closest('#ac-more');
+    b.disabled = true; b.textContent = 'Reading\u2026';
+    SHOWN += 40;
+    const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+    if (ALL.length < SHOWN && MORE) await fetchMore(me);
+    render();
+    return;
+  }
   const row = e.target.closest('.ac-row');
-  if (row) openTx(row.dataset.hash);
+  if (row && !row.classList.contains('pending')) openTx(row.dataset.hash);
+});
+const chipsEl = document.getElementById('ac-chips');
+if (chipsEl) chipsEl.addEventListener('click', e => {
+  const c = e.target.closest('[data-f]');
+  if (!c) return;
+  FILTER = c.dataset.f;
+  render();
+});
+// sends on their way, from tx.js
+document.addEventListener('frontier:pending', e => {
+  PENDING = ((e.detail && e.detail.jobs) || []).filter(j => j.state === 'wait' || j.state === 'slow');
+  const a = document.getElementById('st-activity');
+  if (a && a.classList.contains('on') && ALL.length) render();
 });
 
 $('#tx-x').addEventListener('click', () => { $('#tx-sheet').hidden = true; });
@@ -435,4 +754,29 @@ $('#tx-copy').addEventListener('click', async function () {
 document.querySelectorAll('[data-tab="activity"]').forEach(b =>
   b.addEventListener('click', () => { load(); }));
 
-export { load };
+/* A transaction from somewhere else in the wallet: a send that just landed,
+   a notification's Details button. Read by hash if the list has not got it. */
+async function showTx(hash){
+  if (!hash) return;
+  go('activity');
+  load();
+  if (!TXS[hash]) {
+    try {
+      const d = await getJSON(LCD + '/cosmos/tx/v1beta1/txs/' + hash, 10000, 2);
+      if (d && d.tx_response) TXS[hash] = d.tx_response;
+    } catch (e) { /* not indexed yet; the list will have it shortly */ }
+  }
+  openTx(hash);
+}
+document.addEventListener('frontier:show-tx', e => showTx(e.detail && e.detail.hash));
+
+document.addEventListener('frontier:refresh', () => { LOADED = ''; });
+
+// something moved: the list is stale, and if it is on screen, read it again
+document.addEventListener('frontier:tx', () => {
+  LOADED = '';
+  const a = document.getElementById('st-activity');
+  if (a && a.classList.contains('on')) load();
+});
+
+export { load, nameOf, rowHTML, short, showTx, wasmCalls };

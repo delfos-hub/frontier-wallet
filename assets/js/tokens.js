@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=0ba6f1d9';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=0ba6f1d9';
-import { $, go } from './shell.js?v=0ba6f1d9';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=4e8ec444';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=4e8ec444';
+import { $, go } from './shell.js?v=4e8ec444';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -259,6 +259,24 @@ let IBC_TRACES = true;
 // blinks out to "no price" on every refresh reads as the token having lost its
 // market, which is a far bigger claim than "not asked yet".
 const PRICE_SEEN = {};
+/* The pool each row was last priced from, and when.
+   Every refresh used to build its rows from nothing, so every row was
+   unpriced until its pool had been read again - and for those seconds the
+   list fell back to last-known figures drawn grey. A pool read a minute ago
+   is as good as one read now for a wallet screen, so it is reused, and only
+   pools older than POOL_TTL are asked again, quietly, behind numbers that
+   are already on screen. */
+const POOL_SEEN = {};
+const POOL_TTL = 3 * 60 * 1000;
+let FROM_SNAP = false;
+function reusePools(rows){
+  const now = Date.now();
+  rows.forEach(function (r) {
+    if (!r || r.pool) return;
+    const s = POOL_SEEN[rowKey(r)];
+    if (s && now - s.at < POOL_TTL) { r.pool = s.pool; r.tried = true; }
+  });
+}
 
 // anything that rounds to $0.00 on screen counts as dust
 const DUST = 0.005;
@@ -307,7 +325,7 @@ function renderCore(rows){
     const has = !!r && r.fiat !== null;
     setText(usdEl, has ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014');
     usdEl.classList.toggle('soft', !!(r && r.shaky));
-    setText(cell.querySelector('.core-qty'), fmt(r ? r.t.v : 0));
+    pulse(cell.querySelector('.core-qty'), fmt(r ? r.t.v : 0));
   });
   if (painted) paintIcons(box);
 }
@@ -329,9 +347,22 @@ function rowInner(r){
     '<div class="row-sub"></div></div>';
 }
 
+// A number that changed on its own deserves a glance, not a repaint: one soft
+// pulse on that number, nothing on the ones that did not move.
+function pulse(el, s){
+  if (!el || el.textContent === s) return;
+  const was = el.textContent;
+  el.textContent = s;
+  // nothing pulses on the first fill of a cold open: that is loading, not news
+  if (TOTAL_SHOWN === null || !was || was === '\u2014' || !el.isConnected) return;
+  el.classList.remove('bump');
+  void el.offsetWidth;            // restart the animation if it is mid-way
+  el.classList.add('bump');
+}
+
 function updateRow(el, r){
   const t = r.t;
-  setText(el.querySelector('.row-amt'), fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : ''));
+  pulse(el.querySelector('.row-amt'), fmt(t.v) + (t.note ? ' \u00b7 ' + t.note : ''));
   const fiatEl = el.querySelector('.row-fiat');
   setText(fiatEl, r.fiat !== null ? (r.shaky ? '\u2248' : '') + usd(r.fiat) : '\u2014');
   fiatEl.classList.toggle('soft', !!r.shaky);
@@ -399,7 +430,58 @@ function syncList(list, shown, emptyMsg){
   for (const k in have) have[k].remove();
   fresh.forEach(el => paintIcons(el));
 }
+/* The big number is everything the address owns: the wallet plus what it has
+   working in staking, farms and pools (defi.js reports that part). A wallet
+   holding $0.21 next to $286 in DeFi read as an empty wallet. The line under
+   the number splits the two. TOTAL_SHOWN stays the wallet alone - shares of
+   "your wallet" on the token page are shares of what is spendable. */
+let EXTRA = 0, SHOWN_SUM = null;
+function showTotal(el){
+  const sum = TOTAL_SHOWN + EXTRA;
+  tweenTotal(el, SHOWN_SUM, sum);
+  SHOWN_SUM = sum;
+  // the wallet switcher shows each wallet's last total
+  try { if (LAST_ADDR) localStorage.setItem('fw:tot:' + LAST_ADDR, String(sum)); } catch (e) {}
+  drawSplit();
+}
+function drawSplit(){
+  const el = $('#bal-split');
+  if (!el) return;
+  if (!(EXTRA > 0) || TOTAL_SHOWN === null) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = '<span>Wallet <b>' + usd(TOTAL_SHOWN) + '</b></span><i></i><span>DeFi <b>' + usd(EXTRA) + '</b></span>';
+}
+function setExtraUsd(v){
+  EXTRA = v > 0 ? v : 0;
+  const el = $('#bal-total');
+  if (el && TOTAL_SHOWN !== null) showTotal(el); else drawSplit();
+}
+
+/* The total moves to its new value instead of jumping to it - the way a
+   balance changes in any wallet people trust. Only for a real change: a
+   refresh that found the same money draws nothing at all. */
+let TWEEN = 0;
+function tweenTotal(el, from, to){
+  const done = usd(to);
+  if (from === null || from === undefined || !isFinite(from) || el.textContent === done ||
+      Math.abs(to - from) < 0.005 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    TWEEN++;
+    setText(el, done);
+    return;
+  }
+  const id = ++TWEEN, t0 = performance.now(), ms = 450;
+  (function step(now){
+    if (id !== TWEEN) return;
+    const k = Math.min(1, (now - t0) / ms);
+    const e = 1 - Math.pow(1 - k, 3);
+    setText(el, k < 1 ? usd(from + (to - from) * e) : done);
+    if (k < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
 function renderTokens(list, found, px, hint){
+  // a reading of another wallet, finishing after a switch, is not drawn
+  if (found && found.__addr && found.__addr !== LAST_ADDR) return;
   LAST = { found: found, px: px, hint: hint };
 
   const rows = found.map(t => {
@@ -441,12 +523,22 @@ function renderTokens(list, found, px, hint){
 
   rows.forEach(function (r) {
     const k = r.t.sym;
+    const key = rowKey(r.t);
+    if (r.t.pool && !FROM_SNAP && (!POOL_SEEN[key] || POOL_SEEN[key].pool !== r.t.pool)) {
+      POOL_SEEN[key] = { pool: r.t.pool, at: Date.now() };
+    }
     if (r.fiat !== null) {
-      if (!settling) PRICE_SEEN[k] = { fiat: r.fiat, sub: r.sub };
-    } else if (settling && PRICE_SEEN[k]) {
-      r.fiat = PRICE_SEEN[k].fiat;
+      // kept per unit, not as a dollar total: after a send the balance has
+      // changed and the old total would be wrong for it. The first price a
+      // token gets is kept even mid-load, so a later pass has something to
+      // stand on; after that only complete readings may redefine it.
+      if (r.t.v > 0 && (!settling || !PRICE_SEEN[k])) PRICE_SEEN[k] = { unit: r.fiat / r.t.v, sub: r.sub };
+    } else if (settling && PRICE_SEEN[k] && PRICE_SEEN[k].unit !== undefined) {
+      // Last known while this pass catches up, drawn the same as any other
+      // price. It is seconds old; greying the whole list for that said
+      // "something is wrong" on every refresh.
+      r.fiat = PRICE_SEEN[k].unit * r.t.v;
       r.sub = PRICE_SEEN[k].sub;
-      r.shaky = true;             // last known, not current - and it says so
     } else if (!settling) {
       // asked in full and no price came back: the old one is now a fiction
       delete PRICE_SEEN[k];
@@ -482,7 +574,11 @@ function renderTokens(list, found, px, hint){
   renderCore(rows);
   // pinned above, so the list must not repeat them
   const rest = rows.filter(r => CORE_SYMS.indexOf(r.t.sym) < 0);
-  const shown = HIDE_DUST ? rest.filter(r => r.fiat === null || r.fiat >= DUST) : rest;
+  // "Hide $0" hides what is worth nothing *and* what has no price at all: the
+  // dead Terra Classic stables (UKRW, UIDR, UJPY...) and dust with no pool.
+  // They had no price, so the old filter kept them - right where the eye goes.
+  // A CW20 still waiting for its first price stays until it has been asked.
+  const shown = HIDE_DUST ? rest.filter(r => r.fiat !== null ? r.fiat >= DUST : !(r.t.tried || !r.t.contract)) : rest;
 
   syncList(list, shown, rest.length
     ? 'Everything priced here rounds to zero. Turn off hide $0 to see it.'
@@ -498,10 +594,18 @@ function renderTokens(list, found, px, hint){
   // prices do, and calling that moment "complete" is what froze $2.34 over a
   // list worth two hundred.
   const totalEl = $('#bal-total');
-  if (!settling) {
+  // The total waits for prices, not for the sweep. A sweep is the daily hunt
+  // for tokens this address has never shown; on a fresh install it runs for a
+  // couple of minutes, and holding the total for all of it froze an early
+  // partial figure ($0.20 over a $45 wallet) for exactly that long. Anything
+  // the sweep finds only adds a row, and the total follows it.
+  if (!waiting) {
     TOTAL_SHOWN = total;
-    totalEl.textContent = usd(total);
     totalEl.classList.remove('stale');
+    showTotal(totalEl);
+  } else if (TOTAL_SHOWN !== null) {
+    // A complete figure is already on screen. It stays exactly as it is until
+    // the next complete one replaces it - no dimming, no partial sums.
   } else {
     // Dimmed and climbing as prices land. It reads as loading, which is what
     // it is; a frozen figure reads as final, which it is not.
@@ -540,6 +644,9 @@ async function loadBalances(addr, force){
   if (RUNNING) return;
   if (!force && addr === LAST_ADDR && Date.now() - LOADED_AT < 15000) return;
   RUNNING = true;
+  // the list on screen already belongs to this address and is newer than any
+  // snapshot, so redrawing the snapshot over it only flashes old numbers
+  const warm = LAST_ADDR === addr && LAST.found.length > 0;
   LAST_ADDR = addr;
   const list = $('#tok-list');
   SWEEPING = true;
@@ -551,9 +658,12 @@ async function loadBalances(addr, force){
   // be filled, which is the whole difference in how fast this feels.
   try {
     const snap = cacheGetStale('snap:' + addr);
-    if (snap && Array.isArray(snap.found) && snap.found.length) {
+    if (!warm && snap && Array.isArray(snap.found) && snap.found.length) {
+      snap.found.__addr = addr;
       SWEEPING = false;              // that reading was complete when it was saved
-      renderTokens(list, snap.found, snap.px || {}, 'Checking for changes.');
+      FROM_SNAP = true;              // its pools are hours old: shown, not reused
+      try { renderTokens(list, snap.found, snap.px || {}, ''); }
+      finally { FROM_SNAP = false; }
       SWEEPING = true;
     }
   } catch (e) { /* a bad snapshot is not worth failing the open over */ }
@@ -584,6 +694,7 @@ async function loadBalances(addr, force){
     }).catch(function () {});
 
     const found = [];
+    found.__addr = addr;
 
     // every native denom the address actually holds, ibc ones resolved to
     // whatever they were before they crossed the bridge
@@ -647,7 +758,7 @@ async function loadBalances(addr, force){
     // would blank every token for a second or two on a timer, which is what the
     // 45 second poll was doing. A cold open has nothing better to show, so it
     // still draws.
-    if (!LAST.found.length) renderTokens(list, found, px, 'Reading your tokens.');
+    if (!LAST.found.length) renderTokens(list, found, px, '');
 
     // The list, and nothing but the list. This is the whole of a normal open.
     // one request, and every logo and decimal below comes for free
@@ -660,6 +771,7 @@ async function loadBalances(addr, force){
     // node does not start refusing.
     const seeded = await mapLimit(firstRound, 10, c => tokenRow(c, addr, undefined, true));
     for (const r of seeded) if (r) found.push(r);
+    reusePools(found);
     remember(addr, seeded.filter(Boolean).map(r => r.contract));
     // From here the list is complete as far as this address knows, so the
     // total is honest even though prices are still arriving.
@@ -716,6 +828,7 @@ async function loadBalances(addr, force){
         if (!hits.length) continue;
         SWEEPING = true;
         const rows = await mapLimit(hits, 6, h => tokenRow(h.c, addr, h.bal));
+        reusePools(rows);
         for (const r of rows) if (r && !have(r.contract)) found.push(r);
         // kept at once, so a sweep cut short still remembers what it found
         remember(addr, hits.map(h => h.c));
@@ -803,6 +916,10 @@ async function loadBalances(addr, force){
 // faster than that, and neither should the polling.
 async function refreshBalances(force){
   if (!LAST_ADDR) return;
+  // A forced read comes from someone who knows the chain just moved. A pass
+  // already running may have read the old state, and loadBalances returns at
+  // once while it runs - which swallowed exactly the refresh after a send.
+  if (force) { for (let i = 0; RUNNING && i < 200; i++) await nap(300); }
   try { await loadBalances(LAST_ADDR, force); }
   catch (e) { /* a failed refresh is not a failed swap */ }
 }
@@ -816,7 +933,32 @@ const onHome = () => {
 setInterval(() => { if (onHome()) refreshBalances(false); }, 45000);
 document.addEventListener('visibilitychange', () => { if (onHome()) refreshBalances(false); });
 
+/* Another wallet: nothing of the previous one may stay on screen.
+   Switching from a watched address back to the main wallet showed the
+   watched address's tokens: openWallet set the new address before
+   loadBalances ran, so loadBalances took it for "the same wallet, read 4 s
+   ago" and returned, and the old list, total and prices stayed. Now the
+   screen is emptied, the new address is read in full, and a pass still
+   running for the old address finishes without drawing anything. */
+async function switchTo(addr){
+  for (let i = 0; RUNNING && i < 200; i++) await nap(300);
+  if (LAST_ADDR === addr) loadBalances(addr, true);
+}
 function openWallet(addr){
+  if (addr !== LAST_ADDR) {
+    LAST = { found: [], px: {}, hint: '' };
+    TOTAL_SHOWN = null; SHOWN_SUM = null; EXTRA = 0; LOADED_AT = 0;
+    const list = $('#tok-list'); if (list) list.innerHTML = '<li class="empty">Loading balances</li>';
+    const tot = $('#bal-total'); if (tot) { tot.textContent = '...'; tot.classList.remove('stale'); }
+    const sp = $('#bal-split'); if (sp) sp.hidden = true;
+    const n = $('#tok-count'); if (n) n.textContent = '';
+    LAST_ADDR = addr;
+    $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
+    go('home');
+    switchTo(addr);
+    document.dispatchEvent(new CustomEvent('frontier:wallet', { detail: { addr: addr } }));
+    return;
+  }
   LAST_ADDR = addr;
   $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
   go('home');
@@ -828,7 +970,45 @@ function openWallet(addr){
 // The swap screen needs the same rows the list is drawn from, priced and all.
 // Handing back LAST.found beats asking the chain a second time.
 const heldTokens = () => LAST.found || [];
-export { fiatOf, forget, registry, remember, heldTokens, luncRaw, openWallet, refreshBalances };
+/* One order for every list of held tokens: the home list, the send picker,
+   the swap picker. Worth most first; a token with no price goes after every
+   priced one, ordered by how much of it there is; nothing at zero. The pickers
+   used to keep the order the balances happened to arrive in, with empty rows
+   mixed in. */
+function sortHeld(rows, keepZero){
+  // the same "Hide $0" choice holds in the send and swap pickers; LUNC stays,
+  // it is what every fee is paid in
+  return rows.filter(r => keepZero || (r.v || 0) > 0).map(r => ({ r: r, f: fiatOf(r) }))
+    .filter(x => !HIDE_DUST || x.r.denom === 'uluna' || (x.f !== null && x.f >= DUST))
+    .sort(function (a, b) {
+      const fa = a.f === null ? -1 : a.f, fb = b.f === null ? -1 : b.f;
+      return (fb - fa) || ((b.r.v || 0) - (a.r.v || 0)) || String(a.r.sym).localeCompare(String(b.r.sym));
+    }).map(x => x.r);
+}
+const luncUsd = () => ((LAST && LAST.px) || {}).LUNC || null;
+const walletUsd = () => TOTAL_SHOWN;
+const tokKey = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.denom);
+
+// A row on the home screen opens that token's own page.
+(function wireRows(){
+  const open = key => { if (key) document.dispatchEvent(new CustomEvent('frontier:token', { detail: { key: key } })); };
+  const list = $('#tok-list');
+  if (list) list.addEventListener('click', function (e) {
+    const li = e.target.closest('li.row[data-k]');
+    if (!li) return;
+    const k = li.getAttribute('data-k');
+    const r = (LAST.found || []).filter(x => rowKey(x) === k)[0];
+    open(r ? tokKey(r) : '');
+  });
+  const core = $('#core');
+  if (core) core.addEventListener('click', function (e) {
+    const c = e.target.closest('.core-cell');
+    if (!c) return;
+    open(c.dataset.sym === 'USTC' ? 'native:uusd' : 'native:uluna');
+  });
+})();
+
+export { fiatOf, forget, registry, remember, heldTokens, luncRaw, luncUsd, openWallet, refreshBalances, setExtraUsd, sortHeld, tokKey, walletUsd };
 
 // A sweep is two hundred requests. It is worth doing on demand and worth not
 // doing otherwise, so it gets a button that says what it is doing.

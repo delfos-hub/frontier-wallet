@@ -267,6 +267,15 @@ await import('./activity.mjs');
 // the two step quote, lifted from swap.js like the envelopes below
 await import('./hop.mjs');
 
+// what the staking, farm and pool contracts answer
+await import('./defi.mjs');
+
+// several wallets in one store, and the old single-wallet save
+await import('./wallets.mjs');
+
+// one element per id
+await import('./markup.mjs');
+
 // the signed message, in its own file because it is lifted from swap.js rather
 // than imported
 await import('./envelopes.mjs');

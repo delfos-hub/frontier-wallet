@@ -1,8 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=0ba6f1d9';
-import { $, buzz, go, tap } from './shell.js?v=0ba6f1d9';
-import { S } from './state.js?v=0ba6f1d9';
-import { iconHTML, paintIcons } from './chain.js?v=0ba6f1d9';
-import { heldTokens, refreshBalances } from './tokens.js?v=0ba6f1d9';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=4e8ec444';
+import { $, buzz, go, tap } from './shell.js?v=4e8ec444';
+import { S } from './state.js?v=4e8ec444';
+import { iconHTML, paintIcons } from './chain.js?v=4e8ec444';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=4e8ec444';
+import { notify } from './notify.js?v=4e8ec444';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -251,16 +252,16 @@ function luncBalance(){
    arrives - a transfer message to the token's own contract - and the transport
    for that has been here since two step swaps needed it. */
 let SEND_TOK = { sym: 'LUNC', denom: 'uluna', dec: 6, v: 0 };
+// a token chosen in another wallet means nothing in this one
+document.addEventListener('frontier:wallet', () => { SEND_TOK = { sym: 'LUNC', denom: 'uluna', dec: 6, v: 0 }; });
 
 const isCw20 = t => !!(t && t.contract);
 const sendKey = t => !t ? '' : (t.contract ? 'cw20:' + t.contract : 'native:' + t.denom);
 
 function sendable(){
-  const rows = heldTokens().filter(function (r) { return (r.v || 0) > 0; });
-  // LUNC first and always, because it is what the fee is paid in
-  const lunc = rows.filter(function (r) { return r.denom === 'uluna'; })[0];
-  const rest = rows.filter(function (r) { return r.denom !== 'uluna'; });
-  return (lunc ? [lunc] : [SEND_TOK]).concat(rest);
+  // what is here to send, worth most first, nothing at zero
+  const rows = sortHeld(heldTokens());
+  return rows.some(r => r.denom === 'uluna') ? rows : [SEND_TOK].concat(rows);
 }
 
 function balanceOf(t){
@@ -285,13 +286,15 @@ function paintSendTok(){
   el.textContent = bal ? '\u00b7 ' + fmt(bal) + ' available' : '';
   $('#send-out').innerHTML = '';
   ARMED = null;
+  reviewBtn(true);
 }
 
 function drawSendList(){
   if (!$('#sd-q')) return;
   const q = ($('#sd-q').value || '').trim().toUpperCase();
   const rows = sendable().filter(function (t) {
-    return !q || String(t.sym).toUpperCase().indexOf(q) >= 0;
+    return !q || String(t.sym).toUpperCase().indexOf(q) >= 0 ||
+      (q.length > 8 && String(t.contract || t.denom || '').toUpperCase().indexOf(q) >= 0);
   });
   $('#sd-list').innerHTML = rows.length ? rows.map(function (t) {
     return '<button class="sw-item" type="button" data-k="' + sendKey(t) + '">' +
@@ -373,7 +376,7 @@ async function review(){
     if (isCw20(t)) {
       // the fee is paid in LUNC whatever is being moved, so the two balances
       // are checked separately - a token transfer can fail for want of LUNC
-      const est = await dryRunSwap(from, [cw20Step(t, to, human)], S.MNEMONIC);
+      const est = await dryRunSwap(from, [cw20Step(t, to, human)], S.MNEMONIC, MAINNET, memo);
       gas = est.gas; gasFee = est.gasFee;
       const lunc = luncBalance();
       if (gasFee / 1e6 > lunc) {
@@ -422,6 +425,8 @@ async function review(){
     ARMED = null;
     const b = $('#send-go');
     if (b) b.addEventListener('click', () => confirmSend(b, to, human, memo, from));
+    // one button at a time: the reviewed send, or the review
+    reviewBtn(!b);
     buzz('success');
   } catch (e) {
     out.innerHTML = '<div class="sbad">' + (e.message || e) + '</div>';
@@ -434,6 +439,7 @@ async function review(){
 // First press arms, second sends. Deliberate rather than decorative: one
 // stray tap on a phone should not move money.
 async function confirmSend(btn, to, human, memo, from){
+  const label = btn.textContent;
   if (ARMED !== human + '|' + to) {
     ARMED = human + '|' + to;
     btn.textContent = 'Press again to send - this cannot be undone';
@@ -441,7 +447,7 @@ async function confirmSend(btn, to, human, memo, from){
     setTimeout(() => {
       if (ARMED === human + '|' + to) {
         ARMED = null;
-        btn.textContent = 'Send ' + human + ' LUNC';
+        btn.textContent = label;
         btn.classList.remove('danger');
       }
     }, 8000);
@@ -451,37 +457,170 @@ async function confirmSend(btn, to, human, memo, from){
   btn.disabled = true;
   btn.textContent = 'Signing and sending...';
   const out = $('#send-out');
+  const t = SEND_TOK, dec = t.dec || 6;
+  const before = balanceOf(t);
+  let hash;
   try {
-    const t = SEND_TOK;
     // a cw20 goes through the contract path, a coin through the bank one; both
     // come back with a hash and both are waited on the same way
-    const hash = isCw20(t)
-      ? (await sendSwap(from, [cw20Step(t, to, human)], S.MNEMONIC)).hash
+    hash = isCw20(t)
+      ? (await sendSwap(from, [cw20Step(t, to, human)], S.MNEMONIC, MAINNET, memo)).hash
       : await sendNative(from, to, t.denom, human, memo, S.MNEMONIC);
-    out.innerHTML = '<div class="sline strong"><span>Accepted by the node</span><b>' +
-      hash.slice(0, 10) + '\u2026' + hash.slice(-6) + '</b></div>' +
-      '<div class="tiny" style="margin-top:10px">Waiting for the block...</div>';
-    buzz('success');
-    const res = await waitFor(hash);
-    out.innerHTML = '<div class="sline strong"><span>' +
-      (res ? 'Included in block ' + res.height : 'Sent, not seen in a block yet') +
-      '</span><b>' + hash.slice(0, 10) + '\u2026' + hash.slice(-6) + '</b></div>' +
-      '<div class="tiny" style="margin-top:10px">' + hash + '</div>';
-    // Reloading the wallet is a courtesy, not part of the transfer. If it
-    // throws, the transfer is still done and the banner must not suggest
-    // otherwise - the next open reloads everything anyway.
-    // Refreshed in place rather than reopened. openWallet ends with go('home'),
-    // which took the reader off the result mid-sentence - the block height and
-    // the hash are the two things worth reading after a transfer.
-    // Twice, because a node can answer with state from a block older than the
-    // one that included this.
-    refreshBalances(true);
-    setTimeout(function () { refreshBalances(true); }, 6000);
   } catch (e) {
-    out.innerHTML = '<div class="sbad">' + (e.message || e) + '</div>';
+    // refused before it left: nothing moved, the form stays as it was
+    out.innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>';
+    btn.disabled = false;
+    btn.textContent = label;
+    btn.classList.remove('danger');
     buzz('error');
+    return;
+  }
+  buzz('success');
+  /* The node has it, so this screen has nothing left to do.
+     Watching a hash poll on the send form told nobody anything; the home
+     screen keeps a line for it while the block is awaited, and a card comes
+     up when it lands - the same card the GRAM swap uses. */
+  const job = { hash: hash, tok: t, sym: t.sym, to: to,
+                amount: fmt(Number(toRaw(human, dec)) / Math.pow(10, dec)),
+                state: 'wait', note: '' };
+  clearSend();
+  go('home');
+  track(job, before);
+}
+
+/* ---------------- after the send ----------------
+   What happens to a transfer once the node has accepted it: a line on the home
+   screen while the block is awaited, a notification when it lands or fails,
+   and balances read again until they actually show the change. */
+const JOBS = [];
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const cut = a => !a ? '' : a.slice(0, 10) + '\u2026' + a.slice(-4);
+const nap = ms => new Promise(r => setTimeout(r, ms));
+
+function drawJobs(){
+  // Activity shows sends on their way too
+  document.dispatchEvent(new CustomEvent('frontier:pending', { detail: { jobs: JOBS.map(j => ({
+    hash: j.hash, key: sendKey(j.tok), sym: j.sym, amount: j.amount, to: j.to, state: j.state })) } }));
+  const box = $('#txq');
+  if (!box) return;
+  box.hidden = !JOBS.length;
+  box.innerHTML = JOBS.map(function (j) {
+    const title = j.state === 'fail' ? 'Not sent \u00b7 ' + esc(j.amount) + ' ' + esc(j.sym)
+      : (j.state === 'done' ? 'Sent ' : 'Sending ') + esc(j.amount) + ' ' + esc(j.sym);
+    const sub = j.state === 'wait' ? 'to ' + cut(j.to) + ' \u00b7 waiting for the block'
+      : j.state === 'slow' ? 'to ' + cut(j.to) + ' \u00b7 not in a block yet'
+      : j.state === 'done' ? 'Delivered \u00b7 block ' + esc(j.note)
+      : esc(j.note);
+    return '<button class="txq-row ' + j.state + '" type="button" data-hash="' + j.hash + '">' +
+      '<span class="txq-ico">' + iconHTML(j.tok) + '</span>' +
+      '<span class="txq-mid"><b>' + title + '</b><span>' + sub + '</span></span>' +
+      '<span class="txq-st"></span></button>';
+  }).join('');
+  paintIcons(box);
+}
+
+function dropJob(j){
+  const i = JOBS.indexOf(j);
+  if (i >= 0) { JOBS.splice(i, 1); drawJobs(); }
+}
+
+const showTx = hash => document.dispatchEvent(new CustomEvent('frontier:show-tx', { detail: { hash: hash } }));
+
+on('#txq', 'click', function (e) {
+  const r = e.target.closest('.txq-row');
+  if (!r) return;
+  const j = JOBS.filter(x => x.hash === r.dataset.hash)[0];
+  if (!j) return;
+  tap();
+  if (j.state === 'fail') { dropJob(j); return; }
+  showTx(j.hash);
+});
+
+function feeOf(res){
+  const f = (((res.tx || {}).auth_info || {}).fee || {}).amount || [];
+  const c = f.filter(x => x.denom === 'uluna')[0];
+  return c ? fmt(amt(c.amount, 6)) : '';
+}
+
+// The chain says why in its own words; the part after the colon is the reason.
+function reason(e){
+  const m = String((e && e.message) || e || '');
+  return m.replace(/^failed on chain \(code \d+\):\s*/, '').slice(0, 160) || 'the chain refused it';
+}
+
+async function track(j, before){
+  JOBS.unshift(j);
+  drawJobs();
+  let res = null, err = null;
+  try { res = await waitFor(j.hash); } catch (e) { err = e; }
+
+  if (err) {
+    j.state = 'fail'; j.note = reason(err);
+    drawJobs();
+    notify({ key: 'send:' + j.hash, kind: 'warn', icon: j.tok, label: 'Send \u00b7 ' + j.sym,
+      title: 'Not sent: ' + j.amount + ' ' + j.sym,
+      text: 'The chain refused it, so nothing left the wallet except the fee. ' + j.note,
+      actions: [{ label: 'Details', run: () => showTx(j.hash) }] });
+  } else if (!res) {
+    // accepted by the node but not seen within a minute: usually just slow
+    j.state = 'slow';
+    drawJobs();
+    notify({ key: 'send:' + j.hash, kind: 'info', icon: j.tok, label: 'Send \u00b7 ' + j.sym,
+      title: 'Still on its way',
+      text: j.amount + ' ' + j.sym + ' was accepted by the network but is not in a block yet. ' +
+            'Activity will show it once it lands.',
+      actions: [{ label: 'Details', run: () => showTx(j.hash) }] });
+  } else {
+    j.state = 'done'; j.note = String(res.height);
+    drawJobs();
+    const fee = feeOf(res);
+    notify({ key: 'send:' + j.hash, kind: 'success', icon: j.tok, label: 'Sent \u00b7 ' + j.sym,
+      title: j.amount + ' ' + j.sym + ' delivered',
+      text: 'To ' + cut(j.to) + ' \u00b7 block ' + res.height + (fee ? ' \u00b7 fee ' + fee + ' LUNC' : ''),
+      actions: [{ label: 'Details', run: () => showTx(j.hash) }] });
+    setTimeout(() => dropJob(j), 10000);
+  }
+  // the Activity list read before this existed; let it read again
+  document.dispatchEvent(new CustomEvent('frontier:tx', { detail: { hash: j.hash } }));
+  if (!err) await settle(j.tok, before);
+  else refreshBalances(true);
+}
+
+/* Read the balances until they show the transfer.
+   A node can answer from a block older than the one that included it, and
+   a fixed second try six seconds later was either too early or wasted. */
+async function settle(t, before){
+  for (let i = 0; i < 5; i++) {
+    await refreshBalances(true);
+    if (balanceOf(t) !== before) return;
+    await nap(2500);
   }
 }
+
+// a sent form is a finished form: nothing in it should be sendable twice
+function clearSend(){
+  ['#send-to', '#send-amt', '#send-memo'].forEach(function (s) { const el = $(s); if (el) el.value = ''; });
+  $('#send-out').innerHTML = '';
+  ARMED = null;
+  reviewBtn(true);
+}
+
+function reviewBtn(show){
+  const b = $('#send-review');
+  if (b) b.hidden = !show;
+}
+
+// Editing after the review drops the review. The send button carried the
+// reviewed amount in a closure, so a changed field would have been ignored.
+['#send-to', '#send-amt', '#send-memo'].forEach(function (s) {
+  on(s, 'input', function () {
+    if (!$('#send-out').innerHTML) return;
+    $('#send-out').innerHTML = '';
+    ARMED = null;
+    reviewBtn(true);
+  });
+});
 
 function fillMax(){
   const t = SEND_TOK, dec = t.dec || 6;
@@ -510,6 +649,16 @@ if (btn) {
 
 export { paintSendTok };
 
+// the token page's Send: that token already chosen, a clean form
+document.addEventListener('frontier:send-token', function (e) {
+  const key = e.detail && e.detail.key;
+  const pick = heldTokens().filter(function (r) { return sendKey(r) === key; })[0];
+  if (pick) SEND_TOK = pick;
+  ['#send-to', '#send-amt', '#send-memo'].forEach(function (s) { const el = $(s); if (el) el.value = ''; });
+  paintSendTok();
+  go('send');
+});
+
 export { dryRunNative, sendNative, burnTaxRate, b64, toRaw };
 
 /* ---------------- contract calls ----------------
@@ -524,7 +673,7 @@ const EXEC_URLS = ['/cosmwasm.wasm.v1.MsgExecuteContract',
                    '/terra.wasm.v1beta1.MsgExecuteContract'];
 const msgExec = (sender, contract, msgJson, funds) => cat([
   fStr(1, sender), fStr(2, contract), fBytes(3, enc.encode(msgJson)),
-  ...funds.map(c => fBytes(5, coin(c)))
+  ...(funds || []).map(c => fBytes(5, coin(c)))
 ]);
 /* One signature, one or more messages.
    Cosmos runs the messages of a transaction in order and commits them together
@@ -532,10 +681,12 @@ const msgExec = (sender, contract, msgJson, funds) => cat([
    token exists only between the first message and the second, and if anything
    goes wrong neither ever happened. The array was always there in txBody; only
    the callers assumed there would be one entry. */
-function execTx(url, sender, steps, key, seq, feeCoins, gas){
+// The memo used to be dropped here, so a token sent to an exchange left
+// without the one thing the exchange needed to credit it.
+function execTx(url, sender, steps, key, seq, feeCoins, gas, memo){
   const body = txBody(steps.map(function (s) {
     return any(url, msgExec(sender, s.contract, JSON.stringify(s.msg), s.funds));
-  }), '');
+  }), memo || '');
   return { body: body, auth: authInfo(key, seq, feeCoins, gas) };
 }
 
@@ -579,14 +730,14 @@ function refusalOf(errors){
   return lastOne && lastOne.message;
 }
 
-async function execPlan(from, steps, mnemonic, net = MAINNET){
+async function execPlan(from, steps, mnemonic, net = MAINNET, memo = ''){
   const [acc, key] = await Promise.all([account(from, net), keyOf(mnemonic)]);
   let used = 0, url = null;
   const refused = [];
   for (const u of EXEC_URLS) {
     // the ceiling has to cover every message, not one of them
     const probe = execTx(u, from, steps, key.pub, acc.seq,
-      [{ denom: 'uluna', amount: '1000000' }], 900000 * steps.length);
+      [{ denom: 'uluna', amount: '1000000' }], 900000 * steps.length, memo);
     try { used = await simulateGas(probe.body, probe.auth, net); url = u; break; }
     catch (e) { refused.push(e); }
   }
@@ -596,17 +747,17 @@ async function execPlan(from, steps, mnemonic, net = MAINNET){
            gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
 }
 
-async function dryRunSwap(from, steps, mnemonic, net = MAINNET){
-  const p = await execPlan(from, steps, mnemonic, net);
+async function dryRunSwap(from, steps, mnemonic, net = MAINNET, memo = ''){
+  const p = await execPlan(from, steps, mnemonic, net, memo);
   return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee, url: p.url };
 }
 
 // Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
 // moves whenever anything else touches this account.
-async function sendSwap(from, steps, mnemonic, net = MAINNET){
-  const p = await execPlan(from, steps, mnemonic, net);
+async function sendSwap(from, steps, mnemonic, net = MAINNET, memo = ''){
+  const p = await execPlan(from, steps, mnemonic, net, memo);
   const real = execTx(p.url, from, steps, p.key.pub, p.acc.seq,
-    [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
+    [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas, memo);
   const doc = signDoc(real.body, real.auth, net.chain, p.acc.num);
   const sig = p.key.node.sign(p.key.sha256(doc));
   const hash = await broadcast(txRaw(real.body, real.auth, [sig]), net);

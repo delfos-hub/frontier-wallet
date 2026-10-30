@@ -54,7 +54,7 @@
   #fw-splash .fw-seam{animation:none}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=0ba6f1d9">
+<link rel="stylesheet" href="assets/css/app.css?v=4e8ec444">
 </head>
 <body>
 <div id="rt"></div>
@@ -75,7 +75,7 @@
   <div class="fw-tag">Terra Classic Wallet</div>
   </div>
 </div>
-<script src="assets/js/splash.js?v=0ba6f1d9"></script>
+<script src="assets/js/splash.js?v=4e8ec444"></script>
 
 <div class="orb"></div>
 
@@ -102,6 +102,7 @@
     <button class="btn solid" data-go="setup">Create a new wallet</button>
     <button class="btn" data-go="import">Import a recovery phrase</button>
     <button class="btn quiet" data-go="watch">Watch an address, read only</button>
+    <button class="btn quiet" id="welcome-back" type="button" hidden>Back to my wallets</button>
   </div>
 </section>
 
@@ -275,22 +276,27 @@
       <div class="meter-txt" id="umsg" style="min-height:0"></div>
     </div>
   </div>
+  <button class="btn" id="unlock-switch" type="button" hidden>Switch wallet</button>
   <button class="btn quiet" id="btn-forget">Forget this wallet</button>
 </section>
 
 <!-- ================= HOME (placeholder) ================= -->
 <section class="step wpad" id="st-home">
+  <!-- pull to refresh (home-tools.js) -->
+  <div class="ptr" id="ptr"><span class="ptr-ic"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></span></div>
   <div class="wtop">
     <div class="wava"></div>
     <div class="wwho">
-      <div class="wname">Main</div>
+      <button class="wname" id="wl-open" type="button"><span id="wl-name">Main</span><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg><i class="wl-ro">Read only</i></button>
       <button class="waddr" id="home-addr" type="button" title="Copy address">...</button>
     </div>
   </div>
 
   <div class="bal">
-    <div class="bal-label">Total balance</div>
+    <button class="bal-refresh" id="bal-refresh" type="button" aria-label="Refresh" title="Refresh"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></button>
+    <div class="bal-label">Total balance<span class="bal-upd" id="bal-upd">Updated</span></div>
     <div class="bal-value" id="bal-total">...</div>
+    <div class="bal-split" id="bal-split" hidden></div>
   </div>
 
   <div class="acts">
@@ -300,6 +306,9 @@
 <button class="act" id="act-p2p"><i><svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M14 7h3a2 2 0 0 1 2 2v3"/><path d="m17 10 2 2 2-2"/><path d="M10 17H7a2 2 0 0 1-2-2v-3"/><path d="m7 14-2-2-2 2"/></svg></i>P2P</button>
   </div>
 
+  <!-- transfers on their way (tx.js): one line each until the block lands -->
+  <div class="txq" id="txq" hidden></div>
+
   <button class="xc" id="xc-gram" type="button" hidden>
     <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-n" id="xc-gram-n" hidden></span><span class="xc-badge">Testnet</span></span>
     <span class="xc-main"><span class="xc-ico" id="xc-gram-ico"></span>
@@ -307,7 +316,6 @@
       <svg class="xc-go" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span>
   </button>
 
-  <div class="ads" id="ads" hidden><div class="ads-track" id="ads-track"></div><div class="ads-ticks" id="ads-ticks"></div></div>
 <div class="warn sunset" id="usdc-sunset" hidden>
   <button class="sunset-x" id="usdc-sunset-x" type="button" aria-label="Close">&times;</button>
   <b>Noble USDC is being retired</b>
@@ -316,12 +324,33 @@
 </div>
 <div class="head"><h2>Core assets</h2></div>
 <div class="core" id="core"></div>
+
+<!-- DeFi positions (defi.js) -->
+<button class="earn-entry" id="earn-open" type="button">
+  <span class="earn-stack" id="earn-stack">
+    <span class="earn-ic"><svg viewBox="0 0 24 24"><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></svg></span>
+  </span>
+  <span class="earn-mid"><b>DeFi positions</b><span id="earn-sub">Staking, farms and pools on DEXes</span></span>
+  <span class="earn-r"><b id="earn-home-total"></b><i id="earn-home-rew"></i></span>
+  <svg class="earn-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+</button>
+
+<!-- partner banners (ads.js): after the money, before the token list -->
+<div class="ads" id="ads" hidden><div class="ads-track" id="ads-track"></div><div class="ads-ticks" id="ads-ticks"></div></div>
 <div class="hm-seg" id="hm-seg">
     <button class="hm-seg-b on" data-pane="tok" type="button">Tokens</button>
     <button class="hm-seg-b" data-pane="nft" type="button">NFT<span class="hm-seg-n" id="nft-count"></span></button>
   </div>
   <div id="pane-tok">
-  <div class="head"><h2>Tokens</h2><div class="head-r"><button class="dust" id="tok-add" type="button">add</button><button class="dust" id="tok-scan" type="button">find new</button><button class="dust" id="dust-toggle" type="button">hide $0</button><span id="tok-count"></span></div></div>
+  <div class="tl-head">
+    <h2>Tokens<span class="tl-n" id="tok-count"></span></h2>
+    <div class="tl-tools">
+      <button class="ic-btn" id="tok-search-btn" type="button" aria-label="Search tokens" title="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></button>
+      <button class="ic-btn" id="dust-toggle" type="button" aria-label="Hide tokens worth nothing or with no price" title="Hide $0 and unpriced"><svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.5"/><path class="ic-slash" d="M4 4l16 16"/></svg></button>
+      <button class="ic-btn" id="tok-add" type="button" aria-label="Add a token" title="Add a token"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div>
+  </div>
+  <div class="tl-search" id="tok-search-box" hidden><input id="tok-search" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search by name, ticker or contract"></div>
   <ul class="rows" id="tok-list"><li class="empty">Loading balances</li></ul>
   <div class="sw-sheet" id="tok-add-sheet" hidden>
     <div class="sw-sheet-in">
@@ -331,6 +360,9 @@
       <div class="field"><input id="tok-add-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="terra1..."></div>
       <div id="tok-add-out"></div>
       <button class="btn solid" id="tok-add-go" type="button">Check and add</button>
+      <div class="tl-or"><span>or</span></div>
+      <button class="btn quiet" id="tok-scan" type="button">Find tokens I hold</button>
+      <p class="tiny" style="margin-top:6px">Checks every token the wallet knows for a balance on this address. Takes about a minute.</p>
     </div>
   </div>
   <p class="tiny" id="home-note"></p>
@@ -338,6 +370,10 @@
   <div id="pane-nft" hidden>
     <div class="nft-grid" id="nft-grid"></div>
     <p class="tiny" id="nft-note"></p>
+    <div class="nft-view" id="nft-sheet" hidden>
+      <button class="nft-close" id="nft-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <div class="nft-view-in" id="nft-body"></div>
+    </div>
   </div>
 </section>
 
@@ -489,6 +525,81 @@
 
   <div class="grow"></div>
   <button class="btn solid" id="send-review">Check what this would cost</button>
+</section>
+
+<!-- ================= DeFi positions (defi.js) ================= -->
+<section class="step wpad" id="st-earn">
+  <div class="bar">
+    <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+    <h1 class="ea-h">DeFi positions</h1>
+  </div>
+  <div class="tk-balcard">
+    <span class="tk-label">In staking, farms and pools</span>
+    <b id="earn-total">$0.00</b>
+    <div class="tk-balrow"><span id="earn-count"></span></div>
+  </div>
+  <div class="ea-bar"><span class="ea-status" id="earn-status" hidden></span>
+    <button class="ea-rescan" id="earn-rescan" type="button">Scan again</button></div>
+  <div id="earn-list"></div>
+  <p class="tk-note">Garuda farms, pools and staking, GRDX staking, Terraport TERRA staking, Juris tier staking and Garuda limit orders. Tap a position for its details.</p>
+</section>
+
+<!-- ================= one DeFi position (defi.js) ================= -->
+<section class="step wpad" id="st-epos">
+  <div class="bar">
+    <div class="back" data-go="earn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  </div>
+  <div class="tk-head">
+    <span id="ep-logos" class="ea-logos big"></span>
+    <div class="tk-id"><h1 id="ep-title"></h1><span id="ep-sub"></span></div>
+  </div>
+  <div class="tk-balcard">
+    <span class="tk-label">Your position</span>
+    <b id="ep-usd"></b>
+    <div class="tk-balrow"><span id="ep-share"></span></div>
+  </div>
+  <div class="head"><h2>Inside</h2></div>
+  <div class="tk-card" id="ep-holds"></div>
+  <div id="ep-rew-wrap"><div class="head"><h2>Rewards waiting</h2></div><div class="tk-card" id="ep-rew"></div></div>
+  <div id="ep-stats-wrap"><div class="head"><h2>Details</h2></div><div class="tk-card" id="ep-stats"></div></div>
+  <div class="ep-actions" id="ep-actions"></div>
+  <button class="tk-link ep-finder" id="ep-finder" type="button">View contract in explorer</button>
+</section>
+
+<!-- ================= one token (token.js) ================= -->
+<section class="step wpad" id="st-token">
+  <div class="bar">
+    <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  </div>
+  <div class="tk-head">
+    <span class="tk-ico" id="tk-ico"></span>
+    <div class="tk-id"><h1 id="tk-sym"></h1><span id="tk-name"></span></div>
+    <div class="tk-px"><b id="tk-px"></b><span id="tk-px-l"></span></div>
+  </div>
+
+  <div class="tk-balcard">
+    <span class="tk-label">Your balance</span>
+    <b id="tk-bal"></b>
+    <div class="tk-balrow"><span id="tk-bal-usd"></span><span id="tk-share"></span></div>
+  </div>
+
+  <div class="acts tk-acts">
+    <button class="act" id="tk-send" type="button"><i><svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></i>Send</button>
+    <button class="act" id="tk-recv" type="button"><i><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></i>Receive</button>
+    <button class="act" id="tk-swap" type="button"><i><svg viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m14 4 4 4-4 4"/><path d="M20 16H7"/><path d="m10 12-4 4 4 4"/></svg></i>Swap</button>
+  </div>
+
+  <div class="head"><h2>Where it is</h2></div>
+  <div class="tk-card" id="tk-pos"></div>
+
+  <div class="head"><h2>Market</h2></div>
+  <div class="tk-card" id="tk-mkt"></div>
+
+  <div class="head"><h2>About</h2></div>
+  <div class="tk-card" id="tk-about"></div>
+
+  <div class="head"><h2>Recent activity</h2></div>
+  <div class="tk-card tk-acts-list" id="tk-act"></div>
 </section>
 
 <!-- ================= P2P ================= -->
@@ -699,7 +810,8 @@
 </section>
 
 <section class="step wpad" id="st-activity">
-  <div class="head" style="margin:6px 4px 14px"><h2>Activity</h2></div>
+  <div class="head" style="margin:6px 4px 10px"><h2>Activity</h2></div>
+  <div class="ac-chips" id="ac-chips"></div>
   <div id="ac-list"><div class="empty">Loading</div></div>
   <p class="tiny" id="ac-note"></p>
 
@@ -723,6 +835,12 @@
   <div class="set" id="set-network">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg>
     <span>Network</span><b style="font-size:12px;color:var(--muted);font-weight:400">columbus-5</b></div>
+  <div class="set" id="set-wallets">
+    <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h2"/><path d="M6 6l9-3 1.5 3"/></svg>
+    <span>Wallets</span></div>
+  <div class="set" id="set-seed">
+    <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    <span>Recovery phrase</span></div>
   <div class="set" id="btn-lock">
     <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     <span>Lock wallet</span></div>
@@ -734,8 +852,43 @@
     <span>Close the app</span></div>
   <div class="set danger" id="btn-reset">
     <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-    <span>Delete wallet from this device</span></div>
+    <span>Delete all wallets from this device</span></div>
 </section>
+
+<!-- Sheets opened from more than one screen live outside every screen:
+     inside #st-home they were hidden with it, so from Settings the tab bar
+     went away and nothing appeared. -->
+<!-- recovery phrase (seed.js) -->
+  <div class="sw-sheet" id="rp-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Recovery phrase</span><button class="sw-x" id="rp-x" type="button">Close</button></div>
+      <div id="rp-step-pin">
+        <div class="warn"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <p><b>Anyone with these words owns this wallet.</b> Make sure nobody can see your screen. Frontier never asks for them, and neither does anyone you should trust.</p></div>
+        <div class="field"><label>Enter your PIN</label>
+          <input class="sd-pin" id="rp-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></div>
+        <div class="meter-txt" id="rp-msg"></div>
+      </div>
+      <div id="rp-step-words" hidden>
+        <div class="sd-wrap"><div class="sd-words blur" id="rp-words"></div>
+          <button class="btn solid sd-reveal" id="rp-reveal" type="button" hidden>Reveal</button></div>
+        <p class="tiny">Write them down in this order and keep the paper offline. This closes by itself in a minute.</p>
+        <button class="btn quiet" id="rp-done" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+  <!-- wallet switcher (wallets.js) -->
+  <div class="sw-sheet" id="wl-sheet" hidden>
+    <div class="sw-sheet-in">
+      <div class="sw-sheet-top"><span>Wallets</span><button class="sw-x" id="wl-x" type="button">Close</button></div>
+      <div class="wl-list" id="wl-list"></div>
+      <div class="wl-add">
+        <button class="btn solid" id="wl-create" type="button">Create a new wallet</button>
+        <button class="btn" id="wl-import" type="button">Import a recovery phrase</button>
+        <button class="btn quiet" id="wl-watch" type="button">Watch an address</button>
+      </div>
+    </div>
+  </div>
 
 <nav class="tabs" id="tabs">
   <button class="tab sel" data-tab="home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 21v-8h6v8"/></svg>Home</button>
@@ -773,15 +926,21 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=0ba6f1d9"></script>
-<script src="assets/js/ads.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/swap.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/activity.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/nft.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/p2p.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/gram.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/gov.js?v=0ba6f1d9"></script>
-<script type="module" src="assets/js/stake.js?v=0ba6f1d9"></script>
+<script type="module" src="assets/js/app.js?v=4e8ec444"></script>
+<script src="assets/js/ads.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/swap.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/activity.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/nft.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/wallets.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/seed.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/home-tools.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/p2p.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/gram.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/incoming.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/token.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/defi.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/gov.js?v=4e8ec444"></script>
+<script type="module" src="assets/js/stake.js?v=4e8ec444"></script>
 </body>
 </html>

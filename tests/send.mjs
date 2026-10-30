@@ -33,25 +33,51 @@ const HELD = [
   { sym: 'DUST', contract: 'terra1dust', dec: 6, v: 0 }
 ];
 
-const api = new Function('heldTokens', 'toRaw', [
+// the one ordering every token list uses, lifted from tokens.js with a price
+// table standing in for the market
+const tokSrc = fs.readFileSync(path.join(SRC, 'tokens.js'), 'utf8');
+const PX = { LUNC: 0.00006, CL8Y: 2, DUST: 1 };
+const priced = r => PX[r.sym] === undefined ? null : PX[r.sym] * (r.v || 0);
+const sortOf = hide => new Function('fiatOf', 'HIDE_DUST', 'DUST', lift(tokSrc, 'function sortHeld(') + '\nreturn sortHeld;')(
+  priced, hide, 0.005);
+const sortHeld = sortOf(false);
+
+const api = new Function('heldTokens', 'toRaw', 'sortHeld', [
   liftLine(src, 'const isCw20 ='),
   liftLine(src, 'const sendKey ='),
   lift(src, 'function sendable('),
   lift(src, 'function balanceOf('),
   lift(src, 'function cw20Step('),
   'return { isCw20, sendKey, sendable, balanceOf, cw20Step };'
-].join('\n'))(() => HELD, (h, d) => String(Math.round(Number(h) * Math.pow(10, d))));
+].join('\n'))(() => HELD, (h, d) => String(Math.round(Number(h) * Math.pow(10, d))), sortHeld);
 
 group('what can be sent');
 {
   const rows = api.sendable().map(r => r.sym);
-  ok('the fee coin comes first, because it is what pays', rows[0] === 'LUNC', rows.join(','));
-  ok('tokens with a balance are offered', rows.indexOf('CL8Y') > 0, rows.join(','));
+  // CL8Y 8.25 x $2 = $16.5 beats LUNC 1000 x $0.00006 = $0.06; USTC has no
+  // price here, so it goes after every priced row
+  ok('the most valuable comes first', rows.join(',') === 'CL8Y,LUNC,USTC', rows.join(','));
+  ok('tokens with a balance are offered', rows.indexOf('CL8Y') >= 0, rows.join(','));
   ok('and an empty balance is not', rows.indexOf('DUST') < 0, rows.join(','));
   ok('a coin and a token are told apart',
      !api.isCw20(HELD[0]) && api.isCw20(HELD[2]));
   ok('each is keyed the way the rest of the wallet keys assets',
      api.sendKey(HELD[0]) === 'native:uluna' && api.sendKey(HELD[2]) === 'cw20:terra1cl8y');
+}
+
+group('one order for every token list');
+{
+  const rows = [
+    { sym: 'A', v: 5 }, { sym: 'LUNC', v: 1000 }, { sym: 'CL8Y', v: 1 }, { sym: 'B', v: 50 },
+    { sym: 'DUST', v: 0 }
+  ];
+  const got = sortHeld(rows).map(r => r.sym).join(',');
+  ok('priced by value, unpriced after them by amount, zero left out', got === 'CL8Y,LUNC,B,A', got);
+  ok('zero is kept only when asked for', sortHeld(rows, true).length === 5);
+  // with "Hide $0" on: unpriced and dust leave every picker, LUNC never does
+  const hid = sortOf(true)([{ sym: 'LUNC', denom: 'uluna', v: 1 }, { sym: 'CL8Y', v: 1 }, { sym: 'UKRW', denom: 'ukrw', v: 5 }, { sym: 'DUST', v: 0.001 }])
+    .map(r => r.sym).join(',');
+  ok('hide $0 keeps priced tokens and LUNC only', hid === 'CL8Y,LUNC', hid);
 }
 
 group('the message a token transfer is');

@@ -1,11 +1,14 @@
-import { amt, fmt } from './chain.js?v=0ba6f1d9';
-import { finish } from './crypto.js?v=0ba6f1d9';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=0ba6f1d9';
-import { $, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=0ba6f1d9';
-import { S } from './state.js?v=0ba6f1d9';
-import { Store, decryptSeed, saveWallet, short, showStore } from './storage.js?v=0ba6f1d9';
-import { paintSendTok } from './tx.js?v=0ba6f1d9';
-import { luncRaw, openWallet } from './tokens.js?v=0ba6f1d9';
+import { amt, fmt } from './chain.js?v=4e8ec444';
+import { finish } from './crypto.js?v=4e8ec444';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=4e8ec444';
+// base was never imported here, so checking a watch address threw on every
+// address and the catch reported it as a bad checksum
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=4e8ec444';
+import { S } from './state.js?v=4e8ec444';
+import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=4e8ec444';
+import { enter, switchLink } from './wallets.js?v=4e8ec444';
+import { paintSendTok } from './tx.js?v=4e8ec444';
+import { luncRaw, openWallet } from './tokens.js?v=4e8ec444';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -117,14 +120,9 @@ $('#home-addr').addEventListener('click', function () {
 })();
 $('#act-send').addEventListener('click', () => {
   // the asset picker starts from whatever the wallet actually holds
+  // paintSendTok writes the balance of the chosen asset itself. Writing the
+  // LUNC balance over it afterwards showed LUNC as available for any token.
   paintSendTok();
-  // hand the send screen the balance it is allowed to spend
-  const el = $('#send-avail');
-  if (el) {
-    const raw = luncRaw() || 0;
-    el.dataset.raw = String(raw);
-    el.textContent = raw ? '\u00b7 ' + fmt(amt(raw, 6)) + ' available' : '';
-  }
   go('send');
 });
 
@@ -132,6 +130,7 @@ $('#act-send').addEventListener('click', () => {
 const locked = () => document.dispatchEvent(new CustomEvent('frontier:locked'));
 
 $('#btn-lock').addEventListener('click', () => {
+  if (S.SAVED && S.SAVED.watch) return;          // nothing to lock: no key here
   S.MNEMONIC = null; S.PASS = null; locked();
   $('#pu').value = ''; dots('pinrowU', 0); $('#umsg').textContent = '';
   go('unlock');
@@ -139,32 +138,32 @@ $('#btn-lock').addEventListener('click', () => {
 });
 
 $('#btn-reset').addEventListener('click', async () => {
-  if (!confirm('Delete the wallet from this device? Only the recovery phrase can bring it back.')) return;
-  await Store.clear();
-  S.MNEMONIC = null; S.PASS = null; S.SAVED = null;
+  if (!confirm('Delete every wallet from this device? Only their recovery phrases can bring them back.')) return;
+  await clearBook();
+  S.MNEMONIC = null; S.PASS = null;
   locked();
   go('welcome');
 });
 
+// the wallet on the unlock screen only; the others stay
 $('#btn-forget').addEventListener('click', async () => {
-  if (!confirm('Forget this wallet? Only the recovery phrase can bring it back.')) return;
-  await Store.clear();
-  S.SAVED = null;
-  locked();
-  go('welcome');
+  if (!confirm('Forget this wallet? Only its recovery phrase can bring it back.')) return;
+  await removeWallet(activeId());
+  enter();
 });
 
 /* ---------------- boot ---------------- */
 (async function boot(){
   showStore();
   try {
-    const raw = await Store.load();
-    if (!raw) return;
-    S.SAVED = JSON.parse(raw);
-    $('#unlock-addr').textContent = short(S.SAVED.addr);
+    const w = await loadBook();
+    if (!w) return;
     $('#st-welcome').classList.remove('on', 'intro');
+    // a watched address has no PIN: straight to its home screen
+    if (w.watch) { openWallet(w.addr); return; }
     $('#st-unlock').classList.add('on');
     dots('pinrowU', 0);
+    switchLink();
   } catch (e) { report('boot', e); }
 })();
 
@@ -213,10 +212,15 @@ async function checkWatch(){
 }
 $('#wa').addEventListener('input', checkWatch);
 
-$('#btn-watch').addEventListener('click', () => {
+// Watching used to end on a page that showed the address and nothing else.
+// Now it is a wallet in the book, with no key, opened like any other.
+$('#btn-watch').addEventListener('click', async () => {
   tap();
-  $('#watch-out').textContent = $('#wa').value.trim().toLowerCase();
-  go('watching');
+  const addr = $('#wa').value.trim().toLowerCase();
+  S.MNEMONIC = null; S.PASS = null;
+  await addWatch(addr);
+  $('#wa').value = '';
+  openWallet(addr);
 });
 
 $('#btn-import').addEventListener('click', async () => {

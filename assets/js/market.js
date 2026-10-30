@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=0ba6f1d9';
+import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=4e8ec444';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -610,7 +610,12 @@ const marketComplete = () => MARKET_COMPLETE;
    This is a map, not a price feed. It says which pools exist and where; what
    is in them we still read ourselves.
 */
-const OW_URL = 'https://orbitwire-proxy.vladislav-baydan.workers.dev/pairs';
+// The team's own Cloudflare account first; the original copy on a personal
+// account stays as a fallback until it is retired.
+const OW_URLS = [
+  'https://orbitwire-proxy.delfoshub-team.workers.dev/pairs',
+  'https://orbitwire-proxy.vladislav-baydan.workers.dev/pairs'
+];
 
 let OW = null;
 /* The feed names the exchange, and the exchange decides the dialect.
@@ -633,13 +638,16 @@ async function owMarket(){
   if (OW !== null) return OW;
   let raw = cacheGet('ow');
   if (!raw) {
-    try {
-      const r = await getJSON(OW_URL, 15000);
-      if (r && r.ok && Array.isArray(r.pairs) && r.pairs.length) {
-        raw = r.pairs;
-        cacheSet('ow', raw);
-      }
-    } catch (e) { raw = null; }
+    for (const url of OW_URLS) {
+      try {
+        const r = await getJSON(url, 15000, 1);
+        if (r && r.ok && Array.isArray(r.pairs) && r.pairs.length) {
+          raw = r.pairs;
+          cacheSet('ow', raw);
+          break;
+        }
+      } catch (e) { raw = null; }
+    }
   }
   if (!raw) { OW = false; return false; }   // false, not null: asked and failed
 
@@ -652,8 +660,12 @@ async function owMarket(){
     // because it is the first guess at which dialect the pool speaks.
     const liq = Number(p.liquidity) || 0;
     const dex = dexDialect(p.dex);
-    (edges[a] = edges[a] || []).push({ to: b, pair: p.pool, liq: liq, dex: dex });
-    (edges[b] = edges[b] || []).push({ to: a, pair: p.pool, liq: liq, dex: dex });
+    // the exchange's own name and the day's volume ride along for the token
+    // screen; routing never reads them
+    const name = String(p.dex || '');
+    const vol = Number(p.volume24h || p.volume_24h || p.volume) || null;
+    (edges[a] = edges[a] || []).push({ to: b, pair: p.pool, liq: liq, dex: dex, name: name, vol: vol });
+    (edges[b] = edges[b] || []).push({ to: a, pair: p.pool, liq: liq, dex: dex, name: name, vol: vol });
     for (const t of [p.base, p.quote]) {
       const k = owKey(t);
       if (t.logo && !logos[k]) logos[k] = t.logo;
@@ -669,6 +681,33 @@ async function owMarket(){
 }
 
 const owLogo = contract => (OW && OW.logos['cw20:' + contract]) || null;
+
+// Every pool the map lists for one asset, deepest first, with the other side
+// named. For the token screen; a swap still goes through peersOf.
+// The feed's pools first; the factory walk adds the exchanges the feed does not
+// cover, and stands in for all of them when the feed could not be read.
+const DIALECT_NAME = { ts: 'Terraswap-style', gd: 'Garuda', cl: 'CL8Y' };
+function poolsOf(key){
+  const out = [], seen = {};
+  const name = k => {
+    const o = assetOf(k) || knownAsset(k);
+    if (o && o.sym) return o.sym;
+    if (k === LUNC_KEY) return 'LUNC';
+    if (k === 'native:uusd') return 'USTC';
+    return (OW && OW.syms && OW.syms[k]) || k.slice(k.indexOf(':') + 1, k.indexOf(':') + 7).toUpperCase();
+  };
+  for (const src of [OW && OW.edges, GRAPH && GRAPH.edges]) {
+    if (!src) continue;
+    for (const e of (src[key] || [])) {
+      if (e.to === key || seen[e.pair]) continue;
+      seen[e.pair] = 1;
+      out.push({ pair: e.pair, other: e.to, otherSym: name(e.to),
+                 liq: typeof e.liq === 'number' ? e.liq : null, vol: e.vol || null, dex: e.dex || 'ts',
+                 name: e.name || DIALECT_NAME[e.dex || 'ts'] || '' });
+    }
+  }
+  return out.sort((x, y) => (y.liq || 0) - (x.liq || 0));
+}
 
 let GRAPH = null;
 
@@ -1004,4 +1043,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, dexDialect, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, dexDialect, poolsOf, infoKey, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };

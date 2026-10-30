@@ -4,15 +4,16 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=0ba6f1d9';
-import { $, go, tap } from './shell.js?v=0ba6f1d9';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=0ba6f1d9';
-import { fiatOf, heldTokens, refreshBalances, remember } from './tokens.js?v=0ba6f1d9';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=0ba6f1d9';
-import { S } from './state.js?v=0ba6f1d9';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=4e8ec444';
+import { $, go, tap } from './shell.js?v=4e8ec444';
+import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=4e8ec444';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=4e8ec444';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=4e8ec444';
+import { S } from './state.js?v=4e8ec444';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
+document.addEventListener('frontier:wallet', () => { FROM = LUNC; TO = null; });
 // A quote is only good for the pool state it was taken from, so a new
 // keystroke throws away the plan built from the old one.
 let QUOTE = null, PLAN = null, BUSY = false;
@@ -237,13 +238,44 @@ function face(el, t){
 // pair against LUNC. Read from the pool itself it holds for any pair, and it is
 // one query per pool, kept for as long as the screen is open.
 const DEPTH = {};
-function firstLeg(){
+// The pools a trade can enter first: the pair itself, or for a hop the pools
+// into the middle token - what happens after the first pool is smaller by
+// definition.
+function firstCandidates(){
   const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (pools.length) return pools[0].pair;
+  if (pools.length) return pools;
   const mids = midsBetween(keyOf(FROM), keyOf(TO));
-  // for a hop it is the first pool the trade enters that sets the comfortable
-  // size; what happens after it is smaller by definition
-  return mids.length ? mids[0].first[0].pair : null;
+  return (mids[0] && mids[0].first) || [];
+}
+/* Which of them is the deep one, by what it actually holds.
+   The list is ordered by the feed's liquidity, and a pool the feed does not
+   cover (or every pool, when the feed was not read) has no number and keeps
+   whatever order it arrived in. JURIS has a pool of 330 million LUNC and
+   three small ones; the warning was measured on a small one, said "99.88
+   JURIS costs over 1%" and painted the slider red, while the quote itself -
+   which asks every pool - showed 0.01% for 826,000 JURIS. */
+const BEST = {};
+const legKey = () => keyOf(FROM) + '|' + keyOf(TO);
+function firstLeg(){
+  const c = firstCandidates();
+  return BEST[legKey()] || (c.length ? c[0].pair : null);
+}
+async function pickDeepest(){
+  const k = legKey();
+  if (BEST[k]) return BEST[k];
+  const c = firstCandidates().slice(0, 8);
+  if (!c.length) return null;
+  if (c.length === 1) return (BEST[k] = c[0].pair);
+  const from = keyOf(FROM);
+  const held = await Promise.all(c.map(function (p) {
+    return reserves(p.pair).then(function (r) {
+      const m = r && r.find(x => x.key === from);
+      return m ? Number(m.raw) : 0;
+    }).catch(() => 0);
+  }));
+  let best = 0;
+  held.forEach(function (v, i) { if (v > held[best]) best = i; });
+  return (BEST[k] = c[best].pair);
 }
 
 /* The largest trade this pool takes for under a percent, worked out from what
@@ -272,16 +304,15 @@ function comfortOf(){
 }
 
 async function learnComfort(){
-  const pair = firstLeg();
+  const pair = await pickDeepest();
   if (!pair || COMFORT[pair] !== undefined) return;
   const bal = balOf(FROM);
   if (!(bal > 0)) return;
   COMFORT[pair] = { at: 0, pct: 0 };           // asked, so the next paint waits
   const raw = toRaw(String(bal), decOf(FROM));
-  const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  const first = pools.length ? pools : (midsBetween(keyOf(FROM), keyOf(TO))[0] || {}).first;
-  if (!first || !first.length) { delete COMFORT[pair]; return; }
-  const q = await simulateSwap(first[0].pair, keyOf(FROM), raw, first[0].dex).catch(() => null);
+  const leg = firstCandidates().filter(p => p.pair === pair)[0];
+  if (!leg) { delete COMFORT[pair]; return; }
+  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex).catch(() => null);
   if (!q) { delete COMFORT[pair]; return; }
   const out = Number(q.return_amount), spread = Number(q.spread_amount);
   const fee = Number(q.commission_amount);
@@ -298,7 +329,7 @@ async function learnDepth(pair){
   // the reserve is a fact worth showing; it is simply not what the promise
   // above should have been made of
   learnComfort();
-  if (!pair) pair = firstLeg();
+  if (!pair) pair = (await pickDeepest().catch(() => null)) || firstLeg();
   if (!pair) return;
   if (DEPTH[pair] !== undefined) return;
   DEPTH[pair] = 0;                       // asked, so the next paint does not re-ask
@@ -408,12 +439,20 @@ function sheetRows(side){
     });
     const lunc = pick('LUNC');
     if (lunc && !mine.some(t => t.sym === 'LUNC')) mine.unshift(lunc);
-    return mine;
+    return sortHeld(mine, true);
   }
-  return destinations(FROM).map(function (p) {
+  const all = destinations(FROM).map(function (p) {
     const t = tokenFor(p.key);
     return t ? Object.assign({}, t, { hops: p.hops, via: p.via }) : null;
   }).filter(Boolean);
+  // what you already hold first, by value; then the rest in pool order, which
+  // is deepest first - so the tokens you can actually trade are on top
+  const held = sortHeld(all.filter(t => (t.v || 0) > 0));
+  const rest = all.filter(t => !((t.v || 0) > 0));
+  if (held.length && rest.length) {
+    return [{ head: 'In your wallet' }].concat(held, [{ head: 'All tokens' }], rest);
+  }
+  return held.concat(rest);
 }
 
 // Rows the sheet could not name yet. Asked for once, all at once, and the sheet
@@ -451,9 +490,13 @@ function findBox(){
 let SHEET_SIDE = 'from';
 function drawSheet(){
   const q = (FIND && FIND.value || '').trim().toUpperCase();
-  const all = sheetRows(SHEET_SIDE).filter(t => !q || String(t.sym).toUpperCase().indexOf(q) >= 0);
+  // by ticker, or by contract address for the token two projects both call TERRA
+  const hit = t => !q || String(t.sym).toUpperCase().indexOf(q) >= 0 ||
+    (q.length > 8 && String(t.contract || t.denom || '').toUpperCase().indexOf(q) >= 0);
+  const all = sheetRows(SHEET_SIDE).filter(t => t.head ? !q : hit(t));
   const list = $('#sw-list');
-  list.innerHTML = all.length ? all.map(function (t) {
+  list.innerHTML = all.some(t => !t.head) ? all.map(function (t) {
+    if (t.head) return '<div class="sw-sec">' + t.head + '</div>';
     const f = fiatOf(t);
     return '<button class="sw-item" type="button" data-k="' + keyOf(t) + '">' +
       iconHTML(t) + '<span class="sw-item-s">' + t.sym +
@@ -483,7 +526,7 @@ function openSheet(side){
   sheet.hidden = false;
   // A count is the one thing a search box cannot tell you before you type.
   const n = $('#sw-count');
-  if (n) n.textContent = sheetRows(side).length + ' available';
+  if (n) n.textContent = sheetRows(side).filter(t => !t.head).length + ' available';
 }
 const closeSheet = () => {
   $('#sw-sheet').hidden = true;
@@ -972,6 +1015,20 @@ $('#sw-flip').addEventListener('click', () => {
 // экран открывается из консоли на главной
 const btn = document.getElementById('act-swap');
 if (btn) btn.addEventListener('click', () => { fillPickers(); go('swap'); });
+
+// the token page's Swap: that token on the pay side, the rest chosen as usual
+document.addEventListener('frontier:swap-from', function (e) {
+  const t = tokenFor(e.detail && e.detail.key);
+  if (t) {
+    FROM = t;
+    if (TO && keyOf(TO) === keyOf(t)) TO = null;
+    if (TO && !poolsBetween(keyOf(FROM), keyOf(TO)).length) TO = null;
+  }
+  $('#sw-amt').value = ''; $('#sw-range').value = '0';
+  $('#sw-out').textContent = '-'; detail([]);
+  fillPickers();
+  go('swap');
+});
 
 // Two ways to hand a pool an offer, times two dialects.
 //

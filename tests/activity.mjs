@@ -33,7 +33,8 @@ function liftLine(s, header){
 // a small market: two tokens the wallet knows, and one it does not
 const KNOWN = {
   'cw20:terra1cl8y': { sym: 'CL8Y', dec: 18 },
-  'native:uusd': { sym: 'USTC', dec: 6 }
+  'native:uusd': { sym: 'USTC', dec: 6 },
+  'cw20:terra1pizza': { sym: 'PIZZAB', dec: 6 }
 };
 
 const api = new Function('atob', 'short', 'coins', 'fmt', 'amt', 'knownAsset', 'DEC', [
@@ -84,8 +85,21 @@ group('a transaction is named by what was asked for');
   ok("what a downstream contract logged about itself does not name it",
      d.title.indexOf('receive') < 0 && d.title.indexOf('fee') < 0, d.title);
 
-  ok('a transfer reads as sent',
-     api.describe(exec({ transfer: { recipient: 'terra1x', amount: '5' } }), 'me').title === 'Sent');
+  // a token transfer: the signer is the message's sender
+  const xfer = (sender, msg) => {
+    const t = exec(msg);
+    Object.assign(t.tx.body.messages[0], { sender: sender, contract: 'terra1pizza' });
+    return t;
+  };
+  const sent = api.describe(xfer('me', { transfer: { recipient: 'terra1x', amount: '50709939' } }), 'me');
+  ok('a transfer reads as sent', sent.title === 'Sent', sent.title);
+  ok('and says how much of what', sent.value === '-50.709939 PIZZAB', sent.value);
+  ok('and to whom, not which contract', sent.sub === 'to terra1\u2026', sent.sub);
+  ok('a token transfer leaves the wallet', sent.kind === 'out', sent.kind);
+  const got = api.describe(xfer('terra1y', { transfer: { recipient: 'me', amount: '5000000' } }), 'me');
+  ok('a token someone else sent here reads as received', got.title === 'Received', got.title);
+  ok('with a plus and the ticker', got.value === '+5 PIZZAB', got.value);
+  ok('and wears the incoming face', got.kind === 'in', got.kind);
   ok('liquidity has words of its own',
      api.describe(exec({ provide_liquidity: {} }), 'me').title === 'Added liquidity');
 
