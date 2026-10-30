@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=9e8b1817';
-import { DEC, knownAsset as marketAsset } from './market.js?v=9e8b1817';
-import { $, go } from './shell.js?v=9e8b1817';
-import { fiatOf, heldTokens } from './tokens.js?v=9e8b1817';
-import { S } from './state.js?v=9e8b1817';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=4e8ec444';
+import { DEC, knownAsset as marketAsset } from './market.js?v=4e8ec444';
+import { $, go } from './shell.js?v=4e8ec444';
+import { fiatOf, heldTokens } from './tokens.js?v=4e8ec444';
+import { S } from './state.js?v=4e8ec444';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -340,6 +340,7 @@ function row(k, v, cls){
   return '<div class="tx-line' + (cls ? ' ' + cls : '') + '">' +
          '<span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>';
 }
+const kindClass = k => String(k || '').replace(/[^a-z]/g, '');
 
 function openTx(hash){
   const t = TXS[hash];
