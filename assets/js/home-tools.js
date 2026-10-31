@@ -8,8 +8,8 @@
    One refresh reads everything the home screen shows: balances (forced),
    then tells every other part through 'frontier:refresh' - DeFi positions,
    NFTs, Activity - to read again. */
-import { $, tap, tg } from './shell.js?v=4e8ec444';
-import { refreshBalances } from './tokens.js?v=4e8ec444';
+import { $, tap, tg } from './shell.js?v=f8956bc1';
+import { refreshBalances } from './tokens.js?v=f8956bc1';
 
 /* ---------------- search ---------------- */
 const box = $('#tok-search-box'), input = $('#tok-search'), btn = $('#tok-search-btn'), list = $('#tok-list');
