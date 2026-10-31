@@ -3,6 +3,7 @@
    Every fixture below is an answer a mainnet contract gave on 29 Oct 2026
    (defi-discover.mjs), trimmed to the fields that matter. defi-parse.js has
    no imports, so it is loaded as it ships. */
+import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { ok, group } from './harness.mjs';
@@ -103,6 +104,17 @@ group('GRDX staking');
   ok('refused means nothing staked', g.staked === '0' && g.token === 'cw20:terra16hzl');
   ok('an amount in an object is found', P.grdxStake({}, { amount: '77' }).staked === '77');
   ok('a list is summed', P.grdxStake({}, [{ amount: '2' }, { amount: '3' }]).staked === '5');
+}
+
+group('the sweep over every staking contract');
+{
+  const src = fs.readFileSync(path.join(SRC, 'defi.js'), 'utf8');
+  const i = src.indexOf('function sweepDue(');
+  const sweepDue = new Function(src.slice(i, src.indexOf('\n', i)) + '\nreturn sweepDue;')();
+  ok('the first scan of an address sweeps', sweepDue({}, false) === true && sweepDue(null, false) === true);
+  ok('a later scan does not', sweepDue({ swept: Date.now() - 86400000 }, false) === false);
+  ok('Scan again always does', sweepDue({ swept: Date.now() }, true) === true);
+  ok('defi.js asks sweepDue before sweeping', /if \(sweepDue\(was, full\)\)/.test(src));
 }
 
 group('Garuda order book');

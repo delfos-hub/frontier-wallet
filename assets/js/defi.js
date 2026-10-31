@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=fe408064';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=fe408064';
-import { $, go, tap } from './shell.js?v=fe408064';
-import { S } from './state.js?v=fe408064';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=fe408064';
-import * as P from './defi-parse.js?v=fe408064';
-import { dryRunSwap, sendSwap } from './tx.js?v=fe408064';
-import { notify } from './notify.js?v=fe408064';
-import { buzz } from './shell.js?v=fe408064';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=fe408064';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=ba81b839';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=ba81b839';
+import { $, go, tap } from './shell.js?v=ba81b839';
+import { S } from './state.js?v=ba81b839';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=ba81b839';
+import * as P from './defi-parse.js?v=ba81b839';
+import { dryRunSwap, sendSwap } from './tx.js?v=ba81b839';
+import { notify } from './notify.js?v=ba81b839';
+import { buzz } from './shell.js?v=ba81b839';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=ba81b839';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -57,9 +57,9 @@ const SWEEP_CODES = ['10913', '10920'];
 // address has a position: a few hundred reads, three or four minutes. A new
 // position always comes from a transaction of this address, so the history
 // step finds it; the sweep only adds positions older than the history the
-// nodes keep, and those do not appear again. So it runs once per address,
-// and again only when asked (the refresh).
-const SWEEP_EVERY = Infinity;
+// nodes keep, and those do not appear again. So it runs on the first scan of
+// an address, and again only when asked (the refresh).
+function sweepDue(was, full){ return !!full || !(was && was.swept); }
 
 const me = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
@@ -465,7 +465,7 @@ async function scan(full){
 
     // then every farm and staking contract there is, now and then
     status('');
-    if (full || Date.now() - (was.swept || 0) > SWEEP_EVERY) {
+    if (sweepDue(was, full)) {
       const all = [];
       for (const code of SWEEP_CODES) {
         for (const c of await codeList(code)) if (!jobs[c]) { add(KIND_OF_CODE[code], c); all.push(jobs[c]); }
