@@ -77,12 +77,6 @@ group('a copy left in the cloud by an older version');
   ok('and removed from the cloud', !(KEY in cloud.data));
 }
 {
-  const secure = fakeStore('secure', { data: { [KEY]: 'CURRENT' } }), cloud = fakeStore('cloud', { data: { [KEY]: 'STALE' } });
-  const { Store } = await loadStore({ version: '8.0', secure, cloud });
-  ok('a stale cloud copy next to the device one: the device one wins, the cloud one goes',
-    (await Store.load()) === 'CURRENT' && !(KEY in cloud.data));
-}
-{
   const cloud = fakeStore('cloud', { data: { [KEY]: 'OLD' } });
   const { Store } = await loadStore({ version: '7.2', cloud, localBroken: true });
   const v = await Store.load();
@@ -93,6 +87,42 @@ group('a copy left in the cloud by an older version');
   const { Store } = await loadStore({ version: '8.0', secure, cloud });
   await Store.clear();
   ok('deleting the wallet clears the cloud copy too', !(KEY in cloud.data) && !(KEY in secure.data));
+}
+
+group('two different books: wallets are merged, never dropped (review of #34)');
+{
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Phone', addr: 'terra1aaa', blob: 'BA' }] });
+  const B = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Desktop', addr: 'terra1bbb', blob: 'BB' }] });
+  const secure = fakeStore('secure', { data: { [KEY]: A } }), cloud = fakeStore('cloud', { data: { [KEY]: B } });
+  const { Store } = await loadStore({ version: '8.0', secure, cloud });
+  const v = JSON.parse(await Store.load());
+  const addrs = v.list.map(w => w.addr).sort().join(',');
+  ok('the wallet only in the cloud is added to the device’s book', addrs === 'terra1aaa,terra1bbb', addrs);
+  ok('the device’s active wallet stays active, ids stay unique', v.active === 'w1' && new Set(v.list.map(w => w.id)).size === 2);
+  ok('the merged book is kept on the device', JSON.parse(secure.data[KEY]).list.length === 2);
+  ok('and only then the cloud copy goes', !(KEY in cloud.data));
+}
+{
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Phone', addr: 'terra1aaa', blob: 'BA' }] });
+  const B = JSON.stringify({ v: 2, active: 'w9', list: [{ id: 'w9', name: 'Same', addr: 'terra1aaa', blob: 'BA' }] });
+  const secure = fakeStore('secure', { data: { [KEY]: A } }), cloud = fakeStore('cloud', { data: { [KEY]: B } });
+  const { Store } = await loadStore({ version: '8.0', secure, cloud });
+  ok('a cloud book with nothing new: the device book is unchanged, the cloud copy goes',
+    (await Store.load()) === A && !(KEY in cloud.data));
+}
+{
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Phone', addr: 'terra1aaa', blob: 'BA' }] });
+  const secure = fakeStore('secure', { data: { [KEY]: A } }), cloud = fakeStore('cloud', { data: { [KEY]: 'not json' } });
+  const { Store } = await loadStore({ version: '8.0', secure, cloud });
+  ok('a cloud copy that cannot be read is left alone', (await Store.load()) === A && cloud.data[KEY] === 'not json');
+}
+{
+  // an old single-wallet record { addr, blob } in the cloud next to a book on the device
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Phone', addr: 'terra1aaa', blob: 'BA' }] });
+  const secure = fakeStore('secure', { data: { [KEY]: A } }), cloud = fakeStore('cloud', { data: { [KEY]: JSON.stringify({ addr: 'terra1old', blob: 'BO' }) } });
+  const { Store } = await loadStore({ version: '8.0', secure, cloud });
+  const v = JSON.parse(await Store.load());
+  ok('an older single-wallet record is merged too', v.list.some(w => w.addr === 'terra1old' && w.blob === 'BO'));
 }
 
 group('Send checks the address checksum');
@@ -111,5 +141,13 @@ group('auto-lock');
 const boot = fs.readFileSync(path.join(SRC, 'boot.js'), 'utf8');
 ok('the lock button and the timers share one lock', /\$\('#btn-lock'\)\.addEventListener\('click', lockWallet\)/.test(boot) && (boot.match(/lockWallet\(\)/g) || []).length >= 2);
 ok('locks after 10 min idle and after 5 min in the background', /IDLE_MS = 10 \* 60 \* 1000/.test(boot) && /HIDDEN_MS = 5 \* 60 \* 1000/.test(boot));
+ok('armed only once a saved wallet is open', /frontier:wallet', \(\) => \{ S\.ARMED = true/.test(boot)
+  && /S\.ARMED && S\.MNEMONIC && !document\.hidden/.test(boot) && /S\.ARMED && S\.MNEMONIC && hiddenAt/.test(boot));
+const onb = fs.readFileSync(path.join(SRC, 'onboarding.js'), 'utf8');
+ok('not while a new phrase is written down or imported', /S\.ARMED = false;[^\n]*\n\s*S\.MNEMONIC = bip39\.generateMnemonic/.test(onb) && /S\.ARMED = false;[^\n]*\n\s*S\.MNEMONIC = \$\('#imp'\)/.test(boot));
+const p2p = fs.readFileSync(path.join(SRC, 'p2p.js'), 'utf8');
+ok('a request from the P2P widget counts as activity', /frontier:activity/.test(p2p) && /addEventListener\('frontier:activity', touched\)/.test(boot));
+ok('the GRAM and P2P PIN sheets close on lock', /frontier:locked', function \(\) \{ if \(PENDING && !PENDING\.busy\)/.test(p2p)
+  && /frontier:locked', function\(\)\{\n  if \(SHEET\(\)\.hidden/.test(fs.readFileSync(path.join(SRC, 'gram.js'), 'utf8')));
 
 report();

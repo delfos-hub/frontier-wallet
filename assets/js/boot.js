@@ -1,14 +1,14 @@
-import { amt, fmt } from './chain.js?v=cfc5f6f3';
-import { finish } from './crypto.js?v=cfc5f6f3';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=cfc5f6f3';
+import { amt, fmt } from './chain.js?v=f00901a7';
+import { finish } from './crypto.js?v=f00901a7';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=f00901a7';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=cfc5f6f3';
-import { S } from './state.js?v=cfc5f6f3';
-import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=cfc5f6f3';
-import { enter, switchLink } from './wallets.js?v=cfc5f6f3';
-import { paintSendTok } from './tx.js?v=cfc5f6f3';
-import { luncRaw, openWallet } from './tokens.js?v=cfc5f6f3';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=f00901a7';
+import { S } from './state.js?v=f00901a7';
+import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=f00901a7';
+import { enter, switchLink } from './wallets.js?v=f00901a7';
+import { paintSendTok } from './tx.js?v=f00901a7';
+import { luncRaw, openWallet } from './tokens.js?v=f00901a7';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -131,6 +131,7 @@ const locked = () => document.dispatchEvent(new CustomEvent('frontier:locked'));
 
 function lockWallet(){
   if (S.SAVED && S.SAVED.watch) return;          // nothing to lock: no key here
+  S.ARMED = false;
   S.MNEMONIC = null; S.PASS = null; locked();
   $('#pu').value = ''; dots('pinrowU', 0); $('#umsg').textContent = '';
   go('unlock');
@@ -141,18 +142,29 @@ $('#btn-lock').addEventListener('click', lockWallet);
 /* Auto-lock. An unlocked wallet keeps its phrase in memory, and Send asks for
    no PIN while it is open; so it locks itself after IDLE_MS without a touch,
    and on coming back after HIDDEN_MS in the background. The background grace
-   is long enough to confirm a payment in a TON wallet and return. */
+   is long enough to confirm a payment in a TON wallet and return.
+
+   It is armed only while a saved wallet is open (frontier:wallet), never
+   while a new phrase is being written down or verified: there the phrase is
+   the only copy, and locking would wipe it (review of #34). Work inside the
+   P2P widget counts as activity: its touches stay in its own frame, so the
+   widget's requests (frontier:activity) and focus inside it refresh the timer. */
 const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000;
 let lastTouch = Date.now(), hiddenAt = 0;
+const touched = () => { lastTouch = Date.now(); };
 ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev =>
-  document.addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true, capture: true }));
+  document.addEventListener(ev, touched, { passive: true, capture: true }));
+document.addEventListener('frontier:activity', touched);
+document.addEventListener('frontier:wallet', () => { S.ARMED = true; touched(); });
+const inFrame = () => !!(document.activeElement && document.activeElement.tagName === 'IFRAME');
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
-  if (S.MNEMONIC && hiddenAt && Date.now() - hiddenAt >= HIDDEN_MS) lockWallet();
-  hiddenAt = 0; lastTouch = Date.now();
+  if (S.ARMED && S.MNEMONIC && hiddenAt && Date.now() - hiddenAt >= HIDDEN_MS) lockWallet();
+  hiddenAt = 0; touched();
 });
 setInterval(() => {
-  if (S.MNEMONIC && !document.hidden && Date.now() - lastTouch >= IDLE_MS) lockWallet();
+  if (inFrame()) touched();
+  if (S.ARMED && S.MNEMONIC && !document.hidden && Date.now() - lastTouch >= IDLE_MS) lockWallet();
 }, 30 * 1000);
 
 $('#btn-reset').addEventListener('click', async () => {
@@ -247,6 +259,7 @@ $('#btn-import').addEventListener('click', async () => {
   b.disabled = true; b.innerHTML = '<span class="spin"></span>Restoring';
   try {
     await libs();
+    S.ARMED = false;                             // no auto-lock until the imported wallet is saved and open
     S.MNEMONIC = $('#imp').value.trim().toLowerCase().replace(/\s+/g,' ');
     S.PASS = $('#ip1').value;
     if (!bip39.validateMnemonic(S.MNEMONIC, bip39.wordlist)) throw new Error('checksum');

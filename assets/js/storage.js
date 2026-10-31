@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=cfc5f6f3';
-import { S } from './state.js?v=cfc5f6f3';
+import { $, report, tg } from './shell.js?v=f00901a7';
+import { S } from './state.js?v=f00901a7';
 
 /* ---------------- storage ----------------
    The encrypted key is kept on this device only, in the best place the client
@@ -108,8 +108,21 @@ const Store = (() => {
             const kept = await store.save(c);
             if (kept && (await readHere()) === c) await dropCloud();
             v = c;
+          } else if (c === v) {
+            await dropCloud();                    // the same book: nothing to keep
           } else {
-            await dropCloud();                    // the device already has the current one
+            // What is kept is the whole wallet book, and the cloud copy may
+            // hold wallets made on another Telegram client (a desktop that
+            // refused SecureStorage). Its wallets the device lacks are added,
+            // by address; the cloud copy goes only once the merged book is
+            // kept here and reads back. Anything unreadable stays where it is.
+            const merged = mergeBooks(v, c);
+            if (merged === v) await dropCloud();
+            else if (merged) {
+              const kept = await store.save(merged);
+              if (kept && (await readHere()) === merged) await dropCloud();
+              v = merged;
+            }
           }
         }
       }
@@ -124,6 +137,25 @@ const Store = (() => {
   };
   return store;
 })();
+
+// The device's book with the other book's wallets it lacks (by address)
+// added; the device's active wallet stays active. Returns the device's own
+// string when nothing is added, null when either cannot be read.
+function mergeBooks(deviceRaw, otherRaw){
+  const a = parseBook(deviceRaw), b = parseBook(otherRaw);
+  if (!a || !b) return null;
+  const have = {}, ids = {};
+  a.list.forEach(w => { have[w.addr] = 1; ids[w.id] = 1; });
+  const add = b.list.filter(w => w && w.addr && !have[w.addr]);
+  if (!add.length) return deviceRaw;
+  add.forEach(w => {
+    const e = Object.assign({}, w);
+    if (!e.id || ids[e.id]) e.id = newId();
+    ids[e.id] = 1;
+    a.list.push(e);
+  });
+  return JSON.stringify(a);
+}
 
 const short = a => a.slice(0, 11) + '\u2026' + a.slice(-6);
 
