@@ -1,6 +1,6 @@
-import { finish } from './crypto.js?v=a1dfaf09';
-import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=a1dfaf09';
-import { S } from './state.js?v=a1dfaf09';
+import { finish } from './crypto.js?v=b4e773c0';
+import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=b4e773c0';
+import { S } from './state.js?v=b4e773c0';
 
 /* ---------------- length toggle ---------------- */
 $('#seg').addEventListener('click', e => {
@@ -53,7 +53,11 @@ function checkPass(){
 }
 function focusPin(sel){
   const el = $(sel);
-  if (document.activeElement !== el) el.focus();
+  // Already focused from code (after a wallet switch) is not enough on iOS:
+  // focus that did not come from a tap shows no keyboard, and the tap was
+  // then ignored because the field "had" focus. Focus it again in the tap.
+  if (document.activeElement === el) el.blur();
+  el.focus();
 }
 ['p1','p2'].forEach(id => {
   $('#' + id).addEventListener('input', checkPass);

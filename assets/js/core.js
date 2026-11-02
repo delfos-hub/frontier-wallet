@@ -12,10 +12,11 @@
        of a dash that reads like an error.
    It only adds elements next to the ones tokens.js owns and never writes into
    those, so the two cannot fight over the same text. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=a1dfaf09';
-import { $ } from './shell.js?v=a1dfaf09';
-import { S } from './state.js?v=a1dfaf09';
-import { stakingApr } from './stake.js?v=a1dfaf09';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=b4e773c0';
+import { $ } from './shell.js?v=b4e773c0';
+import { S } from './state.js?v=b4e773c0';
+import { stakingApr } from './stake.js?v=b4e773c0';
+import { refreshBalances } from './tokens.js?v=b4e773c0';
 
 const MARKETS = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=terra-luna,terrausd' +
   '&sparkline=true&price_change_percentage=24h';
@@ -171,6 +172,20 @@ if (core) {
     soon = setTimeout(update, 250);
   }).observe(core, { childList: true, subtree: true, characterData: true });
   document.addEventListener('frontier:wallet', () => { STK = null; update(); });
+  // Coming back to Home is when the balances are looked at: read them then
+  // (tokens.js skips it if it read less than 15 s ago). They used to wait for
+  // the 45 s tick, which after a swap made Home show the old amounts.
+  const home = document.getElementById('st-home');
+  if (home) {
+    let was = home.classList.contains('on');
+    new MutationObserver(() => {
+      const on = home.classList.contains('on');
+      if (on && !was) { STK = null; refreshBalances(false); }
+      was = on;
+    }).observe(home, { attributes: true, attributeFilter: ['class'] });
+  }
+  // after a send or any other transaction, once more when the block is surely in
+  document.addEventListener('frontier:tx', () => { STK = null; setTimeout(() => refreshBalances(true), 8000); });
   setInterval(update, 5 * 60000);
   update();
 }

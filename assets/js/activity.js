@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=a1dfaf09';
-import { DEC, knownAsset as marketAsset } from './market.js?v=a1dfaf09';
-import { $, go } from './shell.js?v=a1dfaf09';
-import { fiatOf, heldTokens } from './tokens.js?v=a1dfaf09';
-import { S } from './state.js?v=a1dfaf09';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=b4e773c0';
+import { DEC, knownAsset as marketAsset } from './market.js?v=b4e773c0';
+import { $, go } from './shell.js?v=b4e773c0';
+import { fiatOf, heldTokens } from './tokens.js?v=b4e773c0';
+import { S } from './state.js?v=b4e773c0';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -628,22 +628,30 @@ async function page(query, offset){
   } catch (e) { return []; }
 }
 
-async function fetchMore(me){
-  const lists = await Promise.all([
-    page("message.sender='" + me + "'", PAGE_OFF),
-    page("transfer.recipient='" + me + "'", PAGE_OFF),
-    page("wasm.to='" + me + "'", PAGE_OFF)
-  ]);
+// The three searches are slow on the public node, and the slowest one used to
+// hold the list back for all three: now each draws as soon as it arrives.
+async function fetchMore(me, drawn){
+  const off = PAGE_OFF;
   PAGE_OFF += 25;
+  const take = list => {
+    if (LOADED_FOR !== me) return list;
+    const seen = {};
+    ALL.forEach(t => { seen[t.txhash] = 1; });
+    for (const t of list) {
+      if (!t || seen[t.txhash]) continue;
+      seen[t.txhash] = 1;
+      ALL.push(t);
+    }
+    ALL.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    if (drawn && list.length) drawn();
+    return list;
+  };
+  const lists = await Promise.all([
+    page("message.sender='" + me + "'", off).then(take),
+    page("transfer.recipient='" + me + "'", off).then(take),
+    page("wasm.to='" + me + "'", off).then(take)
+  ]);
   MORE = lists.some(l => l.length === 25);
-  const seen = {};
-  ALL.forEach(t => { seen[t.txhash] = 1; });
-  for (const t of lists[0].concat(lists[1], lists[2])) {
-    if (!t || seen[t.txhash]) continue;
-    seen[t.txhash] = 1;
-    ALL.push(t);
-  }
-  ALL.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 function render(){
@@ -692,17 +700,70 @@ function pendingRow(j){
     '<div class="ac-w pend">' + (j.state === 'slow' ? 'not in a block yet' : 'waiting for the block') + '</div></div></div>';
 }
 
+// The last list read for this address, kept on the device: the tab opens on
+// it at once and the fresh read replaces it as it comes in. History is
+// public on chain anyway; only the latest few are kept, and never a big one.
+const CACHE_KEY = me => 'fw:act:' + me;
+function cached(me){
+  try { const v = JSON.parse(localStorage.getItem(CACHE_KEY(me)) || 'null'); return Array.isArray(v) ? v : null; }
+  catch (e) { return null; }
+}
+function keep(me){
+  try {
+    const s = JSON.stringify(ALL.slice(0, 30));
+    if (s.length < 600000) localStorage.setItem(CACHE_KEY(me), s);
+  } catch (e) { /* full or refused: the next open just reads the chain */ }
+}
+
+let READING = '';
 async function load(){
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
-  if (!me || LOADED === me) return;
+  if (!me || LOADED === me || READING === me) return;     // read already, or being read
+  READING = me;
+  try { await read(me); } finally { if (READING === me) READING = ''; }
+}
+async function read(me){
   const list = $('#ac-list');
-  if (!ALL.length || LOADED_FOR !== me) list.innerHTML = '<div class="empty">Reading the chain</div>';
+  const old = cached(me);
   ALL = []; PAGE_OFF = 0; SHOWN = 40; MORE = true; LOADED_FOR = me;
-  await fetchMore(me);
+  if (old && old.length) { ALL = old.slice(); render(); }
+  else list.innerHTML = '<div class="empty">Reading the chain</div>';
+  const fresh = [];
+  const prev = ALL;
+  ALL = fresh;
+  // until the first answer, the kept list stays on screen
+  let first = true;
+  await fetchMore(me, () => {
+    if (first && prev.length) {
+      // keep what the chain has not answered yet from the kept list, so the
+      // screen does not shrink to one search's results for a moment
+      const seen = {};
+      ALL.forEach(t => { seen[t.txhash] = 1; });
+      prev.forEach(t => { if (!seen[t.txhash]) ALL.push(t); });
+      ALL.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
+    first = false;
+    render();
+  });
+  if (LOADED_FOR !== me) return;
+  // nothing came back (the node is down): keep showing what we had, and read
+  // again next time instead of saving an empty list over it
+  if (!ALL.length && prev.length) { ALL = prev; render(); return; }
   LOADED = me;
   render();
+  keep(me);
 }
 let LOADED_FOR = '';
+
+// Read it in the background a few seconds after a wallet opens, when Home has
+// done its own reads: the tab then opens on a list instead of a spinner.
+document.addEventListener('frontier:wallet', () => {
+  clearTimeout(load._pre);
+  load._pre = setTimeout(() => {
+    const a = document.getElementById('st-activity');
+    if (!document.hidden && !(a && a.classList.contains('on'))) load();
+  }, 6000);
+});
 
 function openLink(url){
   if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink)
@@ -716,7 +777,7 @@ $('#ac-list').addEventListener('click', async e => {
     b.disabled = true; b.textContent = 'Reading\u2026';
     SHOWN += 40;
     const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
-    if (ALL.length < SHOWN && MORE) await fetchMore(me);
+    if (ALL.length < SHOWN && MORE) await fetchMore(me, render);
     render();
     return;
   }
