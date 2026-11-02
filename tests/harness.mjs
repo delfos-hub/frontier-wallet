@@ -22,6 +22,7 @@ const STUB_CHAIN = `
 // stand-in for chain.js: the same exports, backed by the fixture
 const C = () => globalThis.__CHAIN;
 export const LCD = 'https://lcd.test';
+export const LCD2 = 'https://lcd2.test';
 export const THIN_LUNC = 500000;
 export const EXTRA_PAIRS = [];
 export const FACTORIES = globalThis.__FACTORIES;

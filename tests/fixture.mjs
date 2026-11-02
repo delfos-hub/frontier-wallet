@@ -182,6 +182,9 @@ export const POOL_CODES = { 1: 'FixtureSwap' };
 export function makeChain(){
   const calls = { smart: 0, getJSON: 0, byMsg: {} };
   const codes = {};
+  // the second LCD (harness LCD2): answers like the first unless a test makes
+  // it lie about a code or go down
+  const second = { codes: {}, down: false };
 
   function poolOf(addr){ return POOLS[addr] || null; }
 
@@ -242,11 +245,15 @@ export function makeChain(){
     }
     const ci = url.match(/\/cosmwasm\/wasm\/v1\/contract\/([^/]+)$/);
     if (ci) {
+      if (url.indexOf('https://lcd2.test/') === 0) {
+        if (second.down) throw fail(503, 'unavailable');
+        if (second.codes[ci[1]] !== undefined) return { contract_info: { code_id: String(second.codes[ci[1]]) } };
+      }
       if (!POOLS[ci[1]] && codes[ci[1]] === undefined) throw fail(404, 'no such contract');
       return { contract_info: { code_id: String(codes[ci[1]] !== undefined ? codes[ci[1]] : 1) } };
     }
     throw fail(501, 'no such endpoint');
   }
 
-  return { smart, getJSON, calls, codes };
+  return { smart, getJSON, calls, codes, second };
 }

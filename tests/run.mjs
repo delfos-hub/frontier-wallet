@@ -260,6 +260,52 @@ group('only pool code is quoted or signed for');
   ok('the swap re-checks every leg before it signs', check > 0 && sign > check && /for \(const leg of QUOTE\.legs\)/.test(go.slice(0, check)));
 }
 
+group('before signing, two LCDs must agree on a pool\'s code');
+{
+  // one LCD lying about a code id is not enough to get a signature
+  const { mod, chain } = await loadMarket();
+  await mod.owMarket();
+  await mod.graph();
+  await mod.checkPool('P_USTC_LUNC', true);
+  ok('both LCDs answering the same listed code pass', mod.poolDex('P_USTC_LUNC') === 'FixtureSwap');
+
+  chain.codes.P_USTC_LUNC = 1; chain.second.codes.P_USTC_LUNC = 666;
+  let e = await mod.checkPool('P_USTC_LUNC', true).catch(x => x);
+  ok('the second LCD reporting another code stops the swap', e instanceof Error && /disagree/.test(e.message), String(e && e.message));
+  ok('and the pool is no longer trusted for the session', mod.poolDex('P_USTC_LUNC') === '');
+
+  // the lie can be on either side: the first says a listed code, the second the real one
+  chain.codes.P_USTC_LUNC = 666; chain.second.codes.P_USTC_LUNC = 1;
+  e = await mod.checkPool('P_USTC_LUNC', true).catch(x => x);
+  ok('the first LCD disagreeing stops it too', e instanceof Error && /disagree/.test(e.message), String(e && e.message));
+
+  delete chain.codes.P_USTC_LUNC; delete chain.second.codes.P_USTC_LUNC;
+  chain.second.down = true;
+  e = await mod.checkPool('P_USTC_LUNC', true).catch(x => x);
+  ok('the second LCD down stops the swap instead of skipping the check', e instanceof Error && /second LCD/.test(e.message), String(e && e.message));
+  const reads = chain.calls.getJSON;
+  await mod.checkPool('P_USTC_LUNC');
+  ok('quoting still needs only one LCD', chain.calls.getJSON === reads + 1 && mod.poolDex('P_USTC_LUNC') === 'FixtureSwap');
+  chain.second.down = false;
+}
+
+group('Weso DeFi pools: allowed, with an unaudited warning');
+{
+  const { mod, chain } = await loadMarket({ poolCodes: { 1: 'FixtureSwap', 2: 'Weso DeFi' } });
+  await mod.owMarket();
+  await mod.graph();
+  chain.codes.P_USTC_LUNC = 2;
+  const q = await mod.simulateSwap('P_USTC_LUNC', A.USTC, '1000000', 'ts').catch(x => x);
+  ok('a Weso pool is quoted', !(q instanceof Error), String(q && q.message));
+  ok('and known as Weso DeFi', mod.poolDex('P_USTC_LUNC') === 'Weso DeFi');
+
+  // swap.js: the confirm screen warns when any leg runs through a Weso pool
+  const src = fs.readFileSync(path.resolve('assets/js/swap.js'), 'utf8');
+  const cl = src.slice(src.indexOf('function confirmLines'), src.indexOf('function openConfirm'));
+  ok('the confirm screen flags a Weso leg as unaudited',
+     /QUOTE\.legs\.some\(l => poolDex\(l\.pair\) === 'Weso DeFi'\)/.test(cl) && /unaudited/.test(cl));
+}
+
 group('two hops: candidates are filtered before they are capped');
 {
   // eight neighbours, only the last of which reaches a base. Capping first and

@@ -1,7 +1,10 @@
-import { $ } from './shell.js?v=9e19b0d8';
+import { $ } from './shell.js?v=ea2de9a6';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
+// A second operator, asked only for what a signature depends on (market.js
+// checkPool): one LCD lying about a pool's code is not enough to pass it.
+const LCD2 = 'https://lcd.terra-classic.hexxagon.io';
 // A seed, not the whole list. Everything that trades is discovered from the
 // factory pools below. What lives here is what discovery cannot see: TCO has
 // no pool at all yet, so nothing but this line would ever show it.
@@ -337,4 +340,4 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, POOL_CODES, THIN_LUNC, amt, chainLogo, clean, dbg, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
+export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_CW20, KNOWN_IBC, LCD, LCD2, NATIVE, POOL_CODES, THIN_LUNC, amt, chainLogo, clean, dbg, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
