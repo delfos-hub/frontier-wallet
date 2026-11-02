@@ -24,7 +24,8 @@ const stubs = {
 export const iconHTML=()=>''; export const paintIcons=()=>{};`,
   'shell.js': `export const $=()=>null; export const buzz=()=>{}; export const go=()=>{}; export const tap=()=>{};`,
   'state.js': `export const S={};`,
-  'tokens.js': `export const heldTokens=()=>[]; export const refreshBalances=()=>{};`,
+  'tokens.js': `export const heldTokens=()=>[]; export const refreshBalances=()=>{}; export const sortHeld=a=>a;`,
+  'notify.js': `export const notify=()=>{}; export const chime=()=>{};`,
 };
 for (const [f, src] of Object.entries(stubs)) fs.writeFileSync(path.join(dir, f), src);
 fs.writeFileSync(path.join(dir, 'tx.js'), fs.readFileSync(path.resolve('assets/js/tx.js'), 'utf8').replace(/\?v=[0-9a-f]+/g, ''));
