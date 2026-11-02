@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=dbdb915a';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=dbdb915a';
-import { $, buzz, go, libs, report } from './shell.js?v=dbdb915a';
-import { S } from './state.js?v=dbdb915a';
-import { decryptSeed } from './storage.js?v=dbdb915a';
-import { dryRunSwap, sendSwap } from './tx.js?v=dbdb915a';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=4b738c98';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=4b738c98';
+import { $, buzz, go, libs, report } from './shell.js?v=4b738c98';
+import { S } from './state.js?v=4b738c98';
+import { decryptSeed } from './storage.js?v=4b738c98';
+import { dryRunSwap, sendSwap } from './tx.js?v=4b738c98';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -344,6 +344,9 @@ function say(text, bad){
   m.style.color = bad ? 'var(--red)' : 'var(--muted)';
 }
 
+// a lock while a request waits for its PIN refuses it and closes the sheet
+if (typeof document !== 'undefined') document.addEventListener('frontier:locked', function () { if (PENDING && !PENDING.busy) finish({ error: 'wallet is locked' }); });
+
 function finish(result){
   if (!PENDING) return;
   clearInterval(PENDING.timer);
@@ -464,6 +467,8 @@ window.addEventListener('message', function (ev) {
   const d = ev.data;
   if (!d || typeof d !== 'object' || d.channel !== CHANNEL) return;
   if (typeof d.id !== 'string' || !d.id || d.id.length > 100) return;
+  // a request from the widget is the person working in it (auto-lock, boot.js)
+  if (d.type === 'execute' || d.type === 'execute-batch') document.dispatchEvent(new CustomEvent('frontier:activity'));
 
   if (d.type === 'get-address') {
     const a = addrOf();
