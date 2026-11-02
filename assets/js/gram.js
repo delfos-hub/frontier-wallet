@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=7cf01e75';
-import { GRAM_NET, TERMS } from './gram-net.js?v=7cf01e75';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=7cf01e75';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=7cf01e75';
-import { S } from './state.js?v=7cf01e75';
-import { decryptSeed } from './storage.js?v=7cf01e75';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=7cf01e75';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=7cf01e75';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=7cf01e75';
-import { chime, notify } from './notify.js?v=7cf01e75';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=6877db8c';
+import { GRAM_NET, TERMS } from './gram-net.js?v=6877db8c';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=6877db8c';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=6877db8c';
+import { S } from './state.js?v=6877db8c';
+import { decryptSeed } from './storage.js?v=6877db8c';
+import { sendSwap, signArbitrary, toRaw } from './tx.js?v=6877db8c';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=6877db8c';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=6877db8c';
+import { chime, notify } from './notify.js?v=6877db8c';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1614,6 +1614,12 @@ function closeSheet(){
   $('#gx-pin').value = '';
   PEND = null;
 }
+// a lock while the PIN sheet is up cancels what it was asking for
+document.addEventListener('frontier:locked', function(){
+  if (SHEET().hidden || (PEND && PEND.busy)) return;
+  const p = PEND; closeSheet();
+  if (p && !p.settled) p.reject(new Error('cancelled'));
+});
 $('#gx-sheet-x').addEventListener('click', function(){
   if (!PEND) { closeSheet(); return; }
   if (PEND.busy) return;
