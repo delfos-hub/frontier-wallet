@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=7cf01e75';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=7cf01e75';
-import { $, buzz, go, libs, report } from './shell.js?v=7cf01e75';
-import { S } from './state.js?v=7cf01e75';
-import { decryptSeed } from './storage.js?v=7cf01e75';
-import { dryRunSwap, sendSwap } from './tx.js?v=7cf01e75';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=133aef5f';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=133aef5f';
+import { $, buzz, go, libs, report } from './shell.js?v=133aef5f';
+import { S } from './state.js?v=133aef5f';
+import { decryptSeed } from './storage.js?v=133aef5f';
+import { dryRunSwap, sendSwap } from './tx.js?v=133aef5f';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -38,7 +38,7 @@ import { dryRunSwap, sendSwap } from './tx.js?v=7cf01e75';
 // frame on our origin could read the wallet's storage directly and would not
 // need a bridge at all. For now the mainnet build on the preview Worker
 // (widgets 0fb4a5f); it moves to its own Delfos domain later.
-const WIDGET_ORIGIN = 'https://widgets-p2p-preview.repegclub.workers.dev';
+const WIDGET_ORIGIN = 'https://p2p.delfos-hub.net';
 
 // The otc-p2p contract on columbus-5: code 11745, no wasm admin, admin = the
 // Admin multisig terra1l74mn5dh8lsun003ukzzm60crgdgav9fff6kx7, treasury and
