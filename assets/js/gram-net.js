@@ -96,7 +96,10 @@ const GRAM_NET = NETS.testnet;
 
 // The Terms of Use the swap is offered under (terms.html). A new version id
 // asks every user to accept again before their next offer or buy.
-// 1.0: the text approved by the team on 28 Oct 2026.
-const TERMS = { version: '1.0', label: '1.0', date: '2026-10-28', url: 'terms.html' };
+// 1.0: the text approved by the team on 28 Oct 2026, published 2 Nov 2026
+// with the support contacts and the compensation claims procedure. The id is
+// 1.0-final so that everyone who accepted the testnet draft accepts again;
+// users see the label.
+const TERMS = { version: '1.0-final', label: '1.0', date: '2026-11-02', url: 'terms.html' };
 
 export { GRAM_NET, NETS, TERMS };
