@@ -20,8 +20,8 @@
    screen) and while a sheet is open (a confirmation is never covered); they
    come up, in order, as soon as both are clear. A card with a key already
    queued or shown is not shown twice in this session. */
-import { iconHTML, paintIcons } from './chain.js?v=ea2de9a6';
-import { $, buzz } from './shell.js?v=ea2de9a6';
+import { iconHTML, paintIcons } from './chain.js?v=dbdb915a';
+import { $, buzz } from './shell.js?v=dbdb915a';
 
 let AUDIO = null;
 document.addEventListener('pointerdown', function () {
