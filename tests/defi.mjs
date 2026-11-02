@@ -3,6 +3,7 @@
    Every fixture below is an answer a mainnet contract gave on 29 Oct 2026
    (defi-discover.mjs), trimmed to the fields that matter. defi-parse.js has
    no imports, so it is loaded as it ships. */
+import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { ok, group } from './harness.mjs';
@@ -105,9 +106,32 @@ group('GRDX staking');
   ok('a list is summed', P.grdxStake({}, [{ amount: '2' }, { amount: '3' }]).staked === '5');
 }
 
+group('the sweep over every staking contract');
+{
+  const src = fs.readFileSync(path.join(SRC, 'defi.js'), 'utf8');
+  const i = src.indexOf('function sweepDue(');
+  const sweepDue = new Function(src.slice(i, src.indexOf('\n', i)) + '\nreturn sweepDue;')();
+  ok('the first scan of an address sweeps', sweepDue({}, false) === true && sweepDue(null, false) === true);
+  ok('a later scan does not', sweepDue({ swept: Date.now() - 86400000 }, false) === false);
+  ok('Scan again always does', sweepDue({ swept: Date.now() }, true) === true);
+  ok('defi.js asks sweepDue before sweeping', /if \(sweepDue\(was, full\)\)/.test(src));
+}
+
 group('Garuda order book');
 {
   const o = P.orders({ orders: [{ id: 100, owner: 'me', offer_asset: { cw20: 'terra1wsmy' }, offer_amount: '25514445715',
                                   ask_asset: { native: 'uluna' }, ask_amount: '1000' }] });
   ok('an open order', o.length === 1 && o[0].id === '100' && o[0].give.raw === '25514445715' && o[0].get.key === 'native:uluna');
+  // Garuda's own answer for order #100 on columbus-5 (30 Oct 2026): cancelled,
+  // with the unsold part in remaining_offer
+  const real = { id: 100, owner: 'terra1jhtm', offer_asset: { cw20: 'terra1wsmy' }, offer_amount: '25514445715',
+    remaining_offer: '4544135712', ask_asset: { native: 'uluna' }, min_receive: '87893320273',
+    filled_offer_amount: '20970310003', filled_receive_amount: '72022756963', status: 'cancelled',
+    created_at: 1780071074, deadline: null, filled_at: null };
+  ok('a cancelled order is not a position', P.orders({ orders: [real] }).length === 0);
+  ok('a filled or expired one neither', P.orders({ orders: [Object.assign({}, real, { status: 'filled' }), Object.assign({}, real, { status: 'Expired' })] }).length === 0);
+  const open = P.orders({ orders: [Object.assign({}, real, { status: 'open' })] });
+  ok('an open one counts what is left to sell (remaining_offer), not the whole order',
+    open.length === 1 && open[0].give.raw === '4544135712', open[0] && open[0].give.raw);
+  ok('a partly filled open order is still open', P.orders({ orders: [Object.assign({}, real, { status: 'partially_filled' })] }).length === 1);
 }

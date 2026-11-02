@@ -152,10 +152,19 @@ function grdxStake(cfg, assets){
 }
 
 /* Garuda order book: open limit orders.
-   user_orders { orders: [{ id, owner, offer_asset, offer_amount, remaining..., ask_asset, ... }] } */
+   user_orders { orders: [{ id, owner, offer_asset, offer_amount, remaining_offer,
+     ask_asset, min_receive, filled_offer_amount, status, ... }] }
+   It lists an address's closed orders too ("cancelled", "filled"): only an
+   order still open is a position. Read from columbus-5 on 30 Oct 2026: order
+   #100 came back cancelled with 4,544 of 25,514 VIMA in remaining_offer, and
+   was shown as a 25,514 VIMA order whose cancel the contract refused. */
+const ORDER_CLOSED = /^(cancel+ed|filled|expired|closed|completed|done|executed)$/i;
 function orders(d){
-  return (((d || {}).orders) || []).map(function (o) {
-    const left = isNum(o.remaining_offer_amount) ? o.remaining_offer_amount
+  return (((d || {}).orders) || []).filter(function (o) {
+    return !(o && typeof o.status === 'string' && ORDER_CLOSED.test(o.status.trim()));
+  }).map(function (o) {
+    const left = isNum(o.remaining_offer) ? o.remaining_offer
+      : isNum(o.remaining_offer_amount) ? o.remaining_offer_amount
       : isNum(o.remaining_amount) ? o.remaining_amount
       : isNum(o.remaining) ? o.remaining : o.offer_amount;
     return {
