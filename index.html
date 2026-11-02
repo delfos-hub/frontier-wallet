@@ -20,62 +20,126 @@
 <style>html,body{background:#0B0F1A;margin:0}</style>
 <style>
 /* заставка: инлайн, потому что она должна пережить отсутствие app.css.
-   Все классы с префиксом fw-: короткие имена вроде .bar уже заняты в app.css. */
-#fw-splash{position:fixed;inset:0;z-index:9999;background:#0B0F1A;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  transition:opacity .26s ease}
-/* Two layers of text fading through each other reads as a glitch, so the
-   wordmark leaves first and the backdrop follows. By the time anything below
-   is visible, the splash has nothing left to show. */
-#fw-splash.gone{opacity:0;pointer-events:none}
-#fw-splash.gone .fw-mark,#fw-splash.gone .fw-tag{opacity:0;
-  transition:opacity .12s ease}
-#fw-splash .fw-halo{position:absolute;top:50%;left:50%;width:460px;height:460px;
-  transform:translate(-50%,-56%);border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle,rgba(123,92,255,.30) 0%,rgba(123,92,255,.10) 45%,rgba(123,92,255,0) 70%);
-  animation:fw-breathe 3.4s ease-in-out infinite}
-/* On a desktop window the flex box is as wide as the screen, and a mark that
-   only caps its own width still sits centred in all of it. The column has to
-   be capped, not just the logo. */
-#fw-splash .fw-inner{width:100%;max-width:520px;padding:0 20px;
-  display:flex;flex-direction:column;align-items:center}
-#fw-splash .fw-mark{position:relative;width:100%;max-width:250px;aspect-ratio:1200/431;
-  margin:0 auto;overflow:hidden;animation:fw-rise .85s cubic-bezier(.2,.9,.3,1) both}
+   Все классы с префиксом fw-: короткие имена вроде .bar уже заняты в app.css.
+   The launch: a line of light cuts the dark (the rift of the logo), the
+   letters come out of it to both sides while the line draws back into the
+   logo's own rift, a glint runs across them and a
+   thin line keeps moving until the app is ready. Leaving, the dark splits
+   along the rift like two doors and the screen behind slides in. */
+#fw-splash{position:fixed;inset:0;z-index:9999;overflow:hidden;--mw:min(260px,74vw);
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+#fw-splash .fw-door{position:absolute;top:0;bottom:0;width:calc(50% + 7px);background:#0B0F1A;
+  transition:transform .75s cubic-bezier(.7,0,.2,1)}
+#fw-splash .fw-door.l{left:0;box-shadow:inset -1px 0 0 rgba(0,212,255,0)}
+#fw-splash .fw-door.r{right:0;width:calc(50% - 7px)}
+#fw-splash .fw-door::after{content:'';position:absolute;top:0;bottom:0;width:2px;opacity:0;
+  background:linear-gradient(180deg,transparent,#A893FF 30%,#00D4FF 70%,transparent);
+  box-shadow:0 0 18px 4px rgba(0,212,255,.45);transition:opacity .2s}
+#fw-splash .fw-door.l::after{right:-1px} #fw-splash .fw-door.r::after{left:-1px}
+#fw-splash .fw-grid{position:absolute;inset:0;pointer-events:none;opacity:0;
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 46%,rgba(123,92,255,.20),transparent 70%),
+    linear-gradient(rgba(123,92,255,.07) 1px,transparent 1px) 0 0/34px 34px,
+    linear-gradient(90deg,rgba(123,92,255,.07) 1px,transparent 1px) 0 0/34px 34px;
+  -webkit-mask-image:radial-gradient(ellipse 70% 55% at 50% 46%,#000 20%,transparent 75%);
+  mask-image:radial-gradient(ellipse 70% 55% at 50% 46%,#000 20%,transparent 75%);
+  animation:fw-fade 1.4s ease-out .35s forwards}
+#fw-splash .fw-beam{position:absolute;top:0;bottom:0;left:calc(50% + 7px);width:2px;margin-left:-1px;
+  background:linear-gradient(180deg,transparent,#A893FF 25%,#fff 50%,#00D4FF 75%,transparent);
+  box-shadow:0 0 14px 2px rgba(123,92,255,.7),0 0 40px 6px rgba(0,212,255,.25);
+  transform:scaleY(0);opacity:0;animation:fw-beam 1.7s cubic-bezier(.5,0,.2,1) .1s forwards}
+#fw-splash .fw-flash{position:absolute;top:46%;left:calc(50% + 7px);width:520px;height:520px;margin:-260px 0 0 -260px;
+  border-radius:50%;pointer-events:none;opacity:0;transform:scale(.2);
+  background:radial-gradient(circle,rgba(168,147,255,.45),rgba(0,212,255,.12) 40%,transparent 68%);
+  animation:fw-flash 1.1s ease-out .5s forwards}
+#fw-splash .fw-inner{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;
+  transition:opacity .25s ease,transform .45s cubic-bezier(.4,0,.2,1)}
+/* a pool of dark behind the wordmark: the beam and the flash pass behind it,
+   so the letters stand on black instead of on the light */
+#fw-splash .fw-inner::before{content:'';position:absolute;z-index:-1;left:50%;top:50%;width:170%;height:300%;
+  transform:translate(-50%,-52%);pointer-events:none;opacity:0;
+  background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(11,15,26,.96) 35%,rgba(11,15,26,.7) 55%,rgba(11,15,26,0) 72%);
+  animation:fw-fade .5s ease-out .5s forwards}
+#fw-splash .fw-mark{position:relative;width:var(--mw);aspect-ratio:1200/431;overflow:visible}
 #fw-splash .fw-mark img{position:absolute;display:block;border:0}
-#fw-splash .fw-seam{animation:fw-glow 2s ease-in-out .4s infinite}
-#fw-splash .fw-tag{position:relative;margin-top:20px;font-family:'Exo 2',system-ui,sans-serif;
-  font-size:10.5px;letter-spacing:.34em;text-transform:uppercase;color:#6B82A8;
-  animation:fw-rise .85s ease-out .3s both}
-@keyframes fw-rise{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
-@keyframes fw-glow{0%,100%{filter:brightness(1)}50%{filter:brightness(2.1)}}
-@keyframes fw-breathe{0%,100%{opacity:.85}50%{opacity:1}}
+#fw-splash .fw-l{opacity:0;
+  transform:translateX(calc(var(--x) * var(--mw) / 100)) scaleX(.2);filter:blur(6px) brightness(2.2);
+  animation:fw-out .7s cubic-bezier(.16,1,.3,1) forwards,fw-glint .6s ease-in-out forwards;
+  animation-delay:calc(.55s + var(--i) * 55ms),calc(1.4s + (50 - var(--x)) * 7ms)}
+#fw-splash .fw-seam{opacity:0;animation:fw-seam .6s ease-out .45s forwards,fw-pulse 2.4s ease-in-out 1.6s infinite;
+  filter:drop-shadow(0 0 6px rgba(123,92,255,.9))}
+#fw-splash .fw-tag{margin-top:22px;font-family:'Exo 2',system-ui,sans-serif;font-size:10.5px;font-weight:500;
+  letter-spacing:.7em;text-transform:uppercase;color:#7F92B8;opacity:0;margin-right:-.34em;
+  animation:fw-tag .9s cubic-bezier(.2,.8,.2,1) 1.15s forwards}
+#fw-splash .fw-load{position:absolute;left:50%;bottom:calc(64px + env(safe-area-inset-bottom,0px));width:120px;height:2px;
+  margin-left:-60px;border-radius:2px;overflow:hidden;background:rgba(107,130,168,.16);opacity:0;
+  animation:fw-fade .5s ease-out 1.5s forwards;transition:opacity .2s}
+#fw-splash .fw-load i{position:absolute;top:0;bottom:0;width:40%;border-radius:2px;
+  background:linear-gradient(90deg,transparent,#A893FF,#00D4FF,transparent);animation:fw-run 1.1s ease-in-out infinite}
+
+/* leaving: the content goes first, then the doors open along the rift */
+#fw-splash.gone{pointer-events:none}
+#fw-splash.gone .fw-inner{opacity:0;transform:scale(1.06)}
+#fw-splash.gone .fw-load,#fw-splash.gone .fw-grid,#fw-splash.gone .fw-flash{opacity:0 !important;transition:opacity .2s}
+#fw-splash.gone .fw-beam{animation:fw-split .7s ease-out forwards}
+#fw-splash.gone .fw-door{transition-delay:.18s}
+#fw-splash.gone .fw-door.l{transform:translateX(-100%)}
+#fw-splash.gone .fw-door.r{transform:translateX(100%)}
+#fw-splash.gone .fw-door::after{opacity:1}
+
+/* the screen behind arrives with the doors */
+body.fw-enter .step.on>*{animation:fw-in .7s cubic-bezier(.2,.9,.3,1) both}
+body.fw-enter .step.on>*:nth-child(1){animation-delay:.32s}
+body.fw-enter .step.on>*:nth-child(2){animation-delay:.38s}
+body.fw-enter .step.on>*:nth-child(3){animation-delay:.44s}
+body.fw-enter .step.on>*:nth-child(4){animation-delay:.5s}
+body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
+
+@keyframes fw-beam{0%{opacity:1;transform:scaleY(0)}30%{opacity:1;transform:scaleY(1)}55%{opacity:.9;transform:scaleY(1)}100%{opacity:0;transform:scaleY(.14)}}
+@keyframes fw-flash{0%{opacity:0;transform:scale(.2)}30%{opacity:1}100%{opacity:.55;transform:scale(1)}}
+@keyframes fw-out{to{opacity:1;transform:none;filter:none}}
+@keyframes fw-seam{0%{opacity:0;filter:brightness(3) drop-shadow(0 0 10px #fff)}100%{opacity:1}}
+@keyframes fw-pulse{0%,100%{filter:drop-shadow(0 0 4px rgba(123,92,255,.7))}50%{filter:drop-shadow(0 0 12px rgba(0,212,255,.9)) brightness(1.4)}}
+@keyframes fw-glint{0%,100%{filter:none}45%{filter:brightness(1.9) drop-shadow(0 0 6px rgba(168,147,255,.8))}}
+@keyframes fw-tag{to{opacity:1;letter-spacing:.34em}}
+@keyframes fw-fade{to{opacity:1}}
+@keyframes fw-run{0%{left:-40%}100%{left:100%}}
+@keyframes fw-split{0%{opacity:1;width:2px}40%{opacity:1;width:6px}100%{opacity:0;width:2px}}
+@keyframes fw-in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){
-  #fw-splash .fw-mark,#fw-splash .fw-tag,#fw-splash .fw-halo,
-  #fw-splash .fw-seam{animation:none}
+  #fw-splash *,#fw-splash *::after,body.fw-enter .step.on>*{animation:none !important;transition:none !important}
+  #fw-splash .fw-l,#fw-splash .fw-seam,#fw-splash .fw-tag,#fw-splash .fw-grid,#fw-splash .fw-load{opacity:1;transform:none;filter:none}
+  #fw-splash .fw-tag{letter-spacing:.34em}
+  #fw-splash .fw-beam,#fw-splash .fw-flash{display:none}
+  #fw-splash.gone{opacity:0}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=7cf01e75">
+<link rel="stylesheet" href="assets/css/app.css?v=f4399a89">
 </head>
 <body>
 <div id="rt"></div>
 <div id="fw-splash">
-  <div class="fw-halo"></div>
+  <div class="fw-door l"></div><div class="fw-door r"></div>
+  <div class="fw-grid"></div>
+  <div class="fw-flash"></div>
+  <div class="fw-beam"></div>
   <div class="fw-inner">
-  <div class="fw-mark">
-    <img src="assets/letters/F.png"  alt="" style="left:0.0%;top:37.82%;width:8.17%;height:23.43%">
-    <img src="assets/letters/R.png"  alt="" style="left:12.5%;top:38.05%;width:8.83%;height:23.67%">
-    <img src="assets/letters/O.png"  alt="" style="left:25.92%;top:38.05%;width:8.75%;height:23.67%">
-    <img src="assets/letters/N.png"  alt="" style="left:39.33%;top:37.82%;width:8.67%;height:23.9%">
-    <img src="assets/letters/spike.png" class="fw-seam" alt="" style="left:50.92%;top:0.0%;width:3.42%;height:100.0%">
-    <img src="assets/letters/T.png"  alt="" style="left:56.83%;top:37.82%;width:9.0%;height:23.43%">
-    <img src="assets/letters/I.png"  alt="" style="left:70.42%;top:37.82%;width:1.92%;height:23.43%">
-    <img src="assets/letters/E.png"  alt="" style="left:78.17%;top:37.82%;width:8.58%;height:23.43%">
-    <img src="assets/letters/R2.png" alt="" style="left:91.42%;top:37.82%;width:8.58%;height:23.9%">
+    <div class="fw-mark">
+      <img class="fw-l" src="assets/letters/F.png" alt="" style="left:0.0%;top:37.82%;width:8.17%;height:23.43%;--x:48.5;--i:7">
+      <img class="fw-l" src="assets/letters/R.png" alt="" style="left:12.5%;top:38.05%;width:8.83%;height:23.67%;--x:35.7;--i:5">
+      <img class="fw-l" src="assets/letters/O.png" alt="" style="left:25.92%;top:38.05%;width:8.75%;height:23.67%;--x:22.3;--i:3">
+      <img class="fw-l" src="assets/letters/N.png" alt="" style="left:39.33%;top:37.82%;width:8.67%;height:23.9%;--x:9.0;--i:1">
+      <img class="fw-seam" src="assets/letters/spike.png" alt="" style="left:50.92%;top:0;width:3.42%;height:100%">
+      <img class="fw-l" src="assets/letters/T.png" alt="" style="left:56.83%;top:37.82%;width:9.0%;height:23.43%;--x:-8.7;--i:0">
+      <img class="fw-l" src="assets/letters/I.png" alt="" style="left:70.42%;top:37.82%;width:1.92%;height:23.43%;--x:-18.7;--i:2">
+      <img class="fw-l" src="assets/letters/E.png" alt="" style="left:78.17%;top:37.82%;width:8.58%;height:23.43%;--x:-29.8;--i:4">
+      <img class="fw-l" src="assets/letters/R2.png" alt="" style="left:91.42%;top:37.82%;width:8.58%;height:23.9%;--x:-43.1;--i:6">
+    </div>
+    <div class="fw-tag">Terra Classic Wallet</div>
   </div>
-  <div class="fw-tag">Terra Classic Wallet</div>
-  </div>
+  <div class="fw-load"><i></i></div>
 </div>
-<script src="assets/js/splash.js?v=7cf01e75"></script>
+<script src="assets/js/splash.js?v=f4399a89"></script>
 
 <div class="orb"></div>
 
@@ -284,6 +348,7 @@
 <section class="step wpad" id="st-home">
   <!-- pull to refresh (home-tools.js) -->
   <div class="ptr" id="ptr"><span class="ptr-ic"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></span></div>
+  <div class="fw-brand"><img src="assets/frontier-wordmark.png" alt="Frontier" width="161" height="58"></div>
   <div class="wtop">
     <div class="wava"></div>
     <div class="wwho">
@@ -830,30 +895,66 @@
 </section>
 
 <section class="step wpad" id="st-settings">
-  <div class="head" style="margin:6px 4px 14px"><h2>Settings</h2></div>
-  <div class="store" id="store-kind">stored in <b>...</b></div>
-  <div class="set" id="set-network">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg>
-    <span>Network</span><b style="font-size:12px;color:var(--muted);font-weight:400">columbus-5</b></div>
-  <div class="set" id="set-wallets">
-    <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h2"/><path d="M6 6l9-3 1.5 3"/></svg>
-    <span>Wallets</span></div>
-  <div class="set" id="set-seed">
-    <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-    <span>Recovery phrase</span></div>
-  <div class="set" id="btn-lock">
-    <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-    <span>Lock wallet</span></div>
-  <div class="set" id="set-lang">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg>
-    <span>Language</span><b style="font-size:12px;color:var(--muted);font-weight:400">English</b></div>
-  <div class="set" id="btn-close" hidden>
-    <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-    <span>Close the app</span></div>
-  <div class="set danger" id="btn-reset">
-    <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-    <span>Delete all wallets from this device</span></div>
+  <div class="head st-head"><h2>Settings</h2></div>
+  <div class="st-vault">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.6c0 4.4 3.1 8.2 7.5 9.4 4.4-1.2 7.5-5 7.5-9.4V6Z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>
+    <div class="store" id="store-kind">stored in <b>...</b></div>
+  </div>
+
+  <div class="st-cap">Wallet</div>
+  <div class="st-group">
+    <button class="st-row" id="set-wallets" type="button">
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="d" d="M6 4.5h11a2 2 0 0 1 2 2V8H6Z"/><rect class="d" x="3" y="8" width="18" height="12" rx="2.5"/><path d="M6 4.5h11a2 2 0 0 1 2 2V8"/><rect x="3" y="8" width="18" height="12" rx="2.5"/><path d="M21 12h-4a2 2 0 0 0 0 4h4"/><circle cx="17.2" cy="14" r=".6"/></svg>
+      <span class="st-txt"><b>Wallets</b><small>Switch, add or watch</small></span>
+      <svg class="st-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+    </button>
+    <button class="st-row" id="set-seed" type="button">
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><circle class="d" cx="8" cy="15" r="4.5"/><circle cx="8" cy="15" r="4.5"/><circle cx="8" cy="15" r="1.4"/><path d="m11.2 11.8 8.3-8.3"/><path d="m16.5 6.5 2.5 2.5"/><path d="m14 9 2 2"/></svg>
+      <span class="st-txt"><b>Recovery phrase</b><small>Shown after your PIN</small></span>
+      <svg class="st-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+    </button>
+    <button class="st-row" id="btn-lock" type="button">
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><rect class="d" x="4.5" y="10.5" width="15" height="10" rx="2.5"/><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14.5v2.5"/></svg>
+      <span class="st-txt"><b>Lock wallet</b><small>Ask for the PIN again</small></span>
+    </button>
+  </div>
+
+  <div class="st-cap">App</div>
+  <div class="st-group">
+    <button class="st-row" id="set-lang" type="button">
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="d" d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-5 4v-4h.5A2.5 2.5 0 0 1 4 13.5Z"/><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-5 4v-4h.5A2.5 2.5 0 0 1 4 13.5Z"/><path d="m8.5 12.5 3.5-7 3.5 7"/><path d="M9.8 10h4.4"/></svg>
+      <span class="st-txt"><b>Language</b></span>
+      <b class="st-val" id="lang-cur" data-no-i18n>English</b>
+      <svg class="st-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+    </button>
+    <div class="st-row st-info" id="set-network">
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><circle class="d" cx="12" cy="5.5" r="2.5"/><circle class="d" cx="5" cy="18" r="2.5"/><circle class="d" cx="19" cy="18" r="2.5"/><circle cx="12" cy="5.5" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M10.8 7.7 6.2 15.8M13.2 7.7l4.6 8.1M7.5 18h9"/></svg>
+      <span class="st-txt"><b>Network</b></span>
+      <b class="st-val" data-no-i18n><span class="st-dot"></span>columbus-5</b>
+    </div>
+    <button class="st-row" id="btn-close" type="button" hidden>
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="d" d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2Z"/><path d="M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/><path d="M10 12h10"/><path d="m16.5 8.5 3.5 3.5-3.5 3.5"/></svg>
+      <span class="st-txt"><b>Close the app</b></span>
+    </button>
+  </div>
+
+  <div class="st-group danger">
+    <button class="st-row" id="btn-reset" type="button">
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="d" d="M6 7h12l-1 13H7Z"/><path d="M3.5 7h17"/><path d="M9 7V4.5h6V7"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></svg>
+      <span class="st-txt"><b>Delete all wallets from this device</b></span>
+    </button>
+  </div>
 </section>
+
+<!-- language picker (i18n.js) -->
+<div class="sw-sheet" id="lang-sheet" hidden>
+  <div class="sw-sheet-in">
+    <div class="sw-sheet-top"><span>Choose language</span><button class="sw-x" id="lang-x" type="button">Close</button></div>
+    <div class="lg-grid" id="lang-grid" data-no-i18n></div>
+    <p class="lg-note" id="lang-note" hidden>Some screens are still in English while translations are finished.</p>
+  </div>
+</div>
+
 
 <!-- Sheets opened from more than one screen live outside every screen:
      inside #st-home they were hidden with it, so from Settings the tab bar
@@ -890,12 +991,13 @@
     </div>
   </div>
 
+<svg class="fw-defs" width="0" height="0" aria-hidden="true" style="position:absolute"><defs><linearGradient id="fw-g" gradientUnits="userSpaceOnUse" x1="2" y1="2" x2="22" y2="22"><stop offset="0" stop-color="#A893FF"/><stop offset="1" stop-color="#00D4FF"/></linearGradient></defs></svg>
 <nav class="tabs" id="tabs">
-  <button class="tab sel" data-tab="home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 21v-8h6v8"/></svg>Home</button>
-  <button class="tab" data-tab="stake"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/></svg>Stake</button>
-  <button class="tab" data-tab="gov"><svg viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><path d="M5 7h14v13H5z"/><path d="M8 3h8v4H8z"/></svg><span class="tab-badge" id="gov-badge" hidden></span>Vote</button>
-  <button class="tab" data-tab="activity"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Activity</button>
-  <button class="tab" data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.1-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.1 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.4 1Z"/></svg>Settings</button>
+  <button class="tab sel" data-tab="home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 21v-8h6v8"/></svg><span data-i18n="tab.home">Home</span></button>
+  <button class="tab" data-tab="stake"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/></svg><span data-i18n="tab.stake">Stake</span></button>
+  <button class="tab" data-tab="gov"><svg viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><path d="M5 7h14v13H5z"/><path d="M8 3h8v4H8z"/></svg><span class="tab-badge" id="gov-badge" hidden></span><span data-i18n="tab.vote">Vote</span></button>
+  <button class="tab" data-tab="activity"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><span data-i18n="tab.activity">Activity</span></button>
+  <button class="tab" data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.1-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.1 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.4 1Z"/></svg><span data-i18n="tab.settings">Settings</span></button>
 </nav>
 
 <section class="step" id="st-done">
@@ -926,21 +1028,21 @@
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=7cf01e75"></script>
-<script src="assets/js/ads.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/swap.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/activity.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/nft.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/wallets.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/seed.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/home-tools.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/p2p.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/gram.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/incoming.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/token.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/defi.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/gov.js?v=7cf01e75"></script>
-<script type="module" src="assets/js/stake.js?v=7cf01e75"></script>
+<script type="module" src="assets/js/app.js?v=f4399a89"></script>
+<script src="assets/js/ads.js?v=f4399a89"></script>
+<script type="module" src="assets/js/swap.js?v=f4399a89"></script>
+<script type="module" src="assets/js/activity.js?v=f4399a89"></script>
+<script type="module" src="assets/js/nft.js?v=f4399a89"></script>
+<script type="module" src="assets/js/wallets.js?v=f4399a89"></script>
+<script type="module" src="assets/js/seed.js?v=f4399a89"></script>
+<script type="module" src="assets/js/home-tools.js?v=f4399a89"></script>
+<script type="module" src="assets/js/p2p.js?v=f4399a89"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=f4399a89"></script>
+<script type="module" src="assets/js/gram.js?v=f4399a89"></script>
+<script type="module" src="assets/js/incoming.js?v=f4399a89"></script>
+<script type="module" src="assets/js/token.js?v=f4399a89"></script>
+<script type="module" src="assets/js/defi.js?v=f4399a89"></script>
+<script type="module" src="assets/js/gov.js?v=f4399a89"></script>
+<script type="module" src="assets/js/stake.js?v=f4399a89"></script>
 </body>
 </html>
