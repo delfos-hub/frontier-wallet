@@ -1,7 +1,10 @@
-import { $ } from './shell.js?v=390e48a5';
+import { $ } from './shell.js?v=9cc4b550';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
+// A second operator, asked only for what a signature depends on (market.js
+// checkPool): one LCD lying about a pool's code is not enough to pass it.
+const LCD2 = 'https://lcd.terra-classic.hexxagon.io';
 // A seed, not the whole list. Everything that trades is discovered from the
 // factory pools below. What lives here is what discovery cannot see: TCO has
 // no pool at all yet, so nothing but this line would ever show it.
@@ -75,6 +78,23 @@ const EXTRA_PAIRS = [
   'terra1treu8r8908lsr8r48yc85rdp7mk52vuukugw2x9z9a7h6085hens5sphtw',   // VIMA
   'terra1cf0fxnvhcmsqnw8levj3vrhrq3nxgfmc86w9d6pxyeghqyrkgj2spgqarl'    // DO
 ];
+// The code ids a swap may be sent to (market.js checkPool). Read off the chain
+// on 2026-10-30 for every pool in the market map and in the factory listings
+// above: each one was instantiated by its exchange's factory, except Weso
+// DeFi's, which are one code per pool, uploaded and instantiated by wallets.
+// A pool on a code not listed here is not quoted; a pool migrated to other
+// code is refused at signing.
+const POOL_CODES = {
+  8214: 'Terraswap',
+  8260: 'Terraport V2',
+  9335: 'Terraport V3', 9337: 'Terraport V3', 10478: 'Terraport V3', 10479: 'Terraport V3',
+  8868: 'TwingoSwap',
+  11715: 'CL8Y',
+  10902: 'Garuda', 10907: 'Garuda',
+  9913: 'LuncSwap', 11615: 'LuncSwap',
+  11412: 'Weso DeFi', 11418: 'Weso DeFi', 11462: 'Weso DeFi', 11463: 'Weso DeFi',
+  11563: 'Weso DeFi', 11610: 'Weso DeFi', 11634: 'Weso DeFi'
+};
 const THIN_LUNC = 500000;   // below this the quote is real but barely tradeable
 const IPFS = 'https://ipfs.io/ipfs/';
 
@@ -320,4 +340,4 @@ async function prices(){
   } catch (e) { return {}; }
 }
 
-export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, dbg, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };
+export { CW20, DEBUG, EXTRA_PAIRS, FACTORIES, KNOWN_CW20, KNOWN_IBC, LCD, LCD2, NATIVE, POOL_CODES, THIN_LUNC, amt, chainLogo, clean, dbg, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd };

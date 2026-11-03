@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=390e48a5';
+import { EXTRA_PAIRS, FACTORIES, LCD, LCD2, POOL_CODES, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=9cc4b550';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -468,11 +468,58 @@ const simMsg = (d, key, raw, book) =>
                                       hybrid: (book ? clBook : clHybrid)(raw) } } :
   { simulation: { offer_asset: { info: tsInfo(key), amount: raw } } };
 
+/* Which contracts may be handed a swap.
+
+   A pool's address comes from the market map (a proxy in front of OrbitWire)
+   or from a factory listing read through the LCD. Neither proves that the
+   address runs a pool: a contract that takes the offer and keeps it answers a
+   simulation just as well, and the price guard in the swap message is
+   enforced by that same contract. So the chain is asked for the contract's
+   code id, which must be one of POOL_CODES - once per session before a pool is
+   quoted, and again just before a swap is signed, which also catches a real
+   pool migrated to other code since the quote.
+
+   A code missing from the list makes its pools unquotable, not unsafe.
+
+   The code id comes from an LCD, which is itself part of the threat: before
+   signing it is read from two operators, and both must answer and agree. */
+const POOL_OK = {};
+async function codeAt(lcd, pair){
+  const r = await getJSON(lcd + '/cosmwasm/wasm/v1/contract/' + pair, 12000, 2);
+  return String(((r && r.contract_info) || {}).code_id || '');
+}
+async function checkPool(pair, fresh){
+  if (!fresh && POOL_OK[pair]) return;
+  let code;
+  if (fresh) {
+    const [a, b] = await Promise.all([codeAt(LCD, pair), codeAt(LCD2, pair).catch(() => null)]);
+    if (b === null) {
+      delete POOL_OK[pair];
+      throw new Error('could not confirm the pool on a second LCD');
+    }
+    if (a !== b) {
+      delete POOL_OK[pair];
+      throw new Error('the two LCDs disagree on this pool (code ' + (a || 'unknown') + ' vs ' + (b || 'unknown') + ')');
+    }
+    code = a;
+  } else {
+    code = await codeAt(LCD, pair);
+  }
+  if (!POOL_CODES[code]) {
+    delete POOL_OK[pair];
+    throw new Error('not a known pool contract (code ' + (code || 'unknown') + ')');
+  }
+  POOL_OK[pair] = code;
+}
+// the exchange behind a checked pool, by its code ('' if not checked yet)
+const poolDex = pair => POOL_CODES[POOL_OK[pair]] || '';
+
 // A pool's code does not change, so which dialect it answers to is worth
 // learning once and keeping. The map's dex name is only the first guess; the
 // pool itself is the authority.
 const DIALECTS = ['ts', 'gd', 'cl'];
 async function simulateSwap(pair, offerKey, raw, guess){
+  await checkPool(pair);
   const known = cacheGetStale('dex:' + pair);
   const first = known || guess;
   // the remembered one, or the map's guess, then the others - and whichever
@@ -1043,4 +1090,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, dexDialect, poolsOf, infoKey, assetOf, cacheGet, cacheGetStale, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, dexDialect, poolsOf, infoKey, assetOf, cacheGet, checkPool, cacheGetStale, poolDex, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };

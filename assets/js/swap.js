@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=390e48a5';
-import { $, go, tap } from './shell.js?v=390e48a5';
-import { DEC, assetOf, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=390e48a5';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=390e48a5';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=390e48a5';
-import { S } from './state.js?v=390e48a5';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=9cc4b550';
+import { $, go, tap } from './shell.js?v=9cc4b550';
+import { DEC, assetOf, checkPool, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=9cc4b550';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=9cc4b550';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=9cc4b550';
+import { S } from './state.js?v=9cc4b550';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -1107,6 +1107,12 @@ function confirmLines(est){
     lines.push({ k: 'This trade costs', v: QUOTE.pct.toFixed(2) + '%',
                  tone: QUOTE.pct >= 5 ? 'bad' : 'warn' });
   }
+  // Weso DeFi's pools are each on their own code, uploaded by a wallet and not
+  // audited: allowed, but the user is told before choosing to sign
+  if (QUOTE.legs.some(l => poolDex(l.pair) === 'Weso DeFi')) {
+    lines.push({ k: 'Pool', v: 'Weso DeFi · unaudited', tone: 'warn',
+                 note: 'This route goes through a Weso DeFi pool, whose contract code has not been audited.' });
+  }
   lines.push({ k: 'Network fee', v: fmt(est.gasFee / 1e6) + ' LUNC' });
   return lines;
 }
@@ -1170,6 +1176,8 @@ $('#cf-go').addEventListener('click', async () => {
   try {
     b.disabled = true;
     b.textContent = 'Signing';
+    // read again, not from the session: the pool could have been migrated
+    for (const leg of QUOTE.legs) await checkPool(leg.pair, true);
     const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC);
     closeConfirm();
 

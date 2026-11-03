@@ -3,6 +3,8 @@
    Every test here corresponds to something that was found by deploying, taking
    a screenshot, reading a console log and guessing - several of them more than
    once. They run in about a second. */
+import fs from 'fs';
+import path from 'path';
 import { loadMarket, ok, near, group, report } from './harness.mjs';
 import { A, META, POOLS } from './fixture.mjs';
 
@@ -215,6 +217,93 @@ group('pool dialects');
   ok('and the better side is the one quoted', both.via === 'book', both.via);
   ok('the answer says which side it came from',
      both.via === 'book' || both.via === 'pool');
+}
+
+group('only pool code is quoted or signed for');
+{
+  // A pool address comes from the map or a factory listing; neither proves it
+  // runs pool code, and a contract that keeps the offer answers a simulation
+  // just as well.
+  const { mod, chain } = await loadMarket();
+  await mod.owMarket();
+  await mod.graph();
+
+  chain.codes.P_USTC_LUNC = 666;
+  const before = chain.calls.smart;
+  const fake = await mod.simulateSwap('P_USTC_LUNC', A.USTC, '1000000', 'ts').catch(e => e);
+  ok('a contract on a code that is not a pool is not quoted',
+     fake instanceof Error && /not a known pool contract \(code 666\)/.test(fake.message), String(fake && fake.message));
+  ok('and it is never asked for a price', chain.calls.smart === before, String(chain.calls.smart - before));
+
+  delete chain.codes.P_USTC_LUNC;
+  const real = await mod.simulateSwap('P_USTC_LUNC', A.USTC, '1000000', 'ts');
+  ok('a pool on a listed code is quoted', real.dialect === 'ts');
+  let reads = chain.calls.getJSON;
+  await mod.simulateSwap('P_USTC_LUNC', A.USTC, '2000000', 'ts');
+  ok('the code is read once a session, not on every quote', chain.calls.getJSON === reads, String(chain.calls.getJSON - reads));
+
+  // the quote is taken, then the pool is migrated before the user signs
+  chain.codes.P_USTC_LUNC = 777;
+  await mod.checkPool('P_USTC_LUNC');   // the session answer still stands for quoting
+  const late = await mod.checkPool('P_USTC_LUNC', true).catch(e => e);
+  ok('a pool migrated since the quote is refused when read again', late instanceof Error && /code 777/.test(late.message), String(late && late.message));
+  const after = await mod.checkPool('P_USTC_LUNC').catch(e => e);
+  ok('and stays refused for the rest of the session', after instanceof Error);
+
+  const missing = await mod.checkPool('terra1nothere', true).catch(e => e);
+  ok('an address the chain does not know is refused', missing instanceof Error);
+
+  // swap.js: every leg is read again, from the chain, right before signing
+  const src = fs.readFileSync(path.resolve('assets/js/swap.js'), 'utf8');
+  const go = src.slice(src.indexOf("$('#cf-go').addEventListener"));
+  const check = go.indexOf('checkPool(leg.pair, true)'), sign = go.indexOf('sendSwap(');
+  ok('the swap re-checks every leg before it signs', check > 0 && sign > check && /for \(const leg of QUOTE\.legs\)/.test(go.slice(0, check)));
+}
+
+group('before signing, two LCDs must agree on a pool\'s code');
+{
+  // one LCD lying about a code id is not enough to get a signature
+  const { mod, chain } = await loadMarket();
+  await mod.owMarket();
+  await mod.graph();
+  await mod.checkPool('P_USTC_LUNC', true);
+  ok('both LCDs answering the same listed code pass', mod.poolDex('P_USTC_LUNC') === 'FixtureSwap');
+
+  chain.codes.P_USTC_LUNC = 1; chain.second.codes.P_USTC_LUNC = 666;
+  let e = await mod.checkPool('P_USTC_LUNC', true).catch(x => x);
+  ok('the second LCD reporting another code stops the swap', e instanceof Error && /disagree/.test(e.message), String(e && e.message));
+  ok('and the pool is no longer trusted for the session', mod.poolDex('P_USTC_LUNC') === '');
+
+  // the lie can be on either side: the first says a listed code, the second the real one
+  chain.codes.P_USTC_LUNC = 666; chain.second.codes.P_USTC_LUNC = 1;
+  e = await mod.checkPool('P_USTC_LUNC', true).catch(x => x);
+  ok('the first LCD disagreeing stops it too', e instanceof Error && /disagree/.test(e.message), String(e && e.message));
+
+  delete chain.codes.P_USTC_LUNC; delete chain.second.codes.P_USTC_LUNC;
+  chain.second.down = true;
+  e = await mod.checkPool('P_USTC_LUNC', true).catch(x => x);
+  ok('the second LCD down stops the swap instead of skipping the check', e instanceof Error && /second LCD/.test(e.message), String(e && e.message));
+  const reads = chain.calls.getJSON;
+  await mod.checkPool('P_USTC_LUNC');
+  ok('quoting still needs only one LCD', chain.calls.getJSON === reads + 1 && mod.poolDex('P_USTC_LUNC') === 'FixtureSwap');
+  chain.second.down = false;
+}
+
+group('Weso DeFi pools: allowed, with an unaudited warning');
+{
+  const { mod, chain } = await loadMarket({ poolCodes: { 1: 'FixtureSwap', 2: 'Weso DeFi' } });
+  await mod.owMarket();
+  await mod.graph();
+  chain.codes.P_USTC_LUNC = 2;
+  const q = await mod.simulateSwap('P_USTC_LUNC', A.USTC, '1000000', 'ts').catch(x => x);
+  ok('a Weso pool is quoted', !(q instanceof Error), String(q && q.message));
+  ok('and known as Weso DeFi', mod.poolDex('P_USTC_LUNC') === 'Weso DeFi');
+
+  // swap.js: the confirm screen warns when any leg runs through a Weso pool
+  const src = fs.readFileSync(path.resolve('assets/js/swap.js'), 'utf8');
+  const cl = src.slice(src.indexOf('function confirmLines'), src.indexOf('function openConfirm'));
+  ok('the confirm screen flags a Weso leg as unaudited',
+     /QUOTE\.legs\.some\(l => poolDex\(l\.pair\) === 'Weso DeFi'\)/.test(cl) && /unaudited/.test(cl));
 }
 
 group('two hops: candidates are filtered before they are capped');
