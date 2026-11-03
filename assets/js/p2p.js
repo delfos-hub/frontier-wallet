@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=0032696d';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=0032696d';
-import { $, buzz, go, libs, report } from './shell.js?v=0032696d';
-import { S } from './state.js?v=0032696d';
-import { decryptSeed } from './storage.js?v=0032696d';
-import { dryRunSwap, sendSwap } from './tx.js?v=0032696d';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=25fbb4fc';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=25fbb4fc';
+import { $, buzz, go, libs, report } from './shell.js?v=25fbb4fc';
+import { S } from './state.js?v=25fbb4fc';
+import { decryptSeed } from './storage.js?v=25fbb4fc';
+import { dryRunSwap, sendSwap } from './tx.js?v=25fbb4fc';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -38,7 +38,7 @@ import { dryRunSwap, sendSwap } from './tx.js?v=0032696d';
 // frame on our origin could read the wallet's storage directly and would not
 // need a bridge at all. For now the mainnet build on the preview Worker
 // (widgets 0fb4a5f); it moves to its own Delfos domain later.
-const WIDGET_ORIGIN = 'https://widgets-p2p-preview.repegclub.workers.dev';
+const WIDGET_ORIGIN = 'https://p2p.delfos-hub.net';
 
 // The otc-p2p contract on columbus-5: code 11745, no wasm admin, admin = the
 // Admin multisig terra1l74mn5dh8lsun003ukzzm60crgdgav9fff6kx7, treasury and
@@ -391,6 +391,7 @@ async function ask(id, build){
     const est = await dryRunSwap(addrOf(), plan.steps, S.MNEMONIC);
     if (!PENDING || PENDING.id !== id) return;
     $('#p2p-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
+    PENDING.fee = est.gasFee;
   } catch (e) {
     if (!PENDING || PENDING.id !== id) return;
     $('#p2p-fee').textContent = '';
@@ -440,7 +441,7 @@ async function onPin(){
         localStorage.setItem(k, JSON.stringify(had.concat(ids).slice(-300)));
       }
     } catch (e) {}
-    const res = await sendSwap(addrOf(), PENDING.steps, mnemonic);
+    const res = await sendSwap(addrOf(), PENDING.steps, mnemonic, undefined, '', PENDING.fee);
     mnemonic = null;
     say('Waiting for a block');
     const done = await res.wait();
@@ -467,8 +468,6 @@ window.addEventListener('message', function (ev) {
   const d = ev.data;
   if (!d || typeof d !== 'object' || d.channel !== CHANNEL) return;
   if (typeof d.id !== 'string' || !d.id || d.id.length > 100) return;
-  // a request from the widget is the person working in it (auto-lock, boot.js)
-  if (d.type === 'execute' || d.type === 'execute-batch') document.dispatchEvent(new CustomEvent('frontier:activity'));
 
   if (d.type === 'get-address') {
     const a = addrOf();

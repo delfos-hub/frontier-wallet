@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=0032696d';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=0032696d';
-import { $, go, tap } from './shell.js?v=0032696d';
-import { S } from './state.js?v=0032696d';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=0032696d';
-import * as P from './defi-parse.js?v=0032696d';
-import { dryRunSwap, sendSwap } from './tx.js?v=0032696d';
-import { notify } from './notify.js?v=0032696d';
-import { buzz } from './shell.js?v=0032696d';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=0032696d';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=25fbb4fc';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=25fbb4fc';
+import { $, go, tap } from './shell.js?v=25fbb4fc';
+import { S } from './state.js?v=25fbb4fc';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=25fbb4fc';
+import * as P from './defi-parse.js?v=25fbb4fc';
+import { dryRunSwap, sendSwap } from './tx.js?v=25fbb4fc';
+import { notify } from './notify.js?v=25fbb4fc';
+import { buzz } from './shell.js?v=25fbb4fc';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=25fbb4fc';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -741,7 +741,7 @@ async function confirm(){
   const a = ACT.a, p = FOUND[OPEN_POS], title = titleOf(p) + ' \u00b7 ' + a.label;
   ACT.sending = 'Signing and sending\u2026'; drawPanel();
   let sent;
-  try { sent = await sendSwap(me(), ACT.steps, S.MNEMONIC); }
+  try { sent = await sendSwap(me(), ACT.steps, S.MNEMONIC, undefined, '', ACT.plan && ACT.plan.gasFee); }
   catch (e) { ACT.sending = ''; ACT.armed = false; ACT.plan = null; ACT.err = String(e.message || e); buzz('error'); drawPanel(); return; }
   buzz('success');
   ACT.sending = 'Waiting for the block\u2026'; drawPanel();

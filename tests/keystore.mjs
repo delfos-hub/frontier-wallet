@@ -125,6 +125,76 @@ group('two different books: wallets are merged, never dropped (review of #34)');
   ok('an older single-wallet record is merged too', v.list.some(w => w.addr === 'terra1old' && w.blob === 'BO'));
 }
 
+group('every copy on the device is found, and clear removes them all (audit F06)');
+{
+  // a key kept in DeviceStorage before SecureStorage started to work
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Main', addr: 'terra1aaa', blob: 'BA' }] });
+  const secure = fakeStore('secure'), device = fakeStore('device', { data: { [KEY]: A } });
+  const { Store } = await loadStore({ version: '9.1', secure, device });
+  ok('a wallet in DeviceStorage is found when SecureStorage is empty', (await Store.load()) === A);
+  ok('it is moved into SecureStorage', secure.data[KEY] === A);
+  ok('and the DeviceStorage copy goes only after that', !(KEY in device.data) && secure.log.indexOf('set') >= 0);
+}
+{
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Main', addr: 'terra1aaa', blob: 'BA' }] });
+  const secure = fakeStore('secure', { refuse: true }), device = fakeStore('device', { data: { [KEY]: A } });
+  const { Store } = await loadStore({ version: '9.1', secure, device });
+  ok('when SecureStorage refuses, the DeviceStorage copy is read and kept', (await Store.load()) === A && device.data[KEY] === A);
+}
+{
+  // the page's own storage holding a copy while SecureStorage works
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Main', addr: 'terra1aaa', blob: 'BA' }] });
+  const secure = fakeStore('secure');
+  const { Store, ls } = await loadStore({ version: '8.0', secure, local: { [KEY]: A } });
+  ok('a copy in the page storage is moved into SecureStorage', (await Store.load()) === A && secure.data[KEY] === A && !(KEY in ls));
+  ok('clear leaves nothing anywhere', (await Store.clear()) === true && !(KEY in secure.data) && !(KEY in ls));
+  ok('and nothing comes back on the next read', (await Store.load()) === null);
+}
+{
+  const A = JSON.stringify({ v: 2, active: 'w1', list: [{ id: 'w1', name: 'Main', addr: 'terra1aaa', blob: 'BA' }] });
+  const secure = fakeStore('secure', { data: { [KEY]: A } }), device = fakeStore('device', { data: { [KEY]: A } }), cloud = fakeStore('cloud', { data: { [KEY]: A } });
+  const { Store, ls } = await loadStore({ version: '9.1', secure, device, cloud, local: { [KEY]: A } });
+  await Store.clear();
+  ok('clear empties every store the client has', !(KEY in secure.data) && !(KEY in device.data) && !(KEY in cloud.data) && !(KEY in ls));
+}
+{
+  const { Store } = await loadStore({ version: '7.0', localBroken: true });
+  const kept = await Store.save('BLOB');
+  ok('a save that lands nowhere says so', kept === false && Store.kind === 'memory');
+}
+
+group('the fee signed is the fee reviewed (audit F04)');
+{
+  const tx = fs.readFileSync(path.join(SRC, 'tx.js'), 'utf8');
+  const a = tx.indexOf('const FEE_SLACK'), b = tx.indexOf('\n}\n', tx.indexOf('function checkFee')) + 3;
+  const checkFee = new Function('fmt', tx.slice(a, b) + '\nreturn checkFee;')(n => String(n));
+  let threw = null;
+  try { checkFee(368225000, 3682250); } catch (e) { threw = e.message; }
+  ok('a fee 100x the reviewed one is refused before signing', threw && /review it again/.test(threw), threw);
+  let fine = true;
+  try { checkFee(3682250 * 1.2, 3682250); checkFee(3000000, 3682250); } catch (e) { fine = false; }
+  ok('a small rise between two simulations passes', fine);
+  let missingFee = null;
+  try { checkFee(3682250); } catch (e) { missingFee = e.message; }
+  ok('a send with no reviewed fee is refused, not waved through', missingFee && /review it again/.test(missingFee), missingFee);
+  let optOut = true;
+  try { checkFee(368225000, 'no fee review'); } catch (e) { optOut = false; }
+  ok('GRAM opts out only by saying so', optOut &&
+    (fs.readFileSync(path.join(SRC, 'gram.js'), 'utf8').match(/await sendSwap\([^;]*;/g) || []).every(c => /NO_FEE_REVIEW\)/.test(c)));
+  ok('every signing function checks it before it signs',
+    ['sendNative', 'sendSwap', 'sendStake', 'sendVote'].every(n => /checkFee\(/.test(tx.slice(tx.indexOf('async function ' + n + '('), tx.indexOf('sign(', tx.indexOf('async function ' + n + '('))))));
+  const callers = { 'tx.js': 2, 'swap.js': 1, 'p2p.js': 1, 'defi.js': 1, 'stake.js': 1, 'gov.js': 1 };
+  const missing = [];
+  for (const f in callers) {
+    const src = fs.readFileSync(path.join(SRC, f), 'utf8');
+    (src.match(/await send(Native|Swap|Stake|Vote)\([^;]*;/g) || []).forEach(c => {
+      if (!/(maxFee|gasFee|\.fee)\)/.test(c)) missing.push(f + ': ' + c.slice(0, 60));
+    });
+  }
+  ok('every reviewed send passes the reviewed fee', missing.length === 0, missing.join(' | '));
+  ok('a node answer with no gas figure is refused', /Number\.isSafeInteger\(used\) \|\| used <= 0\) throw/.test(tx));
+}
+
 group('Send checks the address checksum');
 const tx = fs.readFileSync(path.join(SRC, 'tx.js'), 'utf8');
 const a = tx.indexOf('const B32 ='), b = tx.indexOf('\n}\n', tx.indexOf('function bech32Ok')) + 3;
@@ -146,7 +216,18 @@ ok('armed only once a saved wallet is open', /frontier:wallet', \(\) => \{ S\.AR
 const onb = fs.readFileSync(path.join(SRC, 'onboarding.js'), 'utf8');
 ok('not while a new phrase is written down or imported', /S\.ARMED = false;[^\n]*\n\s*S\.MNEMONIC = bip39\.generateMnemonic/.test(onb) && /S\.ARMED = false;[^\n]*\n\s*S\.MNEMONIC = \$\('#imp'\)/.test(boot));
 const p2p = fs.readFileSync(path.join(SRC, 'p2p.js'), 'utf8');
-ok('a request from the P2P widget counts as activity', /frontier:activity/.test(p2p) && /addEventListener\('frontier:activity', touched\)/.test(boot));
+ok('a widget request is not activity (audit F05)', !/frontier:activity/.test(p2p) && !/frontier:activity/.test(boot));
+{
+  // the real timer, two hours with focus resting in the widget's frame and no touch
+  const a = boot.indexOf('const IDLE_MS ='), b = boot.indexOf("$('#btn-reset')", a);
+  let now = 0, tick = null, locks = 0;
+  const S = { ARMED: true, MNEMONIC: 'x' };
+  const document = { hidden: false, activeElement: { tagName: 'IFRAME' }, addEventListener(){} };
+  new Function('Date', 'S', 'document', 'lockWallet', 'setInterval', boot.slice(a, b))(
+    { now: () => now }, S, document, () => { locks += 1; S.MNEMONIC = null; }, fn => { tick = fn; });
+  for (now = 30000; now <= 2 * 3600 * 1000 && !locks; now += 30000) tick();
+  ok('focus resting in the widget frame does not keep the wallet open', locks === 1 && now <= 11 * 60 * 1000, 'locked at ' + now / 60000 + ' min');
+}
 ok('the GRAM and P2P PIN sheets close on lock', /frontier:locked', function \(\) \{ if \(PENDING && !PENDING\.busy\)/.test(p2p)
   && /frontier:locked', function\(\)\{\n  if \(SHEET\(\)\.hidden/.test(fs.readFileSync(path.join(SRC, 'gram.js'), 'utf8')));
 

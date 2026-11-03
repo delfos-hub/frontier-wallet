@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=0032696d';
-import { $, buzz, go, tap } from './shell.js?v=0032696d';
-import { S } from './state.js?v=0032696d';
-import { iconHTML, paintIcons } from './chain.js?v=0032696d';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=0032696d';
-import { notify } from './notify.js?v=0032696d';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=25fbb4fc';
+import { $, buzz, go, tap } from './shell.js?v=25fbb4fc';
+import { S } from './state.js?v=25fbb4fc';
+import { iconHTML, paintIcons } from './chain.js?v=25fbb4fc';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=25fbb4fc';
+import { notify } from './notify.js?v=25fbb4fc';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -143,7 +143,28 @@ async function simulateGas(body, auth, net = MAINNET){
   });
   const d = await r.json();
   if (!r.ok) throw new Error(d.message || ('simulate -> ' + r.status));
-  return Number((d.gas_info || {}).gas_used || 0);
+  const used = Number((d.gas_info || {}).gas_used);
+  if (!Number.isSafeInteger(used) || used <= 0) throw new Error('the node gave no usable gas figure');
+  return used;
+}
+
+/* The fee shown in a review is what the user agreed to. Signing simulates
+   again (the sequence may have moved), and that second answer used to be
+   signed whatever it was: a node answering 100x the gas got 100x the fee
+   signed. Two simulations of the same transaction differ a little, which
+   GAS_SAFETY already pads, so a rise of up to FEE_SLACK passes; more than
+   that stops before signing and sends the user back to review. */
+const FEE_SLACK = 1.25;
+/* A caller that forgets the reviewed fee must not skip the check silently, so
+   a missing one refuses. GRAM (testnet, no fee shown before consent) opts out
+   by passing NO_FEE_REVIEW on purpose. */
+const NO_FEE_REVIEW = 'no fee review';
+function checkFee(gasFee, maxFee){
+  if (maxFee === NO_FEE_REVIEW) return;
+  if (!(Number(maxFee) > 0)) throw new Error('no reviewed network fee to compare with. Nothing was signed; review it again.');
+  const cap = Math.ceil(Number(maxFee) * FEE_SLACK);
+  if (!(gasFee <= cap)) throw new Error('the network fee is now ' + fmt(gasFee / 1e6) + ' LUNC, more than the ' +
+    fmt(Number(maxFee) / 1e6) + ' LUNC shown in the review. Nothing was signed; review it again.');
 }
 
 /* ---------------- the dry run ----------------
@@ -218,13 +239,14 @@ async function waitFor(hash, tries = 30, net = MAINNET){
 // Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
 // moves whenever anything else touches this account, and a stale one is
 // rejected outright.
-async function sendNative(from, to, denom, human, memo, mnemonic){
+async function sendNative(from, to, denom, human, memo, mnemonic, maxFee){
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
   const raw = toRaw(human, 6);
   const probe = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
     [{ denom: 'uluna', amount: '1000000' }], 400000);
   const gas = Math.ceil((await simulateGas(probe.body, probe.auth)) * GAS_SAFETY);
   const gasFee = Math.ceil(gas * GAS_PRICE);
+  checkFee(gasFee, maxFee);
   const real = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
     [{ denom: 'uluna', amount: String(gasFee) }], gas);
   const sig = key.node.sign(key.sha256(signDoc(real.body, real.auth, CHAIN, acc.num)));
@@ -424,6 +446,7 @@ async function review(){
       LAST_GAS = gas;
     } else {
       const d = await dryRunNative(from, to, t.denom, human, memo, S.MNEMONIC);
+      gasFee = d.gasFee;
       const avail = Math.round(have * 1e6);
       // only when the coin being sent is the coin the fee is paid in does the
       // total mean anything
@@ -450,12 +473,13 @@ async function review(){
 
     ARMED = null;
     const b = $('#send-go');
-    if (b) b.addEventListener('click', () => confirmSend(b, to, human, memo, from));
+    if (b) b.addEventListener('click', () => confirmSend(b, to, human, memo, from, gasFee));
     // one button at a time: the reviewed send, or the review
     reviewBtn(!b);
     buzz('success');
   } catch (e) {
-    out.innerHTML = '<div class="sbad">' + (e.message || e) + '</div>';
+    // the message can come from the LCD or a contract: text, never markup
+    out.innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>';
   }
 }
 
@@ -464,7 +488,7 @@ async function review(){
 // here, and the review recomputes the real figure anyway.
 // First press arms, second sends. Deliberate rather than decorative: one
 // stray tap on a phone should not move money.
-async function confirmSend(btn, to, human, memo, from){
+async function confirmSend(btn, to, human, memo, from, maxFee){
   const label = btn.textContent;
   if (ARMED !== human + '|' + to) {
     ARMED = human + '|' + to;
@@ -490,8 +514,8 @@ async function confirmSend(btn, to, human, memo, from){
     // a cw20 goes through the contract path, a coin through the bank one; both
     // come back with a hash and both are waited on the same way
     hash = isCw20(t)
-      ? (await sendSwap(from, [cw20Step(t, to, human)], S.MNEMONIC, MAINNET, memo)).hash
-      : await sendNative(from, to, t.denom, human, memo, S.MNEMONIC);
+      ? (await sendSwap(from, [cw20Step(t, to, human)], S.MNEMONIC, MAINNET, memo, maxFee)).hash
+      : await sendNative(from, to, t.denom, human, memo, S.MNEMONIC, maxFee);
   } catch (e) {
     // refused before it left: nothing moved, the form stays as it was
     out.innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>';
@@ -685,7 +709,7 @@ document.addEventListener('frontier:send-token', function (e) {
   go('send');
 });
 
-export { dryRunNative, sendNative, burnTaxRate, b64, toRaw };
+export { dryRunNative, sendNative, burnTaxRate, b64, toRaw, checkFee, NO_FEE_REVIEW };
 
 /* ---------------- contract calls ----------------
    MsgExecuteContract in both dialects this chain has carried. The field
@@ -780,8 +804,9 @@ async function dryRunSwap(from, steps, mnemonic, net = MAINNET, memo = ''){
 
 // Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
 // moves whenever anything else touches this account.
-async function sendSwap(from, steps, mnemonic, net = MAINNET, memo = ''){
+async function sendSwap(from, steps, mnemonic, net = MAINNET, memo = '', maxFee){
   const p = await execPlan(from, steps, mnemonic, net, memo);
+  checkFee(p.gasFee, maxFee);
   const real = execTx(p.url, from, steps, p.key.pub, p.acc.seq,
     [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas, memo);
   const doc = signDoc(real.body, real.auth, net.chain, p.acc.num);
@@ -869,8 +894,9 @@ async function dryRunStake(from, msgs, mnemonic){
 }
 
 // Rebuilt from scratch at send time: the sequence may have moved since review.
-async function sendStake(from, msgs, mnemonic){
+async function sendStake(from, msgs, mnemonic, maxFee){
   const p = await stakePlan(from, msgs, mnemonic);
+  checkFee(p.gasFee, maxFee);
   const real = stakeTx(from, msgs, p.key.pub, p.acc.seq,
     [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
   const sig = p.key.node.sign(p.key.sha256(signDoc(real.body, real.auth, CHAIN, p.acc.num)));
@@ -918,8 +944,9 @@ async function dryRunVote(from, proposalId, option, mnemonic, memo){
   return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee };
 }
 
-async function sendVote(from, proposalId, option, mnemonic, memo){
+async function sendVote(from, proposalId, option, mnemonic, memo, maxFee){
   const p = await votePlan(from, proposalId, option, mnemonic, memo);
+  checkFee(p.gasFee, maxFee);
   const body = txBody([p.msg], p.memo);
   const auth = authInfo(p.key.pub, p.acc.seq, [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas);
   const sig = p.key.node.sign(p.key.sha256(signDoc(body, auth, CHAIN, p.acc.num)));

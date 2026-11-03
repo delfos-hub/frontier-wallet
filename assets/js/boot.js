@@ -1,14 +1,14 @@
-import { amt, fmt } from './chain.js?v=0032696d';
-import { finish } from './crypto.js?v=0032696d';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=0032696d';
+import { amt, fmt } from './chain.js?v=25fbb4fc';
+import { finish } from './crypto.js?v=25fbb4fc';
+import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=25fbb4fc';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=0032696d';
-import { S } from './state.js?v=0032696d';
-import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=0032696d';
-import { enter, switchLink } from './wallets.js?v=0032696d';
-import { paintSendTok } from './tx.js?v=0032696d';
-import { luncRaw, openWallet } from './tokens.js?v=0032696d';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=25fbb4fc';
+import { S } from './state.js?v=25fbb4fc';
+import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=25fbb4fc';
+import { enter, switchLink } from './wallets.js?v=25fbb4fc';
+import { paintSendTok } from './tx.js?v=25fbb4fc';
+import { luncRaw, openWallet } from './tokens.js?v=25fbb4fc';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -146,24 +146,24 @@ $('#btn-lock').addEventListener('click', lockWallet);
 
    It is armed only while a saved wallet is open (frontier:wallet), never
    while a new phrase is being written down or verified: there the phrase is
-   the only copy, and locking would wipe it (review of #34). Work inside the
-   P2P widget counts as activity: its touches stay in its own frame, so the
-   widget's requests (frontier:activity) and focus inside it refresh the timer. */
+   the only copy, and locking would wipe it (review of #34). Only a touch on
+   this page counts. Focus resting in the P2P widget's frame, or a request
+   from it, used to refresh the timer too, so a focused frame kept the wallet
+   open for good, and a widget could keep it open by asking (audit F05). A
+   widget request is signed only after the PIN is typed here, which is a
+   touch on this page anyway. */
 const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000;
 let lastTouch = Date.now(), hiddenAt = 0;
 const touched = () => { lastTouch = Date.now(); };
 ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev =>
   document.addEventListener(ev, touched, { passive: true, capture: true }));
-document.addEventListener('frontier:activity', touched);
 document.addEventListener('frontier:wallet', () => { S.ARMED = true; touched(); });
-const inFrame = () => !!(document.activeElement && document.activeElement.tagName === 'IFRAME');
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
   if (S.ARMED && S.MNEMONIC && hiddenAt && Date.now() - hiddenAt >= HIDDEN_MS) lockWallet();
   hiddenAt = 0; touched();
 });
 setInterval(() => {
-  if (inFrame()) touched();
   if (S.ARMED && S.MNEMONIC && !document.hidden && Date.now() - lastTouch >= IDLE_MS) lockWallet();
 }, 30 * 1000);
 
@@ -202,7 +202,8 @@ async function checkImport(){
   const v = $('#imp').value.trim().toLowerCase().replace(/\s+/g,' ');
   const n = v ? v.split(' ').length : 0;
   const t = $('#imptxt');
-  const passOk = new RegExp('^\\d{' + PIN_LEN + '}$').test($('#ip1').value);
+  const pin = $('#ip1').value;
+  const passOk = new RegExp('^\\d{' + PIN_LEN + '}$').test(pin) && !weakPin(pin);
   if (!n) { t.textContent = ''; $('#btn-import').disabled = true; return; }
   if (n !== 12 && n !== 24) {
     t.textContent = n + ' words, needs 12 or 24';
@@ -211,8 +212,9 @@ async function checkImport(){
   }
   await libs();
   const ok = bip39.validateMnemonic(v, bip39.wordlist);
-  t.textContent = ok ? 'Valid phrase' : 'Checksum failed, a word is wrong or out of order';
-  t.style.color = ok ? 'var(--green)' : 'var(--red)';
+  t.textContent = !ok ? 'Checksum failed, a word is wrong or out of order'
+    : weakPin(pin) ? 'Valid phrase. That PIN is too easy to guess, pick another' : 'Valid phrase';
+  t.style.color = !ok ? 'var(--red)' : weakPin(pin) ? 'var(--gold)' : 'var(--green)';
   $('#btn-import').disabled = !(ok && passOk);
 }
 $('#imp').addEventListener('input', checkImport);
@@ -264,6 +266,7 @@ $('#btn-import').addEventListener('click', async () => {
     S.PASS = $('#ip1').value;
     if (!bip39.validateMnemonic(S.MNEMONIC, bip39.wordlist)) throw new Error('checksum');
     if (S.PASS.length !== PIN_LEN) throw new Error('PIN must be 8 digits');
+    if (weakPin(S.PASS)) throw new Error('PIN too easy to guess');
     await finish(S.MNEMONIC);
     b.innerHTML = 'Restore';                 // only reset on the way out
   } catch (e) {
