@@ -1,6 +1,6 @@
-import { finish } from './crypto.js?v=b01780e4';
-import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=b01780e4';
-import { S } from './state.js?v=b01780e4';
+import { finish } from './crypto.js?v=89788d6d';
+import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=89788d6d';
+import { S } from './state.js?v=89788d6d';
 
 /* ---------------- length toggle ---------------- */
 $('#seg').addEventListener('click', e => {
@@ -38,12 +38,16 @@ function dots(rowId, n, bad){
     row.appendChild(d);
   }
 }
+// Same rule for a new wallet and an imported one: one digit repeated, or a run
+// straight up or down the keypad, is the first thing anyone tries.
+const weakPin = a => a.length === PIN_LEN &&
+  (/^(\d)\1+$/.test(a) || '0123456789'.includes(a) || '9876543210'.includes(a));
 function digitsOnly(el){ el.value = el.value.replace(/\D/g, '').slice(0, PIN_LEN); return el.value; }
 
 function checkPass(){
   const a = digitsOnly($('#p1')), b = digitsOnly($('#p2'));
   dots('pinrow1', a.length); dots('pinrow2', b.length);
-  const weak = a.length === PIN_LEN && (/^(\d)\1+$/.test(a) || '0123456789'.includes(a) || '9876543210'.includes(a));
+  const weak = weakPin(a);
   $('#mtxt').textContent = weak ? 'Too easy to guess, pick another' : '';
   $('#mtxt').style.color = 'var(--gold)';
   const match = a.length === PIN_LEN && a === b;
@@ -258,4 +262,21 @@ function wireDrag(){
   });
 }
 
-export { PIN_LEN, digitsOnly, dots, focusPin };
+/* ---------------- leftovers ----------------
+   Creating or importing leaves the phrase and the PIN in these fields, the
+   word grid and the verify answers. Locking used to clear only S.MNEMONIC and
+   S.PASS, so the phrase stayed readable in the page after the lock. Once a
+   wallet is open (it has been saved) or locked, none of it is needed. Not on
+   the way through creation: there the phrase is still being written down. */
+function wipeForms(){
+  ['#p1', '#p2', '#ip1', '#imp'].forEach(id => { const el = $(id); if (el) el.value = ''; });
+  ['#seedgrid', '#slots', '#tray'].forEach(id => { const el = $(id); if (el) el.innerHTML = ''; });
+  ['#imptxt', '#mtxt', '#mmatch'].forEach(id => { const el = $(id); if (el) el.textContent = ''; });
+  S.SLOTS = [];
+  dots('pinrow1', 0); dots('pinrow2', 0); dots('pinrowI', 0);
+  $('#btn-setup').disabled = true; $('#btn-import').disabled = true;
+}
+document.addEventListener('frontier:wallet', wipeForms);
+document.addEventListener('frontier:locked', wipeForms);
+
+export { PIN_LEN, digitsOnly, dots, focusPin, weakPin };

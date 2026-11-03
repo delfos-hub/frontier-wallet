@@ -1,14 +1,14 @@
-import { amt, fmt } from './chain.js?v=b01780e4';
-import { finish } from './crypto.js?v=b01780e4';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=b01780e4';
+import { amt, fmt } from './chain.js?v=89788d6d';
+import { finish } from './crypto.js?v=89788d6d';
+import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=89788d6d';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=b01780e4';
-import { S } from './state.js?v=b01780e4';
-import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=b01780e4';
-import { enter, switchLink } from './wallets.js?v=b01780e4';
-import { paintSendTok } from './tx.js?v=b01780e4';
-import { luncRaw, openWallet } from './tokens.js?v=b01780e4';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=89788d6d';
+import { S } from './state.js?v=89788d6d';
+import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=89788d6d';
+import { enter, switchLink } from './wallets.js?v=89788d6d';
+import { paintSendTok } from './tx.js?v=89788d6d';
+import { luncRaw, openWallet } from './tokens.js?v=89788d6d';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -202,7 +202,8 @@ async function checkImport(){
   const v = $('#imp').value.trim().toLowerCase().replace(/\s+/g,' ');
   const n = v ? v.split(' ').length : 0;
   const t = $('#imptxt');
-  const passOk = new RegExp('^\\d{' + PIN_LEN + '}$').test($('#ip1').value);
+  const pin = $('#ip1').value;
+  const passOk = new RegExp('^\\d{' + PIN_LEN + '}$').test(pin) && !weakPin(pin);
   if (!n) { t.textContent = ''; $('#btn-import').disabled = true; return; }
   if (n !== 12 && n !== 24) {
     t.textContent = n + ' words, needs 12 or 24';
@@ -211,8 +212,9 @@ async function checkImport(){
   }
   await libs();
   const ok = bip39.validateMnemonic(v, bip39.wordlist);
-  t.textContent = ok ? 'Valid phrase' : 'Checksum failed, a word is wrong or out of order';
-  t.style.color = ok ? 'var(--green)' : 'var(--red)';
+  t.textContent = !ok ? 'Checksum failed, a word is wrong or out of order'
+    : weakPin(pin) ? 'Valid phrase. That PIN is too easy to guess, pick another' : 'Valid phrase';
+  t.style.color = !ok ? 'var(--red)' : weakPin(pin) ? 'var(--gold)' : 'var(--green)';
   $('#btn-import').disabled = !(ok && passOk);
 }
 $('#imp').addEventListener('input', checkImport);
@@ -264,6 +266,7 @@ $('#btn-import').addEventListener('click', async () => {
     S.PASS = $('#ip1').value;
     if (!bip39.validateMnemonic(S.MNEMONIC, bip39.wordlist)) throw new Error('checksum');
     if (S.PASS.length !== PIN_LEN) throw new Error('PIN must be 8 digits');
+    if (weakPin(S.PASS)) throw new Error('PIN too easy to guess');
     await finish(S.MNEMONIC);
     b.innerHTML = 'Restore';                 // only reset on the way out
   } catch (e) {

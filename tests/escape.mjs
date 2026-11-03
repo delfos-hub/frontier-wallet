@@ -40,3 +40,16 @@ group('the page runs only its own scripts');
   ok('no inline <script> block', !/<script(?![^>]*\ssrc=)[^>]*>/i.test(html));
   ok('no inline event handlers', !/\son[a-z]+="/i.test(html));
 }
+
+group('an error from outside is shown as text');
+{
+  // A failed simulation's message comes from the LCD, and for a cw20 from the
+  // contract. Drawn as markup it can paint a fake screen inside the wallet.
+  const leaks = [];
+  for (const f of fs.readdirSync(SRC).filter(f => f.endsWith('.js'))) {
+    fs.readFileSync(path.join(SRC, f), 'utf8').split('\n').forEach((l, i) => {
+      if (/innerHTML\s*[+]?=/.test(l) && /\be\.message\b/.test(l) && !/esc\(\s*(plain\()?e\.message/.test(l)) leaks.push(f + ':' + (i + 1));
+    });
+  }
+  ok('no error message goes into innerHTML unescaped', leaks.length === 0, leaks.join(', '));
+}
