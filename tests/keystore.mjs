@@ -174,6 +174,13 @@ group('the fee signed is the fee reviewed (audit F04)');
   let fine = true;
   try { checkFee(3682250 * 1.2, 3682250); checkFee(3000000, 3682250); } catch (e) { fine = false; }
   ok('a small rise between two simulations passes', fine);
+  let missingFee = null;
+  try { checkFee(3682250); } catch (e) { missingFee = e.message; }
+  ok('a send with no reviewed fee is refused, not waved through', missingFee && /review it again/.test(missingFee), missingFee);
+  let optOut = true;
+  try { checkFee(368225000, 'no fee review'); } catch (e) { optOut = false; }
+  ok('GRAM opts out only by saying so', optOut &&
+    (fs.readFileSync(path.join(SRC, 'gram.js'), 'utf8').match(/await sendSwap\([^;]*;/g) || []).every(c => /NO_FEE_REVIEW\)/.test(c)));
   ok('every signing function checks it before it signs',
     ['sendNative', 'sendSwap', 'sendStake', 'sendVote'].every(n => /checkFee\(/.test(tx.slice(tx.indexOf('async function ' + n + '('), tx.indexOf('sign(', tx.indexOf('async function ' + n + '('))))));
   const callers = { 'tx.js': 2, 'swap.js': 1, 'p2p.js': 1, 'defi.js': 1, 'stake.js': 1, 'gov.js': 1 };

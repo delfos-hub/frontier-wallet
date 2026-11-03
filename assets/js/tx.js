@@ -155,8 +155,13 @@ async function simulateGas(body, auth, net = MAINNET){
    GAS_SAFETY already pads, so a rise of up to FEE_SLACK passes; more than
    that stops before signing and sends the user back to review. */
 const FEE_SLACK = 1.25;
+/* A caller that forgets the reviewed fee must not skip the check silently, so
+   a missing one refuses. GRAM (testnet, no fee shown before consent) opts out
+   by passing NO_FEE_REVIEW on purpose. */
+const NO_FEE_REVIEW = 'no fee review';
 function checkFee(gasFee, maxFee){
-  if (maxFee == null) return;
+  if (maxFee === NO_FEE_REVIEW) return;
+  if (!(Number(maxFee) > 0)) throw new Error('no reviewed network fee to compare with. Nothing was signed; review it again.');
   const cap = Math.ceil(Number(maxFee) * FEE_SLACK);
   if (!(gasFee <= cap)) throw new Error('the network fee is now ' + fmt(gasFee / 1e6) + ' LUNC, more than the ' +
     fmt(Number(maxFee) / 1e6) + ' LUNC shown in the review. Nothing was signed; review it again.');
@@ -703,7 +708,7 @@ document.addEventListener('frontier:send-token', function (e) {
   go('send');
 });
 
-export { dryRunNative, sendNative, burnTaxRate, b64, toRaw, checkFee };
+export { dryRunNative, sendNative, burnTaxRate, b64, toRaw, checkFee, NO_FEE_REVIEW };
 
 /* ---------------- contract calls ----------------
    MsgExecuteContract in both dialects this chain has carried. The field
