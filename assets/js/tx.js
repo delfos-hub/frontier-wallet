@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=cee90c5b';
-import { $, buzz, go, tap } from './shell.js?v=cee90c5b';
-import { S } from './state.js?v=cee90c5b';
-import { iconHTML, paintIcons } from './chain.js?v=cee90c5b';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=cee90c5b';
-import { notify } from './notify.js?v=cee90c5b';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=6389b78d';
+import { $, buzz, go, tap } from './shell.js?v=6389b78d';
+import { S } from './state.js?v=6389b78d';
+import { iconHTML, paintIcons } from './chain.js?v=6389b78d';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=6389b78d';
+import { notify } from './notify.js?v=6389b78d';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -478,7 +478,8 @@ async function review(){
     reviewBtn(!b);
     buzz('success');
   } catch (e) {
-    out.innerHTML = '<div class="sbad">' + (e.message || e) + '</div>';
+    // the message can come from the LCD or a contract: text, never markup
+    out.innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>';
   }
 }
 

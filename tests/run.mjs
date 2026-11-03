@@ -372,4 +372,7 @@ await import('./envelopes.mjs');
 // text from the chain is never markup
 await import('./escape.mjs');
 
+// what creating or importing leaves in the page, and the import PIN rule
+await import('./secrets.mjs');
+
 report();
