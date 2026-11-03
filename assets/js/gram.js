@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89788d6d';
-import { GRAM_NET, TERMS } from './gram-net.js?v=89788d6d';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89788d6d';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=89788d6d';
-import { S } from './state.js?v=89788d6d';
-import { decryptSeed } from './storage.js?v=89788d6d';
-import { sendSwap, signArbitrary, toRaw } from './tx.js?v=89788d6d';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89788d6d';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89788d6d';
-import { chime, notify } from './notify.js?v=89788d6d';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=6389b78d';
+import { GRAM_NET, TERMS } from './gram-net.js?v=6389b78d';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=6389b78d';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=6389b78d';
+import { S } from './state.js?v=6389b78d';
+import { decryptSeed } from './storage.js?v=6389b78d';
+import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=6389b78d';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=6389b78d';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=6389b78d';
+import { chime, notify } from './notify.js?v=6389b78d';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -801,7 +801,7 @@ $('#gx-takes').addEventListener('click', async function(e){
       await consent('Refund your LUNC lock', [['Terra lock', '#' + r.dataset.id], ['Goes back to', addrOf()]],
         JSON.stringify(step.msg), async function (m, st) {
           st(0);
-          const s2 = await sendSwap(addrOf(), [step], m, NET);
+          const s2 = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
           st(1);
           const res = await s2.wait();
           if (!res) throw new Error('the refund was sent but is not confirmed yet (tx ' + s2.hash.slice(0, 10) + '\u2026). Refresh in a minute.');
@@ -891,7 +891,7 @@ async function answerTake(t, b){
       st(0);
       step.msg.lock.timeout = terraTimeout(c.n);
       if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now. Nothing was locked.');
-      const sent = await sendSwap(addrOf(), [step], m, NET);
+      const sent = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
       remember(t.ton_lock, { tx: sent.hash, at: now(), timeout: step.msg.lock.timeout });
       st(1);
       const res = await sent.wait();
@@ -1272,7 +1272,7 @@ async function selfClaim(id){
       JSON.stringify({ claim: { id: b.terraLockId, secret: '(hidden: the secret kept on this device)' } }),
       async function (m, st) {
         st(0);
-        const r = await sendSwap(addrOf(), [step], m, NET);
+        const r = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
         st(1);
         if (!(await r.wait())) throw new Error('the claim was sent but is not confirmed yet (tx ' + r.hash.slice(0, 10) + '\u2026). It usually lands within a minute.');
       },

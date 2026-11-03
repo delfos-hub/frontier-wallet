@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=89788d6d';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89788d6d';
-import { $, buzz, go, libs, report } from './shell.js?v=89788d6d';
-import { S } from './state.js?v=89788d6d';
-import { decryptSeed } from './storage.js?v=89788d6d';
-import { dryRunSwap, sendSwap } from './tx.js?v=89788d6d';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=6389b78d';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=6389b78d';
+import { $, buzz, go, libs, report } from './shell.js?v=6389b78d';
+import { S } from './state.js?v=6389b78d';
+import { decryptSeed } from './storage.js?v=6389b78d';
+import { dryRunSwap, sendSwap } from './tx.js?v=6389b78d';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */
@@ -391,6 +391,7 @@ async function ask(id, build){
     const est = await dryRunSwap(addrOf(), plan.steps, S.MNEMONIC);
     if (!PENDING || PENDING.id !== id) return;
     $('#p2p-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
+    PENDING.fee = est.gasFee;
   } catch (e) {
     if (!PENDING || PENDING.id !== id) return;
     $('#p2p-fee').textContent = '';
@@ -440,7 +441,7 @@ async function onPin(){
         localStorage.setItem(k, JSON.stringify(had.concat(ids).slice(-300)));
       }
     } catch (e) {}
-    const res = await sendSwap(addrOf(), PENDING.steps, mnemonic);
+    const res = await sendSwap(addrOf(), PENDING.steps, mnemonic, undefined, '', PENDING.fee);
     mnemonic = null;
     say('Waiting for a block');
     const done = await res.wait();
@@ -467,8 +468,6 @@ window.addEventListener('message', function (ev) {
   const d = ev.data;
   if (!d || typeof d !== 'object' || d.channel !== CHANNEL) return;
   if (typeof d.id !== 'string' || !d.id || d.id.length > 100) return;
-  // a request from the widget is the person working in it (auto-lock, boot.js)
-  if (d.type === 'execute' || d.type === 'execute-batch') document.dispatchEvent(new CustomEvent('frontier:activity'));
 
   if (d.type === 'get-address') {
     const a = addrOf();

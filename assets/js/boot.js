@@ -1,14 +1,14 @@
-import { amt, fmt } from './chain.js?v=89788d6d';
-import { finish } from './crypto.js?v=89788d6d';
-import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=89788d6d';
+import { amt, fmt } from './chain.js?v=6389b78d';
+import { finish } from './crypto.js?v=6389b78d';
+import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=6389b78d';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=89788d6d';
-import { S } from './state.js?v=89788d6d';
-import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=89788d6d';
-import { enter, switchLink } from './wallets.js?v=89788d6d';
-import { paintSendTok } from './tx.js?v=89788d6d';
-import { luncRaw, openWallet } from './tokens.js?v=89788d6d';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=6389b78d';
+import { S } from './state.js?v=6389b78d';
+import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=6389b78d';
+import { enter, switchLink } from './wallets.js?v=6389b78d';
+import { paintSendTok } from './tx.js?v=6389b78d';
+import { luncRaw, openWallet } from './tokens.js?v=6389b78d';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -146,24 +146,24 @@ $('#btn-lock').addEventListener('click', lockWallet);
 
    It is armed only while a saved wallet is open (frontier:wallet), never
    while a new phrase is being written down or verified: there the phrase is
-   the only copy, and locking would wipe it (review of #34). Work inside the
-   P2P widget counts as activity: its touches stay in its own frame, so the
-   widget's requests (frontier:activity) and focus inside it refresh the timer. */
+   the only copy, and locking would wipe it (review of #34). Only a touch on
+   this page counts. Focus resting in the P2P widget's frame, or a request
+   from it, used to refresh the timer too, so a focused frame kept the wallet
+   open for good, and a widget could keep it open by asking (audit F05). A
+   widget request is signed only after the PIN is typed here, which is a
+   touch on this page anyway. */
 const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000;
 let lastTouch = Date.now(), hiddenAt = 0;
 const touched = () => { lastTouch = Date.now(); };
 ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev =>
   document.addEventListener(ev, touched, { passive: true, capture: true }));
-document.addEventListener('frontier:activity', touched);
 document.addEventListener('frontier:wallet', () => { S.ARMED = true; touched(); });
-const inFrame = () => !!(document.activeElement && document.activeElement.tagName === 'IFRAME');
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
   if (S.ARMED && S.MNEMONIC && hiddenAt && Date.now() - hiddenAt >= HIDDEN_MS) lockWallet();
   hiddenAt = 0; touched();
 });
 setInterval(() => {
-  if (inFrame()) touched();
   if (S.ARMED && S.MNEMONIC && !document.hidden && Date.now() - lastTouch >= IDLE_MS) lockWallet();
 }, 30 * 1000);
 
