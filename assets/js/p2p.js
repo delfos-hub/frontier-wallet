@@ -24,12 +24,12 @@
      in   { channel, type:'execute-batch', id, msgs:[{ contract, msg, funds }, ...] }
      out  same replies as execute; all messages in one transaction (widgets#7)
 */
-import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=7443e9a3';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=7443e9a3';
-import { $, buzz, go, libs, report } from './shell.js?v=7443e9a3';
-import { S } from './state.js?v=7443e9a3';
-import { decryptSeed } from './storage.js?v=7443e9a3';
-import { dryRunSwap, sendSwap } from './tx.js?v=7443e9a3';
+import { KNOWN_IBC, amt, fmt, smart } from './chain.js?v=cee90c5b';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=cee90c5b';
+import { $, buzz, go, libs, report } from './shell.js?v=cee90c5b';
+import { S } from './state.js?v=cee90c5b';
+import { decryptSeed } from './storage.js?v=cee90c5b';
+import { dryRunSwap, sendSwap } from './tx.js?v=cee90c5b';
 
 /* ---------------- configuration ----------------
    Both values are ours. The widget cannot change either of them. */

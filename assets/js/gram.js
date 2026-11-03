@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=7443e9a3';
-import { GRAM_NET, TERMS } from './gram-net.js?v=7443e9a3';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=7443e9a3';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=7443e9a3';
-import { S } from './state.js?v=7443e9a3';
-import { decryptSeed } from './storage.js?v=7443e9a3';
-import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=7443e9a3';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=7443e9a3';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=7443e9a3';
-import { chime, notify } from './notify.js?v=7443e9a3';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=cee90c5b';
+import { GRAM_NET, TERMS } from './gram-net.js?v=cee90c5b';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=cee90c5b';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=cee90c5b';
+import { S } from './state.js?v=cee90c5b';
+import { decryptSeed } from './storage.js?v=cee90c5b';
+import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=cee90c5b';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=cee90c5b';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=cee90c5b';
+import { chime, notify } from './notify.js?v=cee90c5b';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
