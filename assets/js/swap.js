@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=9cc4b550';
-import { $, go, tap } from './shell.js?v=9cc4b550';
-import { DEC, assetOf, checkPool, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=9cc4b550';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=9cc4b550';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=9cc4b550';
-import { S } from './state.js?v=9cc4b550';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=7443e9a3';
+import { $, go, tap } from './shell.js?v=7443e9a3';
+import { DEC, assetOf, checkPool, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=7443e9a3';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=7443e9a3';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=7443e9a3';
+import { S } from './state.js?v=7443e9a3';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -1178,7 +1178,7 @@ $('#cf-go').addEventListener('click', async () => {
     b.textContent = 'Signing';
     // read again, not from the session: the pool could have been migrated
     for (const leg of QUOTE.legs) await checkPool(leg.pair, true);
-    const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC);
+    const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC, undefined, '', PLAN.est.gasFee);
     closeConfirm();
 
     // Waiting is a state, not an absence of one.

@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=9cc4b550';
-import { $, buzz } from './shell.js?v=9cc4b550';
-import { S } from './state.js?v=9cc4b550';
-import { luncRaw, refreshBalances } from './tokens.js?v=9cc4b550';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=9cc4b550';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=7443e9a3';
+import { $, buzz } from './shell.js?v=7443e9a3';
+import { S } from './state.js?v=7443e9a3';
+import { luncRaw, refreshBalances } from './tokens.js?v=7443e9a3';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=7443e9a3';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -595,6 +595,7 @@ async function review(){
     const need = (f.kind === 'delegate' ? BigInt(f.amount) : 0n) + BigInt(est.gasFee);
     if (need > BigInt(Math.floor(luncRaw() || 0))) throw new Error('Not enough LUNC to cover this and its fee.');
     $('#stk-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
+    f.fee = est.gasFee;
     if ((f.kind === 'claim' || f.kind === 'restake') && BigInt(est.gasFee) >= BigInt(f.amount)) {
       $('#stk-out').innerHTML = '<div class="sbad">The fee is more than the rewards. Waiting until they grow is cheaper.</div>';
     }
@@ -627,7 +628,7 @@ async function confirm(btn, f){
   btn.textContent = 'Signing and sending\u2026';
   const out = $('#stk-out');
   try {
-    const res = await sendStake(addrOf(), msgsOf(f), S.MNEMONIC);
+    const res = await sendStake(addrOf(), msgsOf(f), S.MNEMONIC, f.fee);
     buzz('success');
     out.innerHTML = '<div class="sline strong"><span>Accepted by the node</span><b>' + res.hash.slice(0, 10) + '\u2026</b></div>';
     btn.textContent = 'Waiting for the block\u2026';

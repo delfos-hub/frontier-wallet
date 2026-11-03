@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=9cc4b550';
-import { S } from './state.js?v=9cc4b550';
+import { $, report, tg } from './shell.js?v=7443e9a3';
+import { S } from './state.js?v=7443e9a3';
 
 /* ---------------- storage ----------------
    The encrypted key is kept on this device only, in the best place the client
@@ -46,33 +46,47 @@ const Store = (() => {
     return true;
   }
 
-  // what this device holds, from the current store down to the page's own
+  // what the store in use holds. Copies elsewhere (a lower rung, the page's
+  // storage, the cloud) are not read here: load() moves them into this store
+  // first, so a copy is only ever dropped once this store holds it (audit F06).
   async function readHere(){
     if (api) {
       try {
         const v = await callOn(api, api.getItem, KEY);
         if (v) return v;
+        return mem;
       } catch (e) { stepDown(); return readHere(); }
     }
-    try {
-      const v = localStorage.getItem(KEY);
-      if (v) return v;
-    } catch (e) {}
+    if (kind === 'local') {
+      try {
+        const v = localStorage.getItem(KEY);
+        if (v) return v;
+      } catch (e) {}
+    }
     return mem;
   }
 
-  // an older version's copy in Telegram's cloud, read once and then removed
+  // Every other place a copy may sit: the rungs below the one in use (a key
+  // kept in DeviceStorage before SecureStorage started to work), the page's
+  // own storage, and Telegram's cloud (an older version's copy). Read once a
+  // session by load(), and all of them emptied by clear().
   const cloud = () => (tg && tg.CloudStorage && atLeast('6.9')) ? tg.CloudStorage : null;
-  async function fromCloud(){
+  function elsewhere(){
+    const out = [];
+    const tgStore = s => ({
+      read: async () => { try { return (await callOn(s, s.getItem, KEY)) || null; } catch (e) { return null; } },
+      drop: () => callOn(s, s.removeItem, KEY)
+    });
+    for (let i = rung + 1; i < LADDER.length; i++) { const s = LADDER[i][1](); if (s) out.push(tgStore(s)); }
+    if (kind !== 'local') out.push({
+      read: async () => { try { return localStorage.getItem(KEY) || null; } catch (e) { return null; } },
+      drop: async () => localStorage.removeItem(KEY)
+    });
     const c = cloud();
-    if (!c) return null;
-    try { return (await callOn(c, c.getItem, KEY)) || null; } catch (e) { return null; }
+    if (c) out.push(tgStore(c));
+    return out;
   }
-  async function dropCloud(){
-    const c = cloud();
-    if (!c) return;
-    try { await callOn(c, c.removeItem, KEY); } catch (e) {}
-  }
+  const dropQuietly = async o => { try { await o.drop(); } catch (e) {} };
   let swept = false;
 
   const store = {
@@ -93,46 +107,56 @@ const Store = (() => {
         break;
       }
       mem = v;
+      kind = 'memory'; api = null;           // what the screen shows: nothing survives a reload
       return false;
     },
     async load(){
       let v = await readHere();
       if (!swept) {
         swept = true;
-        const c = await fromCloud();
-        if (c) {
-          if (!v) {
-            // move it here, and drop the cloud copy only once it is kept here
-            // and reads back: if this device cannot keep it, the cloud copy is
-            // the only one that survives a reload, so it stays
-            const kept = await store.save(c);
-            if (kept && (await readHere()) === c) await dropCloud();
-            v = c;
-          } else if (c === v) {
-            await dropCloud();                    // the same book: nothing to keep
-          } else {
-            // What is kept is the whole wallet book, and the cloud copy may
-            // hold wallets made on another Telegram client (a desktop that
-            // refused SecureStorage). Its wallets the device lacks are added,
-            // by address; the cloud copy goes only once the merged book is
-            // kept here and reads back. Anything unreadable stays where it is.
-            const merged = mergeBooks(v, c);
-            if (merged === v) await dropCloud();
-            else if (merged) {
-              const kept = await store.save(merged);
-              if (kept && (await readHere()) === merged) await dropCloud();
-              v = merged;
+        for (const o of elsewhere()) {
+          const c = await o.read();
+          const dropCopy = () => dropQuietly(o);
+          if (c) {
+            if (!v) {
+              // move it here, and drop the other copy only once it is kept here
+              // and reads back: if this store cannot keep it, the other copy is
+              // the only one that survives a reload, so it stays
+              const kept = await store.save(c);
+              if (kept && (await readHere()) === c) await dropCopy();
+              v = c;
+            } else if (c === v) {
+              await dropCopy();                    // the same book: nothing to keep
+            } else {
+              // What is kept is the whole wallet book, and the other copy may
+              // hold wallets made on another Telegram client (a desktop that
+              // refused SecureStorage). Its wallets the device lacks are added,
+              // by address; the other copy goes only once the merged book is
+              // kept here and reads back. Anything unreadable stays where it is.
+              const merged = mergeBooks(v, c);
+              if (merged === v) await dropCopy();
+              else if (merged) {
+                const kept = await store.save(merged);
+                if (kept && (await readHere()) === merged) await dropCopy();
+                v = merged;
+              }
             }
           }
         }
       }
       return v;
     },
+    // Every copy this client can reach, not only the store in use: a copy
+    // left in another one came back on the next open (audit F06). True when
+    // every removal went through.
     async clear(){
-      await dropCloud();                          // never leave a copy behind
-      if (api) { try { await callOn(api, api.removeItem, KEY); } catch (e) {} return; }
-      if (kind === 'local') { try { localStorage.removeItem(KEY); } catch (e) {} return; }
+      let all = true;
+      const drop = async f => { try { await f(); } catch (e) { all = false; } };
+      for (const o of elsewhere()) await drop(o.drop);
+      if (api) await drop(() => callOn(api, api.removeItem, KEY));
+      if (kind === 'local') await drop(async () => localStorage.removeItem(KEY));
       mem = null;
+      return all;
     }
   };
   return store;
@@ -210,8 +234,9 @@ const activeEntry = () => BOOK && (BOOK.list.filter(w => w.id === BOOK.active)[0
 
 async function persist(){
   try {
-    if (BOOK && BOOK.list.length) await Store.save(JSON.stringify(BOOK));
-    else await Store.clear();
+    if (BOOK && BOOK.list.length) {
+      if (!(await Store.save(JSON.stringify(BOOK)))) report('save', new Error('kept in memory only, it will not survive a reload'));
+    } else if (!(await Store.clear())) report('save', new Error('a copy of the wallets could not be removed'));
   } catch (e) { report('save', e); }
   showStore();
 }
@@ -287,7 +312,10 @@ async function removeWallet(id){
   return w;
 }
 
-async function clearBook(){ BOOK = null; S.SAVED = null; await Store.clear(); }
+async function clearBook(){
+  BOOK = null; S.SAVED = null;
+  if (!(await Store.clear())) report('clear', new Error('a copy of the wallets could not be removed'));
+}
 const wallets = () => (BOOK ? BOOK.list.slice() : []);
 const activeId = () => (BOOK ? BOOK.active : '');
 
