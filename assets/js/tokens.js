@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=9cc4b550';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=9cc4b550';
-import { $, go } from './shell.js?v=9cc4b550';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=7158a2e0';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=7158a2e0';
+import { $, go } from './shell.js?v=7158a2e0';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -895,7 +895,7 @@ async function loadBalances(addr, force){
       'the wrong pool. Reopening usually fixes it.');
   } catch (e) {
     SWEEPING = false;
-    list.innerHTML = '<li class="empty">Could not reach the chain: ' + (e.message || e) + '</li>';
+    list.innerHTML = '<li class="empty">Could not reach the chain: ' + esc(e.message || e) + '</li>';
     // a failed read is not a zero balance, and must not be drawn as one
     if (TOTAL_SHOWN === null) $('#bal-total').textContent = '\u2014';
   }
