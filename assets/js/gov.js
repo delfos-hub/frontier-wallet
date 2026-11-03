@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=b4e773c0';
-import { $, buzz, go } from './shell.js?v=b4e773c0';
-import { S } from './state.js?v=b4e773c0';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=b4e773c0';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=0032696d';
+import { $, buzz, go } from './shell.js?v=0032696d';
+import { S } from './state.js?v=0032696d';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=0032696d';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -454,7 +454,7 @@ const shortAcc = a => a.slice(0, 12) + '\u2026' + a.slice(-5);
 const LOGO = op => 'https://raw.githubusercontent.com/cosmostation/chainlist/main/chain/terra-classic/moniker/' + op + '.png';
 const hue = s => { s = String(s || ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; };
 const face = (name, key, op) => '<span class="gv-ava" style="--h:' + hue(key) + '"><em>' + esc((name || '?').trim().slice(0, 1).toUpperCase()) + '</em>' +
-  (op ? '<img src="' + LOGO(op) + '" alt="" loading="lazy">' : '') + '</span>';
+  (op ? '<img src="' + esc(LOGO(op)) + '" alt="" loading="lazy">' : '') + '</span>';
 
 async function showVoters(id, live){
   const box = $('#gov-voters');
@@ -524,6 +524,7 @@ async function review(opt){
   try {
     const est = await dryRunVote(addrOf(), f.id, opt, S.MNEMONIC);
     if (FLOW !== f || f.opt !== opt) return;
+    f.fee = est.gasFee;                     // the fee reviewed; signing refuses more (audit F04)
     $('#gov-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
     const btn = $('#gov-go');
     f.ready = true;

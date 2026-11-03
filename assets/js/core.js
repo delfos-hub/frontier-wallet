@@ -12,11 +12,11 @@
        of a dash that reads like an error.
    It only adds elements next to the ones tokens.js owns and never writes into
    those, so the two cannot fight over the same text. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=b4e773c0';
-import { $ } from './shell.js?v=b4e773c0';
-import { S } from './state.js?v=b4e773c0';
-import { stakingApr } from './stake.js?v=b4e773c0';
-import { refreshBalances } from './tokens.js?v=b4e773c0';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=0032696d';
+import { $ } from './shell.js?v=0032696d';
+import { S } from './state.js?v=0032696d';
+import { stakingApr } from './stake.js?v=0032696d';
+import { refreshBalances } from './tokens.js?v=0032696d';
 
 const MARKETS = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=terra-luna,terrausd' +
   '&sparkline=true&price_change_percentage=24h';
@@ -82,7 +82,12 @@ function slot(cell, cls, where){
   }
   return el;
 }
-const put = (el, html) => { if (el.innerHTML !== html) el.innerHTML = html; };
+// Compared with what this module last wrote, not with innerHTML read back:
+// the browser serializes SVG and translated text differently from the string
+// written, so that comparison never matched and the panel was rewritten
+// several times a second for as long as Home was open (Pablo, review of #38).
+const LAST = new WeakMap();
+const put = (el, html) => { if (LAST.get(el) !== html) { LAST.set(el, html); el.innerHTML = html; } };
 
 function qtyOf(cell){
   const t = (cell.querySelector('.core-qty') || {}).textContent || '';

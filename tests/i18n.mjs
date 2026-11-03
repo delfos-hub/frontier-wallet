@@ -34,4 +34,9 @@ ok('the rows other modules wire up are still there', ['id="set-wallets"', 'id="s
 const app = fs.readFileSync(path.join(SRC, 'app.js'), 'utf8');
 ok('app.js loads i18n.js', /import '\.\/i18n\.js(\?v=[0-9a-f]+)?';/.test(app));
 
+group('Core assets');
+const core = fs.readFileSync(path.join(SRC, 'core.js'), 'utf8');
+ok('a cell is rewritten only when what this module would write changes (no repaint loop)',
+   /const LAST = new WeakMap\(\)/.test(core) && /LAST\.get\(el\) !== html/.test(core) && !/el\.innerHTML !== html/.test(core));
+
 report();
