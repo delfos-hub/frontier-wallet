@@ -1,6 +1,6 @@
-import { finish } from './crypto.js?v=ca9ecf8b';
-import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=ca9ecf8b';
-import { S } from './state.js?v=ca9ecf8b';
+import { finish } from './crypto.js?v=b01780e4';
+import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=b01780e4';
+import { S } from './state.js?v=b01780e4';
 
 /* ---------------- length toggle ---------------- */
 $('#seg').addEventListener('click', e => {
@@ -72,6 +72,7 @@ $('#btn-setup').addEventListener('click', async () => {
   b.disabled = true; b.innerHTML = '<span class="spin"></span>Generating';
   try {
     await libs();
+    S.ARMED = false;                             // no auto-lock while the phrase is written down
     S.MNEMONIC = bip39.generateMnemonic(bip39.wordlist, S.BITS);
     renderSeed();
     go('seed');
