@@ -131,3 +131,24 @@ document.addEventListener('touchend', e => {
 function lean0(){ document.getElementById('tabs') && document.getElementById('tabs').classList.remove('dragging'); ind.lean(0); }
 
 document.addEventListener('touchcancel', () => { release(); s = null; }, { passive: true });
+
+/* While the keyboard is up the tab bar steps aside: the keyboard pushes the
+   fixed bar up with it, and it covered the field being typed in (the token
+   search). The field is then brought to the middle of what is left. */
+const TYPING = 'input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]),textarea,[contenteditable="true"]';
+let kbT = 0;
+document.addEventListener('focusin', e => {
+  if (!e.target.matches || !e.target.matches(TYPING)) return;
+  clearTimeout(kbT);
+  document.body.classList.add('kb-open');
+  const el = e.target;
+  setTimeout(() => { try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {} }, 320);
+});
+document.addEventListener('focusout', e => {
+  if (!e.target.matches || !e.target.matches(TYPING)) return;
+  // a moment's grace: moving from one field to the next keeps the bar away
+  kbT = setTimeout(() => {
+    const a = document.activeElement;
+    if (!(a && a.matches && a.matches(TYPING))) document.body.classList.remove('kb-open');
+  }, 150);
+});
