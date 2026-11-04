@@ -142,13 +142,20 @@ const TOUCH = window.matchMedia && window.matchMedia('(pointer: coarse)').matche
 const VV = window.visualViewport;
 let kbT = 0, kbCheck = 0, fullH = VV ? VV.height : window.innerHeight;
 const typingNow = () => { const a = document.activeElement; return !!(a && a.matches && a.matches(TYPING)); };
-if (VV) VV.addEventListener('resize', () => { if (!typingNow()) fullH = Math.max(VV.height, window.innerHeight * 0.5); });
+if (VV) VV.addEventListener('resize', () => {
+  if (!typingNow()) { fullH = Math.max(VV.height, window.innerHeight * 0.5); return; }
+  if (!TOUCH) return;
+  // the keyboard can close while the field keeps focus (iOS "Done", a swipe
+  // down) and open again: the bar follows the visible area itself
+  document.body.classList.toggle('kb-open', fullH - VV.height >= 120);
+});
 document.addEventListener('focusin', e => {
   if (!TOUCH || !e.target.matches || !e.target.matches(TYPING)) return;
   clearTimeout(kbT); clearTimeout(kbCheck);
   document.body.classList.add('kb-open');
   const el = e.target;
   kbCheck = setTimeout(() => {
+    if (document.activeElement !== el) return;      // focus moved on meanwhile
     // no software keyboard after all: the visible area kept its height
     if (VV && fullH - VV.height < 120) { document.body.classList.remove('kb-open'); return; }
     try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {}
