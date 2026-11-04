@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=913e6309';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=913e6309';
-import { $, go } from './shell.js?v=913e6309';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=1e00b604';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=1e00b604';
+import { $, go } from './shell.js?v=1e00b604';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -484,6 +484,8 @@ function tweenTotal(el, from, to){
 function renderTokens(list, found, px, hint){
   // a reading of another wallet, finishing after a switch, is not drawn
   if (found && found.__addr && found.__addr !== LAST_ADDR) return;
+  // an older pass of the same wallet (A, B, back to A while A still read)
+  if (found && found.__gen && found.__gen !== RUN_GEN) return;
   LAST = { found: found, px: px, hint: hint };
 
   const rows = found.map(t => {
@@ -669,6 +671,7 @@ async function loadBalances(addr, force){
     const snap = cacheGetStale('snap:' + addr);
     if (!warm && snap && Array.isArray(snap.found) && snap.found.length) {
       snap.found.__addr = addr;
+      snap.found.__gen = gen;
       SWEEPING = false;              // that reading was complete when it was saved
       FROM_SNAP = true;              // its pools are hours old: shown, not reused
       try { renderTokens(list, snap.found, snap.px || {}, ''); }
@@ -696,7 +699,7 @@ async function loadBalances(addr, force){
       if (!fresh || (!fresh.LUNC && !fresh.USTC)) return;
       cacheSet('px', fresh);
       Object.assign(px, fresh);
-      if (LAST_ADDR !== addr || !LAST.found.length) return;
+      if (LAST_ADDR !== addr || gen !== RUN_GEN || !LAST.found.length) return;
       // whichever pass owns the screen now, not necessarily this one
       Object.assign(LAST.px, fresh);
       renderTokens(list, LAST.found, LAST.px, LAST.hint);
@@ -704,6 +707,7 @@ async function loadBalances(addr, force){
 
     const found = [];
     found.__addr = addr;
+    found.__gen = gen;
 
     // every native denom the address actually holds, ibc ones resolved to
     // whatever they were before they crossed the bridge
@@ -903,7 +907,7 @@ async function loadBalances(addr, force){
       'Could not read every exchange just now, so some prices may be based on ' +
       'the wrong pool. Reopening usually fixes it.');
   } catch (e) {
-    if (LAST_ADDR !== addr) return;     // a read of the previous wallet failing: not this screen's news
+    if (LAST_ADDR !== addr || gen !== RUN_GEN) return;     // a read of the previous wallet failing: not this screen's news
     SWEEPING = false;
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + esc(e.message || e) + '</li>';
     // a failed read is not a zero balance, and must not be drawn as one

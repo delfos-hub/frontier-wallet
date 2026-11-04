@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=913e6309';
-import { DEC, knownAsset as marketAsset } from './market.js?v=913e6309';
-import { $, go } from './shell.js?v=913e6309';
-import { fiatOf, heldTokens } from './tokens.js?v=913e6309';
-import { S } from './state.js?v=913e6309';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=1e00b604';
+import { DEC, knownAsset as marketAsset } from './market.js?v=1e00b604';
+import { $, go } from './shell.js?v=1e00b604';
+import { fiatOf, heldTokens } from './tokens.js?v=1e00b604';
+import { S } from './state.js?v=1e00b604';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -752,6 +752,9 @@ async function load(){
   if (AGAIN) { AGAIN = false; LOADED = ''; load(); }
 }
 async function read(me){
+  // a "Load more" still running for this wallet: let it end before starting
+  // over, so the fresh read gets its own first page instead of joining it
+  while (FETCH_P) await FETCH_P.catch(() => {});
   const list = $('#ac-list');
   const old = cached(me);
   ALL = []; PAGE_OFF = 0; SHOWN = 40; MORE = true; LOADED_FOR = me;

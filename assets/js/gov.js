@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=913e6309';
-import { $, buzz, go } from './shell.js?v=913e6309';
-import { S } from './state.js?v=913e6309';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=913e6309';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=1e00b604';
+import { $, buzz, go } from './shell.js?v=1e00b604';
+import { S } from './state.js?v=1e00b604';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=1e00b604';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -436,9 +436,14 @@ function open(id){
     if (b && FLOW && FLOW.ready && !FLOW.sent) b.disabled = n > MEMO_MAX;
     // a comment changed after the fee was shown: estimate again with it
     clearTimeout(memoBox._t);
-    if (FLOW && FLOW.opt && !FLOW.sent && n <= MEMO_MAX) {
-      const f = FLOW;
-      memoBox._t = setTimeout(() => { if (FLOW === f && !f.sent && f.memo !== memoBox.value.trim()) review(f.opt); }, 700);
+    if (FLOW && FLOW.opt && !FLOW.sent && FLOW.memo !== memoBox.value.trim()) {
+      // the fee shown was for the old comment: no signing until it is estimated again
+      FLOW.ready = false; FLOW.armed = false;
+      if (b) b.disabled = true;
+      if (n <= MEMO_MAX) {
+        const f = FLOW;
+        memoBox._t = setTimeout(() => { if (FLOW === f && !f.sent) review(f.opt); }, 700);
+      }
     }
   });
   document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(b => b.addEventListener('click', () => {
