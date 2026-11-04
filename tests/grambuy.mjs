@@ -84,4 +84,39 @@ ok('the payment landed after all (chain time behind the phone): back to "sent"',
 r = await run({ stage: 'cancelled', validUntil: NOW - 600 }, { lock: NONE });
 ok('nothing landed: stays cancelled', r.b.stage === 'cancelled', r.b.stage);
 
+group('the secret is read back before any GRAM is asked for');
+// the Pay handler itself, lifted from gram.js; storage either keeps writes or
+// refuses them like a private window or a full disk does
+async function pay(storageWorks){
+  let saved = {}; const sent = [], msgs = [];
+  const LOCK = { raw: ID, address: 'EQlock', value: '1', stateInit: '', payload: '', codeHash: 'AB' };
+  const env = {
+    buyTerms: () => ({ o: { id: 'o1', price: '1', maker_ton: 'EQmaker' }, lunc: 100000000n, gram: 1n, tip: 1n }),
+    addrOf: () => ME, say: (_, m) => msgs.push(m), needTerms: async () => true,
+    loadTonConnect: async () => ({ wallet: {}, sendTransaction: async t => { sent.push(t); } }),
+    tonAccount: () => ({ chain: '-3', address: 'EQme' }),
+    NET: { tonChain: '-3', tonCode: '', tonCodeHash: 'ab', name: 'testnet' },
+    POLICY: { answer_window_sec: 60, min_ton_left_sec: 60, tip_address: 'EQtip' }, POLICY_ERR: '', setPolicy: x => x,
+    api: async () => ({ live: true, price: '1', maker_ton: 'EQmaker', remaining_lunc: '1000000000', min_lunc: '1', expires: NOW + 99999 }),
+    load: () => {}, human: x => String(x), now: () => NOW, sha256hex: async () => 'hash', takeRefOf: async () => 'ref',
+    tonRaw: x => x, buildLock: async () => LOCK, toHex: u => Buffer.from(u).toString('hex'),
+    buys: () => JSON.parse(JSON.stringify(saved)),
+    saveBuy: (id, v) => { const b = JSON.parse(JSON.stringify(saved)); b[id] = Object.assign(b[id] || {}, v); if (storageWorks) saved = b; return b[id]; },
+    drawBuys: () => {}, watchBuys: () => {}, buzz: () => {}, BUYING: null,
+    $: () => ({ hidden: false })
+  };
+  const names = Object.keys(env);
+  const head = "$('#gx-bb-pay').addEventListener('click', ";
+  const body = lift(src.slice(src.indexOf(head) + head.length), 'async function(){');
+  const f = new Function(...names, 'return ' + body + ';')(...names.map(k => env[k]));
+  await f.call({ disabled: false });
+  return { sent, msgs, saved };
+}
+let p = await pay(false);
+ok('storage refusing the write: nothing is sent to the TON wallet', p.sent.length === 0, p.sent.length);
+ok('and the buyer is told why', p.msgs.some(m => /did not keep/.test(m)), p.msgs.join(' | '));
+p = await pay(true);
+ok('storage working: the payment is asked for as before', p.sent.length === 1, p.msgs.join(' | '));
+ok('with the secret kept before it', p.saved[ID] && /^[0-9a-f]{64}$/.test(p.saved[ID].secret) && p.saved[ID].stage === 'sent');
+
 report();
