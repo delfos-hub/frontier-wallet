@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=5c652b49';
-import { GRAM_NET, TERMS } from './gram-net.js?v=5c652b49';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=5c652b49';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=5c652b49';
-import { S } from './state.js?v=5c652b49';
-import { decryptSeed } from './storage.js?v=5c652b49';
-import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=5c652b49';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=5c652b49';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=5c652b49';
-import { chime, notify } from './notify.js?v=5c652b49';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=cd4cbd5f';
+import { GRAM_NET, TERMS } from './gram-net.js?v=cd4cbd5f';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=cd4cbd5f';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=cd4cbd5f';
+import { S } from './state.js?v=cd4cbd5f';
+import { decryptSeed } from './storage.js?v=cd4cbd5f';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=cd4cbd5f';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=cd4cbd5f';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=cd4cbd5f';
+import { chime, notify } from './notify.js?v=cd4cbd5f';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -240,6 +240,17 @@ const finalKey = () => 'fw:gram:final:' + addrOf();
 function finals(){ try { return JSON.parse(localStorage.getItem(finalKey()) || '{}'); } catch (e) { return {}; } }
 function setFinal(ton, v){ const f = finals(); f[ton] = v; try { localStorage.setItem(finalKey(), JSON.stringify(f)); } catch (e) {} }
 const OPEN_SEEN = new Set();          // locked deals seen still open in this session
+
+// The network fee of a GRAM transaction on Terra, estimated before the consent
+// and shown in it; signing then refuses one more than 1.25x higher, like every
+// other signing in the wallet (audit round 4, D1). The estimate needs the
+// open wallet's key for the simulation, as the swap screen's does.
+async function feeFor(steps){
+  if (!S.MNEMONIC) throw new Error('open the wallet with your PIN first, then try again');
+  const est = await dryRunSwap(addrOf(), steps, S.MNEMONIC, NET);
+  return est.gasFee;
+}
+const feeLine = fee => ['Network fee', 'about ' + human(BigInt(Math.ceil(fee)), 6) + ' LUNC'];
 
 async function terraLockRead(id){
   const q = btoa(JSON.stringify({ lock: { id: Number(id) } }));
@@ -800,10 +811,11 @@ $('#gx-takes').addEventListener('click', async function(e){
     r.disabled = true;
     const step = { contract: NET.htlc, msg: { refund: { id: Number(r.dataset.id) } }, funds: [] };
     try {
-      await consent('Refund your LUNC lock', [['Terra lock', '#' + r.dataset.id], ['Goes back to', addrOf()]],
+      const fee = await feeFor([step]);
+      await consent('Refund your LUNC lock', [['Terra lock', '#' + r.dataset.id], ['Goes back to', addrOf()], feeLine(fee)],
         JSON.stringify(step.msg), async function (m, st) {
           st(0);
-          const s2 = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
+          const s2 = await sendSwap(addrOf(), [step], m, NET, '', fee);
           st(1);
           const res = await s2.wait();
           if (!res) throw new Error('the refund was sent but is not confirmed yet (tx ' + s2.hash.slice(0, 10) + '\u2026). Refresh in a minute.');
@@ -887,13 +899,15 @@ async function answerTake(t, b){
       ['If unclaimed', 'the LUNC comes back to you after that'],
       ['Network', NET.chain + ' + TON ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet')]
     ];
+    const fee = await feeFor([step]);
+    lines.push(feeLine(fee));
     const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you.';
     await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m, st){
       // the PIN may have taken a while: the timeout is set again now and checked
       st(0);
       step.msg.lock.timeout = terraTimeout(c.n);
       if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now. Nothing was locked.');
-      const sent = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
+      const sent = await sendSwap(addrOf(), [step], m, NET, '', fee);
       remember(t.ton_lock, { tx: sent.hash, at: now(), timeout: step.msg.lock.timeout });
       st(1);
       const res = await sent.wait();
@@ -1277,7 +1291,8 @@ async function selfClaim(id){
   if (!b || !b.terraLockId) return;
   const step = { contract: NET.htlc, msg: { claim: { id: b.terraLockId, secret: b.secret } }, funds: [] };
   try {
-    await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC']],
+    const fee = await feeFor([step]);
+    await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC'], feeLine(fee)],
       JSON.stringify({ claim: { id: b.terraLockId, secret: '(hidden: the secret kept on this device)' } }),
       async function (m, st) {
         st(0);
@@ -1286,7 +1301,7 @@ async function selfClaim(id){
         const l = await terraLockRead(b.terraLockId);
         if (!l || l.status !== 'open') throw new Error('the seller\u2019s lock is no longer open. Nothing was signed.');
         if (Number(l.timeout) - now() < CLAIM_MARGIN / 2) throw new Error('too close to the end of the seller\u2019s lock to claim safely now. Nothing was signed.');
-        const r = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
+        const r = await sendSwap(addrOf(), [step], m, NET, '', fee);
         st(1);
         if (!(await r.wait())) throw new Error('the claim was sent but is not confirmed yet (tx ' + r.hash.slice(0, 10) + '\u2026). It usually lands within a minute.');
       },

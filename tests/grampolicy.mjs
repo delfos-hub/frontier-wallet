@@ -89,6 +89,7 @@ ok('the mainnet Worker on another fee address is refused', (() => { try { pinMai
 ok('back to the production mini app after paying', NETS.mainnet.twaReturnUrl === 'https://t.me/Frontier_WalletBot/frontier');
 ok('consents name the network in use, never a fixed "TON testnet" (R4-C1)', !/TON testnet'/.test(src));
 ok('a second node for the seller\u2019s lock on mainnet (R4-B3)', !!NETS.mainnet.lcd2 && NETS.mainnet.lcd2 !== NETS.mainnet.lcd && /NET\.lcd2/.test(lift(src, 'async function sellerLockOk(b, take){')));
+ok('every GRAM Terra signing shows its fee in the consent first (R4-D1)', (src.match(/await feeFor\(\[step\]\)/g) || []).length === 3 && !/NO_FEE_REVIEW/.test(src));
 ok('self-claim reads the lock again before signing (R4-B2)', /terraLockRead\(b\.terraLockId\)/.test(lift(src, 'async function selfClaim(id){')));
 ok('min TON time left = answer window + 5 h + 24 h + 10 min', m.min_ton_left_sec === m.answer_window_sec + m.min_terra_left_sec + m.terra_gap_sec + 600);
 ok('the agreed numbers: 30 min, 6 h, 0.3%, 0.05 GRAM', m.answer_window_sec === 1800 && m.t_terra_sec === 21600 && m.fee_bps === 30 && m.min_tip === '50000000');
