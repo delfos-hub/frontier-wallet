@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=62373f3f';
-import { $, buzz, go } from './shell.js?v=62373f3f';
-import { S } from './state.js?v=62373f3f';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=62373f3f';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=1346d19d';
+import { $, buzz, go } from './shell.js?v=1346d19d';
+import { S } from './state.js?v=1346d19d';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=1346d19d';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -169,7 +169,8 @@ async function voters(id){
     catch (e) { break; }
     const txs = r.tx_responses || [];
     txs.forEach(t => {
-      const m = ((t.tx && t.tx.body && t.tx.body.messages) || []).find(x => x.voter);
+      // the vote for this proposal: one transaction can vote on several
+      const m = ((t.tx && t.tx.body && t.tx.body.messages) || []).find(x => x.voter && String(x.proposal_id) === String(id));
       if (!m || seen[m.voter]) return;
       seen[m.voter] = 1;
       const o = m.option || (m.options && m.options[0] && m.options[0].option);
@@ -400,7 +401,8 @@ function open(id){
   }
   if (live) {
     h += '<div class="gv-vote">' +
-      '<div class="gv-vote-h"><b>Your vote</b><span>' + (mine ? esc(OPT[mine] || mine) + ' \u00b7 you can change it' : 'Not voted yet') + '</span></div>' +
+      '<div class="gv-vote-h"><b>Your vote</b><span>' + (mine ? esc(OPT[mine] || mine) + ' \u00b7 you can change it'
+        : p._mine === UNKNOWN ? 'Could not read your vote' : 'Not voted yet') + '</span></div>' +
       '<div class="gov-opts">' + ['yes', 'no', 'veto', 'abstain'].map(o =>
         '<button class="gov-opt gv-o ' + ({ yes: 'y', no: 'n', veto: 'v', abstain: 'a' })[o] + (mine && OPT_KEY[mine] === o ? ' was' : '') +
         '" data-opt="' + o + '" type="button">' + OPT_ICON[o] + '<span>' + LABEL[o] + '</span></button>').join('') + '</div>' +

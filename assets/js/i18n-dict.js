@@ -121,6 +121,7 @@ const EXTRA = {
   '{p}% of peg': ['{p}% от пега', '{p} % du peg', '{p}% del peg', '{p}% del peg', 'peg\u2019in %{p}'],
   '24h': ['24 ч', '24 h', '24 h', '24 h', '24 sa'],
   'Search validators': ['Поиск валидаторов', 'Rechercher un validateur', 'Cerca validatori', 'Buscar validadores', 'Validatör ara'],
+  'Could not read your vote': ['Не удалось прочитать ваш голос', 'Impossible de lire votre vote', 'Impossibile leggere il tuo voto', 'No se pudo leer tu voto', 'Oyunuz okunamadı'],
   'Voting now': ['Идёт голосование', 'Votes en cours', 'Votazioni in corso', 'En votación', 'Oylamada'],
   'No proposal is in its voting period right now.': ['Сейчас нет предложений на голосовании.', 'Aucune proposition n\u2019est en vote pour le moment.', 'Al momento nessuna proposta è in votazione.', 'Ahora no hay propuestas en votación.', 'Şu anda oylamada teklif yok.'],
   'Recent': ['Недавние', 'Récentes', 'Recenti', 'Recientes', 'Son teklifler'],

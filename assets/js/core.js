@@ -12,11 +12,11 @@
        of a dash that reads like an error.
    It only adds elements next to the ones tokens.js owns and never writes into
    those, so the two cannot fight over the same text. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=62373f3f';
-import { $ } from './shell.js?v=62373f3f';
-import { S } from './state.js?v=62373f3f';
-import { stakingApr } from './stake.js?v=62373f3f';
-import { refreshBalances } from './tokens.js?v=62373f3f';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=1346d19d';
+import { $ } from './shell.js?v=1346d19d';
+import { S } from './state.js?v=1346d19d';
+import { stakingApr } from './stake.js?v=1346d19d';
+import { refreshBalances } from './tokens.js?v=1346d19d';
 
 const MARKETS = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=terra-luna,terrausd' +
   '&sparkline=true&price_change_percentage=24h';
@@ -97,7 +97,10 @@ function qtyOf(cell){
 // a cell holding nothing: say so, offer the two ways to get some
 function paintEmpty(){
   document.querySelectorAll('#core .core-cell').forEach(cell => {
-    const zero = qtyOf(cell) === 0;
+    // LUNC that is all staked is not "none": the cell is empty only when the
+    // stake is known to be zero too
+    const lunc = cell.getAttribute('data-sym') === 'LUNC';
+    const zero = qtyOf(cell) === 0 && (!lunc || (STK && STK.addr === addrOf() && STK.staked === 0n));
     cell.classList.toggle('cx-zero', zero);
     const box = slot(cell, 'cx-empty');
     const sym = cell.getAttribute('data-sym');
@@ -146,8 +149,8 @@ async function update(){
     if (sym === 'USTC') {
       const box = slot(cell, 'cx-peg');
       if (m && m.price > 0) {
-        const of = Math.min(100, m.price * 100);
-        put(box, '<div class="cx-bar peg"><i style="width:' + Math.max(of, 1.5).toFixed(2) + '%"></i><b></b></div>' +
+        const of = m.price * 100;                       // above the peg too
+        put(box, '<div class="cx-bar peg"><i style="width:' + Math.max(Math.min(of, 100), 1.5).toFixed(2) + '%"></i><b></b></div>' +
           '<div class="cx-split-l"><span>Peg $1</span><span>' + of.toFixed(2) + '% of peg</span></div>');
       } else put(box, '');
     }

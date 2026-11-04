@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=62373f3f';
-import { DEC, knownAsset as marketAsset } from './market.js?v=62373f3f';
-import { $, go } from './shell.js?v=62373f3f';
-import { fiatOf, heldTokens } from './tokens.js?v=62373f3f';
-import { S } from './state.js?v=62373f3f';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=1346d19d';
+import { DEC, knownAsset as marketAsset } from './market.js?v=1346d19d';
+import { $, go } from './shell.js?v=1346d19d';
+import { fiatOf, heldTokens } from './tokens.js?v=1346d19d';
+import { S } from './state.js?v=1346d19d';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -630,9 +630,15 @@ async function page(query, offset){
 
 // The three searches are slow on the public node, and the slowest one used to
 // hold the list back for all three: now each draws as soon as it arrives.
+let FETCHING = false;
 async function fetchMore(me, drawn){
+  if (FETCHING) return;
+  FETCHING = true;
   const off = PAGE_OFF;
   PAGE_OFF += 25;
+  // no "Load more" while a page is still coming in: a tap then would ask for
+  // the next page before this one is complete
+  MORE = false;
   const take = list => {
     if (LOADED_FOR !== me) return list;
     const seen = {};
@@ -646,12 +652,15 @@ async function fetchMore(me, drawn){
     if (drawn && list.length) drawn();
     return list;
   };
-  const lists = await Promise.all([
-    page("message.sender='" + me + "'", off).then(take),
-    page("transfer.recipient='" + me + "'", off).then(take),
-    page("wasm.to='" + me + "'", off).then(take)
-  ]);
-  MORE = lists.some(l => l.length === 25);
+  try {
+    const lists = await Promise.all([
+      page("message.sender='" + me + "'", off).then(take),
+      page("transfer.recipient='" + me + "'", off).then(take),
+      page("wasm.to='" + me + "'", off).then(take)
+    ]);
+    // a read for an address no longer shown must not set the paging of the new one
+    if (LOADED_FOR === me) MORE = lists.some(l => l.length === 25);
+  } finally { FETCHING = false; }
 }
 
 function render(){
@@ -715,12 +724,17 @@ function keep(me){
   } catch (e) { /* full or refused: the next open just reads the chain */ }
 }
 
-let READING = '';
+let READING = '', AGAIN = false;
 async function load(){
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
-  if (!me || LOADED === me || READING === me) return;     // read already, or being read
+  if (!me || LOADED === me) return;
+  // asked again while a read runs (a transaction just landed): read once more
+  // after it, instead of dropping the request
+  if (READING === me) { AGAIN = true; return; }
   READING = me;
+  AGAIN = false;
   try { await read(me); } finally { if (READING === me) READING = ''; }
+  if (AGAIN) { AGAIN = false; LOADED = ''; load(); }
 }
 async function read(me){
   const list = $('#ac-list');
