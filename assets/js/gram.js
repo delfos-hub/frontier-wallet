@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=1e00b604';
-import { GRAM_NET, TERMS } from './gram-net.js?v=1e00b604';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=1e00b604';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=1e00b604';
-import { S } from './state.js?v=1e00b604';
-import { decryptSeed } from './storage.js?v=1e00b604';
-import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=1e00b604';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=1e00b604';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=1e00b604';
-import { chime, notify } from './notify.js?v=1e00b604';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d1e8b95c';
+import { GRAM_NET, TERMS } from './gram-net.js?v=d1e8b95c';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d1e8b95c';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=d1e8b95c';
+import { S } from './state.js?v=d1e8b95c';
+import { decryptSeed } from './storage.js?v=d1e8b95c';
+import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=d1e8b95c';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d1e8b95c';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d1e8b95c';
+import { chime, notify } from './notify.js?v=d1e8b95c';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -161,6 +161,8 @@ const LABS = (function () {
     return NET.name !== 'testnet' || localStorage.getItem('fw:labs') === '1';
   } catch (e) { return false; }
 })();
+// the "Testnet" badges and the testnet line belong to the test networks only
+if (NET.name !== 'testnet') document.querySelectorAll('.gx-testnet').forEach(el => el.remove());
 const card = $('#xc-gram');
 if (card && LABS) { card.hidden = false; paintCard(); }
 if (card) card.addEventListener('click', () => { go('gram'); load(); });

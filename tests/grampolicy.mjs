@@ -11,7 +11,9 @@ import { pathToFileURL } from 'url';
 import { ok, group, report } from './harness.mjs';
 
 const SRC = path.resolve(process.argv[2] || 'assets/js');
-const { GRAM_NET: NET, NETS } = await import(pathToFileURL(path.join(SRC, 'gram-net.js')).href);
+const { GRAM_NET, NETS } = await import(pathToFileURL(path.join(SRC, 'gram-net.js')).href);
+// the testnet entry, which the rules below were written against
+const NET = NETS.testnet;
 const { rawOf: tonRaw } = await import(pathToFileURL(path.join(SRC, 'gram-ton.js')).href);
 const src = fs.readFileSync(path.join(SRC, 'gram.js'), 'utf8');
 function lift(s, header){
@@ -74,7 +76,17 @@ ok('2 waiting (others finished or called off): a 3rd can be paid', waiting(['ann
 
 group('the mainnet entry');
 const m = NETS.mainnet.policy;
-ok('not selectable until filled at deploy', NETS.mainnet.ready === false && (() => { try { new Function('NET', 'tonRaw', lift(src, 'function pinPolicy(p){') + '\nreturn pinPolicy;')(NETS.mainnet, tonRaw)(WORKER); return false; } catch (e) { return /not open/.test(e.message); } })());
+// what the mainnet Worker publishes (GET /policy, 4 Nov 2026)
+const WORKER_MAIN = { tip_address: 'EQCJoQe2ZL8tMvcT4LUNzVYana45p1kFDr8upKfiN5qWyJjX', min_tip: '50000000', fee_bps: 30,
+  ton_code_hash: '39D4C6CCA7AEC5DBEA9FD5BBC5B28CD0BADB04B8E99822FC241075B9FC58172C', min_ton_left_sec: 106800,
+  terra_gap_sec: 86400, t_terra_sec: 21600, min_terra_left_sec: 18000, answer_window_sec: 1800, tax_bps: 150,
+  min_deal: '5000000000', max_deal: '500000000000', max_open_takes_per_taker: 3 };
+const pinMain = new Function('NET', 'tonRaw', lift(src, 'function pinPolicy(p){') + '\nreturn pinPolicy;')(NETS.mainnet, tonRaw);
+ok('open, every deploy value filled', NETS.mainnet.ready === true && !/REPLACE_/.test(JSON.stringify(NETS.mainnet)));
+ok('the swap runs on mainnet', GRAM_NET === NETS.mainnet);
+ok('the mainnet Worker\u2019s rules are accepted as published', (() => { try { const r = pinMain(WORKER_MAIN); return r.tax_bps === 150 && r.fee_bps === 30; } catch (e) { return false; } })());
+ok('the mainnet Worker on another fee address is refused', (() => { try { pinMain(Object.assign({}, WORKER_MAIN, { tip_address: WORKER.tip_address })); return false; } catch (e) { return /fee address/.test(e.message); } })());
+ok('back to the production mini app after paying', NETS.mainnet.twaReturnUrl === 'https://t.me/Frontier_WalletBot/frontier');
 ok('min TON time left = answer window + 5 h + 24 h + 10 min', m.min_ton_left_sec === m.answer_window_sec + m.min_terra_left_sec + m.terra_gap_sec + 600);
 ok('the agreed numbers: 30 min, 6 h, 0.3%, 0.05 GRAM', m.answer_window_sec === 1800 && m.t_terra_sec === 21600 && m.fee_bps === 30 && m.min_tip === '50000000');
 ok('the same audited lock code as testnet', NETS.mainnet.tonCodeHash === NET.tonCodeHash && NETS.mainnet.tonCode === NET.tonCode);
