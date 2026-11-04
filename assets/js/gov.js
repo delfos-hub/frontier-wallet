@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=cd6c58db';
-import { $, buzz, go } from './shell.js?v=cd6c58db';
-import { S } from './state.js?v=cd6c58db';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=cd6c58db';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=bf17f1f2';
+import { $, buzz, go } from './shell.js?v=bf17f1f2';
+import { S } from './state.js?v=bf17f1f2';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=bf17f1f2';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
