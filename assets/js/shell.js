@@ -46,12 +46,19 @@ const tap  = () => { if (HAPTIC_OK) tg.HapticFeedback.impactOccurred('light'); }
 function applyInsets(){
   const a = (tg && tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || 0;
   const b = (tg && tg.safeAreaInset && tg.safeAreaInset.top) || 0;
-  const floor = tg ? 58 : 0;
-  document.documentElement.style.setProperty('--pad-top', Math.max(a + b, floor) + 'px');
+  // Only full screen floats Telegram's buttons over the page; in a window the
+  // reserve was empty space above the wallet name.
+  const fs = !!(tg && tg.isFullscreen);
+  const floor = fs ? 58 : 0;
+  const root = document.documentElement;
+  root.style.setProperty('--pad-top', Math.max(a + b, floor) + 'px');
+  root.style.setProperty('--tg-sa', b + 'px');
+  root.style.setProperty('--tg-csa', (a || 46) + 'px');
+  root.classList.toggle('tg-fs', fs);
 }
 applyInsets();
 if (tg && tg.onEvent) {
-  ['safeAreaChanged','contentSafeAreaChanged','viewportChanged'].forEach(ev => {
+  ['safeAreaChanged','contentSafeAreaChanged','viewportChanged','fullscreenChanged'].forEach(ev => {
     try { tg.onEvent(ev, applyInsets); } catch (e) {}
   });
 }

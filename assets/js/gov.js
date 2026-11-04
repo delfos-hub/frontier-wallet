@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=47963caf';
-import { $, buzz, go } from './shell.js?v=47963caf';
-import { S } from './state.js?v=47963caf';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=47963caf';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=1e00b604';
+import { $, buzz, go } from './shell.js?v=1e00b604';
+import { S } from './state.js?v=1e00b604';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=1e00b604';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -147,6 +147,7 @@ async function validators(){
   return VALS;
 }
 
+const NUM_OPT = { 1: 'VOTE_OPTION_YES', 2: 'VOTE_OPTION_ABSTAIN', 3: 'VOTE_OPTION_NO', 4: 'VOTE_OPTION_NO_WITH_VETO' };
 const VOTERS = {};     // proposal id -> { votes: {addr: option}, memo: {addr: text}, stake: {addr: bigint} }
 async function voters(id){
   if (VOTERS[id] && Date.now() - VOTERS[id].at < 3 * 60000) return VOTERS[id];
@@ -160,7 +161,7 @@ async function voters(id){
   }
   // Newest first, so the first memo seen for a voter belongs to the vote that
   // counts. An older vote's reason is not shown under a changed vote.
-  const memo = {}, seen = {};
+  const memo = {}, seen = {}, txv = {};
   const q = encodeURIComponent('proposal_vote.proposal_id=' + id);
   for (let page = 1; page <= 10; page++) {
     let r;
@@ -168,9 +169,12 @@ async function voters(id){
     catch (e) { break; }
     const txs = r.tx_responses || [];
     txs.forEach(t => {
-      const m = ((t.tx && t.tx.body && t.tx.body.messages) || []).find(x => x.voter);
+      // the vote for this proposal: one transaction can vote on several
+      const m = ((t.tx && t.tx.body && t.tx.body.messages) || []).find(x => x.voter && String(x.proposal_id) === String(id));
       if (!m || seen[m.voter]) return;
       seen[m.voter] = 1;
+      const o = m.option || (m.options && m.options[0] && m.options[0].option);
+      if (o) txv[m.voter] = String(NUM_OPT[o] || o);
       const text = String(t.tx.body.memo || '').trim();
       if (text && !APP_TAG.test(text)) memo[m.voter] = text.slice(0, 600);
     });
@@ -184,7 +188,7 @@ async function voters(id){
   await Promise.all(others.map(a => getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + a, 10000, 1)
     .then(r => { stake[a] = (r.delegation_responses || []).reduce((s, d) => s + BigInt(d.balance && d.balance.amount || '0'), 0n); })
     .catch(() => { stake[a] = 0n; })));
-  VOTERS[id] = { votes: votes, memo: memo, stake: stake, at: Date.now() };
+  VOTERS[id] = { votes: votes, memo: memo, stake: stake, txv: txv, at: Date.now() };
   return VOTERS[id];
 }
 
@@ -252,38 +256,86 @@ function bar(s){
     '<i class="y" style="width:' + s.yes + '%"></i><i class="n" style="width:' + s.no + '%"></i>' +
     '<i class="v" style="width:' + s.veto + '%"></i><i class="a" style="width:' + s.abstain + '%"></i></div>';
 }
+// the share of each option in a finished proposal's final tally
+function finalSplit(p){
+  const t = p.final_tally_result;
+  if (!t) return null;
+  const y = BigInt(t.yes_count || '0'), n = BigInt(t.no_count || '0'),
+        v = BigInt(t.no_with_veto_count || '0'), a = BigInt(t.abstain_count || '0');
+  const all = y + n + v + a;
+  if (all === 0n) return null;
+  const pct = x => Number(x * 10000n / all) / 100;
+  return { yes: pct(y), no: pct(n), veto: pct(v), abstain: pct(a) };
+}
+// turnout against the quorum: a thin track with the quorum marked on it
+function turnout(s, rules){
+  const q = rules.quorum * 100;
+  return '<div class="gv-turn"><div class="gv-track"><i style="width:' + Math.min(100, s.turnout) + '%"></i>' +
+    '<b style="left:' + q + '%"></b></div><span>Turnout ' + s.turnout.toFixed(1) + '% of ' + q.toFixed(0) + '%</span></div>';
+}
+// a stake as a share of all bonded LUNC, in percent, readable at any size
+function share(x, total){
+  if (!x || x <= 0n) return '0';
+  const p = total > 0n ? Number(x * 10n ** 12n / total) / 1e10 : 0;
+  if (p >= 0.01) return p.toFixed(2);
+  if (p < 1e-8) return '< 0.00000001';
+  return p.toFixed(Math.min(8, 1 - Math.floor(Math.log10(p)))).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+const CLOCK = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>';
+const ST_ICON = {
+  passed: '<svg viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg>',
+  rejected: '<svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg>',
+  failed: '<svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg>',
+  voting: CLOCK,
+  deposit: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>'
+};
 
 function draw(){
   const body = $('#gov-body');
   const d = DATA;
   let h = '';
-  if (d.power === 0n) {
-    h += '<div class="warn" style="margin-bottom:12px"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>' +
-      '<p>A vote weighs as much as the LUNC this address has staked. With nothing staked it counts for nothing. <a href="#" id="gov-to-stake">Stake LUNC</a></p></div>';
-  }
+  // Voting power is a share of all LUNC bonded on the network, not an amount:
+  // that share is what the tally counts.
+  const vpTxt = share(d.power, d.bonded);
+  h += '<div class="gv-power' + (d.power > 0n ? '' : ' warn') + '"><div class="gv-power-t"><span>Your voting power</span>' +
+    '<b>' + vpTxt + '<i>%</i></b>' +
+    '<small>' + (d.power > 0n ? L(d.power) + ' LUNC staked' : 'A vote weighs as much as the LUNC you have staked.') + '</small>' +
+    '<small class="gv-power-of">Share of all LUNC staked on the network</small></div>' +
+    '<button class="gv-power-go" id="gov-to-stake" type="button">' + (d.power > 0n ? 'Stake more' : 'Stake LUNC') + '</button></div>';
+
   h += '<div class="head" style="margin:0 4px 10px"><h2>Voting now</h2><span>' + d.live.length + '</span></div>';
   if (!d.live.length) h += '<div class="empty">No proposal is in its voting period right now.</div>';
   h += d.live.map(p => {
     const s = p._tally ? standing(p._tally, rulesFor(p, d.rules), d.bonded) : null;
-    const mine = p._mine && p._mine.options && p._mine.options[0] ? OPT[p._mine.options[0].option] : null;
+    const mine = p._mine && p._mine.options && p._mine.options[0] ? p._mine.options[0].option : null;
     const unknown = p._mine === UNKNOWN;
-    return '<button class="row gov-row" data-id="' + esc(p.id) + '" type="button"><div class="row-main">' +
-      '<div class="row-name">#' + esc(p.id) + ' ' + esc(titleOf(p)) + '</div>' +
-      '<div class="row-amt">' + esc(kindOf(p)) + ' \u00b7 ' + left(p.voting_end_time) +
-      (mine ? ' \u00b7 <b class="gov-mine">you: ' + esc(mine) + '</b>' : unknown ? '' : ' \u00b7 <b class="gov-todo">not voted</b>') + '</div>' +
-      (s ? bar(s) + '<div class="row-sub ' + (s.verdict.ok ? 'gov-ok' : 'gov-bad') + '">' + esc(s.verdict.text) +
-        ' \u00b7 Yes ' + s.yes.toFixed(1) + '% \u00b7 No ' + s.no.toFixed(1) + '% \u00b7 Veto ' + s.veto.toFixed(1) + '%</div>' : '') +
-      '</div></button>';
+    return '<button class="gv-card gov-row" data-id="' + esc(p.id) + '" type="button">' +
+      '<span class="gv-meta"><span class="gv-id">#' + esc(p.id) + '</span><span class="gv-kind">' + esc(kindOf(p)) + '</span>' +
+        '<span class="gv-time">' + CLOCK + '<span>' + left(p.voting_end_time) + '</span></span></span>' +
+      '<span class="gv-title">' + esc(titleOf(p)) + '</span>' +
+      (s ? bar(s) + turnout(s, rulesFor(p, d.rules)) : '') +
+      '<span class="gv-foot">' +
+        (s ? '<span class="gv-verdict ' + (s.verdict.ok ? 'ok' : 'bad') + '">' + esc(s.verdict.text) + '</span>' : '<span></span>') +
+        (mine ? '<span class="gv-you done ' + (OPT_CLASS[mine] || '') + '">You voted ' + esc(OPT[mine] || mine) + '</span>'
+          : unknown ? '' : '<span class="gv-you todo">Vote now</span>') +
+      '</span></button>';
   }).join('');
+
   if (d.recent.length) {
-    h += '<div class="head" style="margin:18px 4px 10px"><h2>Recent</h2></div>';
-    h += d.recent.map(p => '<button class="row gov-row" data-id="' + esc(p.id) + '" data-old="1" type="button"><div class="row-main">' +
-      '<div class="row-name">#' + esc(p.id) + ' ' + esc(titleOf(p)) + '</div>' +
-      '<div class="row-amt">' + esc(kindOf(p)) + ' \u00b7 <b class="gov-st-' + esc((STATUS[p.status] || '').toLowerCase()) + '">' +
-      esc(STATUS[p.status] || p.status) + '</b></div></div></button>').join('');
+    h += '<div class="head" style="margin:22px 4px 10px"><h2>Recent</h2></div><div class="gv-recent">';
+    h += d.recent.map(p => {
+      const st = (STATUS[p.status] || '').toLowerCase();
+      const f = finalSplit(p);
+      return '<button class="gv-row gov-row" data-id="' + esc(p.id) + '" data-old="1" type="button">' +
+        '<span class="gv-st ' + esc(st) + '">' + (ST_ICON[st] || '') + '</span>' +
+        '<span class="gv-row-main"><span class="gv-title sm">' + esc(titleOf(p)) + '</span>' +
+          '<span class="gv-sub">#' + esc(p.id) + ' \u00b7 ' + esc(kindOf(p)) + '</span>' +
+          (f ? '<span class="gv-mini">' + bar(f) + '</span>' : '') + '</span>' +
+        '<span class="gv-pill ' + esc(st) + '">' + esc(STATUS[p.status] || p.status) + '</span></button>';
+    }).join('');
+    h += '</div>';
   }
-  h += '<p class="tiny">Proposals come straight from the chain\'s governance module. Your vote weight is your staked LUNC' +
-    (d.power > 0n ? ' - ' + L(d.power) + ' LUNC now' : '') + '. A vote can be changed until voting ends; the last one counts. If you do not vote, your validator\'s vote counts for your stake.</p>';
+  h += '<p class="tiny gv-note">Proposals come straight from the chain. A vote can be changed until voting ends; the last one counts. If you do not vote, your validator votes for your stake.</p>';
   body.innerHTML = h;
   document.querySelectorAll('#gov-body .gov-row').forEach(b => b.addEventListener('click', () => open(b.getAttribute('data-id'))));
   const st = $('#gov-to-stake');
@@ -319,35 +371,50 @@ function open(id){
   const live = DATA.live.indexOf(p) >= 0;
   FLOW = { id: String(p.id), live: live };
   $('#gov-sheet-title').textContent = 'Proposal #' + p.id;
-  const s = live && p._tally ? standing(p._tally, rulesFor(p, DATA.rules), DATA.bonded) : null;
-  const mine = p._mine && p._mine.options && p._mine.options[0] ? OPT[p._mine.options[0].option] : null;
+  const rules = rulesFor(p, DATA.rules);
+  const s = live && p._tally ? standing(p._tally, rules, DATA.bonded) : null;
+  const f = !live ? finalSplit(p) : null;
+  const mine = p._mine && p._mine.options && p._mine.options[0] ? p._mine.options[0].option : null;
+  const st = (STATUS[p.status] || '').toLowerCase();
   const text = textOf(p);
-  let h = '<h3 class="gov-title">' + esc(titleOf(p)) + '</h3>' +
-    '<div class="p2p-lines">' +
-    '<div class="p2p-line"><span>Type</span><b>' + esc(kindOf(p)) + (p.expedited ? ' \u00b7 expedited, passes at ' + (DATA.rules.expedited * 100).toFixed(1) + '%' : '') + '</b></div>' +
-    '<div class="p2p-line"><span>Status</span><b>' + esc(STATUS[p.status] || p.status) + (live ? ' \u00b7 ' + left(p.voting_end_time) : '') + '</b></div>' +
-    (live ? '<div class="p2p-line"><span>Ends</span><b>' + new Date(p.voting_end_time).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</b></div>' : '') +
-    (s ? '<div class="p2p-line"><span>Turnout</span><b>' + s.turnout.toFixed(1) + '% (quorum ' + (DATA.rules.quorum * 100).toFixed(0) + '%)</b></div>' : '') +
-    (mine ? '<div class="p2p-line"><span>Your vote</span><b>' + esc(mine) + '</b></div>' : '') +
-    '</div>';
-  if (s) h += bar(s) + '<div class="gov-legend"><span class="y">Yes ' + s.yes.toFixed(1) + '%</span><span class="n">No ' + s.no.toFixed(1) +
-    '%</span><span class="v">Veto ' + s.veto.toFixed(1) + '%</span><span class="a">Abstain ' + s.abstain.toFixed(1) + '%</span></div>' +
-    '<div class="row-sub ' + (s.verdict.ok ? 'gov-ok' : 'gov-bad') + '" style="margin:6px 0 10px">' + esc(s.verdict.text) + '</div>';
+  let h = '<div class="gv-sh-meta"><span class="gv-pill ' + esc(st) + '">' + esc(STATUS[p.status] || p.status) + '</span>' +
+    '<span class="gv-kind">' + esc(kindOf(p)) + '</span>' +
+    (p.expedited ? '<span class="gv-kind">expedited</span>' : '') +
+    (live ? '<span class="gv-time">' + CLOCK + '<span>' + left(p.voting_end_time) + '</span></span>' : '') + '</div>' +
+    '<h3 class="gov-title">' + esc(titleOf(p)) + '</h3>';
+  const split = s || f;
+  if (split) {
+    h += '<div class="gv-tally">' + bar(split) +
+      '<div class="gv-legend">' +
+        [['y', 'Yes', split.yes], ['n', 'No', split.no], ['v', 'No with veto', split.veto], ['a', 'Abstain', split.abstain]]
+          .map(x => '<span class="' + x[0] + '"><i></i><em>' + x[1] + '</em><b>' + x[2].toFixed(1) + '%</b></span>').join('') +
+      '</div>' +
+      (s ? turnout(s, rules) + '<div class="gv-verdict ' + (s.verdict.ok ? 'ok' : 'bad') + '">' + esc(s.verdict.text) + '</div>' : '') +
+      '</div>';
+  }
+  if (live) h += '<div class="gv-ends">Ends ' + new Date(p.voting_end_time).toLocaleString(document.documentElement.lang || 'en-GB',
+    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>';
   if (text) {
     const long = text.length > 700;
     h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + linkify(text, p.status !== 'PROPOSAL_STATUS_DEPOSIT_PERIOD') + '</div>' +
       (long ? '<button class="dust" id="gov-more" type="button">Show all</button>' : '');
   }
   if (live) {
-    h += '<div class="gov-opts">' +
-      ['yes', 'no', 'veto', 'abstain'].map(o => '<button class="dust gov-opt" data-opt="' + o + '" type="button">' +
-        ({ yes: 'Yes', no: 'No', veto: 'No with veto', abstain: 'Abstain' })[o] + '</button>').join('') + '</div>' +
-      '<div id="gov-review"></div>';
+    h += '<div class="gv-vote">' +
+      '<div class="gv-vote-h"><b>Your vote</b><span>' + (mine ? esc(OPT[mine] || mine) + ' \u00b7 you can change it'
+        : p._mine === UNKNOWN ? 'Could not read your vote' : 'Not voted yet') + '</span></div>' +
+      '<div class="gov-opts">' + ['yes', 'no', 'veto', 'abstain'].map(o =>
+        '<button class="gov-opt gv-o ' + ({ yes: 'y', no: 'n', veto: 'v', abstain: 'a' })[o] + (mine && OPT_KEY[mine] === o ? ' was' : '') +
+        '" data-opt="' + o + '" type="button">' + OPT_ICON[o] + '<span>' + LABEL[o] + '</span></button>').join('') + '</div>' +
+      '<div class="gv-compose"><textarea id="gov-memo" rows="2" maxlength="600" placeholder="Add a comment to your vote (optional)"></textarea>' +
+        '<div class="gv-compose-f"><span>Public, saved on chain with the vote</span><b id="gov-memo-n">0 / ' + MEMO_MAX + '</b></div></div>' +
+      '<div id="gov-review"><p class="gv-pick">Pick an option to see the fee and vote.</p></div></div>';
   }
   h += '<div id="gov-voters"><div class="empty"><span class="spin"></span>Reading votes and comments</div></div>';
-  $('#gov-sheet-body').innerHTML = h;
+  const bodyEl = $('#gov-sheet-body');
+  bodyEl.innerHTML = h;
   sheet(true);
-  showVoters(String(p.id));
+  showVoters(String(p.id), live);
   const more = $('#gov-more');
   if (more) more.addEventListener('click', () => { $('#gov-text').classList.remove('clip'); more.remove(); });
   const gt = $('#gov-text');
@@ -357,6 +424,28 @@ function open(id){
     e.preventDefault();
     openOutside(a.getAttribute('href'));
   });
+  // The limit is in bytes (the chain's max_memo_characters counts bytes), so
+  // accents and emoji use more than one each. Over it, the button waits.
+  const memoBox = $('#gov-memo');
+  if (memoBox) memoBox.addEventListener('input', () => {
+    const n = new TextEncoder().encode(memoBox.value.trim()).length;
+    const c = $('#gov-memo-n');
+    c.textContent = n + ' / ' + MEMO_MAX;
+    c.classList.toggle('over', n > MEMO_MAX);
+    const b = $('#gov-go');
+    if (b && FLOW && FLOW.ready && !FLOW.sent) b.disabled = n > MEMO_MAX;
+    // a comment changed after the fee was shown: estimate again with it
+    clearTimeout(memoBox._t);
+    if (FLOW && FLOW.opt && !FLOW.sent && FLOW.memo !== memoBox.value.trim()) {
+      // the fee shown was for the old comment: no signing until it is estimated again
+      FLOW.ready = false; FLOW.armed = false;
+      if (b) b.disabled = true;
+      if (n <= MEMO_MAX) {
+        const f = FLOW;
+        memoBox._t = setTimeout(() => { if (FLOW === f && !f.sent) review(f.opt); }, 700);
+      }
+    }
+  });
   document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(x => x.classList.toggle('on', x === b));
     review(b.getAttribute('data-opt'));
@@ -364,77 +453,108 @@ function open(id){
 }
 
 const LABEL = { yes: 'Yes', no: 'No', veto: 'No with veto', abstain: 'Abstain' };
+const OPT_KEY = { VOTE_OPTION_YES: 'yes', VOTE_OPTION_NO: 'no', VOTE_OPTION_NO_WITH_VETO: 'veto', VOTE_OPTION_ABSTAIN: 'abstain' };
 const OPT_CLASS = { VOTE_OPTION_YES: 'y', VOTE_OPTION_NO: 'n', VOTE_OPTION_NO_WITH_VETO: 'v', VOTE_OPTION_ABSTAIN: 'a' };
+const OPT_ICON = {
+  yes: '<svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9.5"/></svg>',
+  no: '<svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg>',
+  veto: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m6.5 6.5 11 11"/></svg>',
+  abstain: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>'
+};
 const shortAcc = a => a.slice(0, 12) + '\u2026' + a.slice(-5);
+// Validator logos: Cosmostation's public set, by operator address; a letter
+// on the validator's own colour when there is none.
+const LOGO = op => 'https://raw.githubusercontent.com/cosmostation/chainlist/main/chain/terra-classic/moniker/' + op + '.png';
+const hue = s => { s = String(s || ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; };
+const face = (name, key, op) => '<span class="gv-ava" style="--h:' + hue(key) + '"><em>' + esc((name || '?').trim().slice(0, 1).toUpperCase()) + '</em>' +
+  (op ? '<img src="' + esc(LOGO(op)) + '" alt="" loading="lazy">' : '') + '</span>';
 
-async function showVoters(id){
+async function showVoters(id, live){
   const box = $('#gov-voters');
   let v, vals;
   try { [v, vals] = await Promise.all([voters(id), validators()]); }
   catch (e) { if (box) box.innerHTML = '<div class="tiny">Could not read the votes: ' + esc(e.message || e) + '</div>'; return; }
   if (!FLOW || FLOW.id !== id || !$('#gov-voters')) return;
   const total = vals.reduce((a, x) => a + x.tokens, 0n) || 1n;
-  const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">not voted</b>';
-  const valRows = vals.map((x, i) => {
-    const o = v.votes[x.acc], c = v.memo[x.acc];
-    return '<div class="gov-voter' + (i >= 20 ? ' more' : '') + '"><div class="gov-voter-top"><span class="gov-rank">' + (i + 1) + '</span>' +
-      '<span class="gov-who">' + esc(x.name) + '</span><span class="gov-vp">' + (Number(x.tokens * 10000n / total) / 100).toFixed(2) + '%</span>' + tag(o) + '</div>' +
-      (c ? '<div class="gov-memo">' + esc(c) + '</div>' : '') + '</div>';
-  }).join('');
-  const voted = vals.filter(x => v.votes[x.acc]).length;
-  const valAcc = new Set(vals.map(x => x.acc));
-  const people = Object.keys(v.memo).filter(a => !valAcc.has(a))
-    .sort((a, b) => (v.stake[b] > v.stake[a] ? 1 : v.stake[b] < v.stake[a] ? -1 : 0));
-  let h = '<div class="head" style="margin:16px 2px 8px"><h2>Validators</h2><span>' + voted + ' of ' + vals.length + ' voted</span></div>' +
-    '<div class="gov-voters" id="gov-vals">' + valRows + '</div>' +
-    (vals.length > 20 ? '<button class="dust" id="gov-vals-all" type="button">Show all ' + vals.length + '</button>' : '');
-  h += '<div class="head" style="margin:16px 2px 8px"><h2>Comments</h2><span>' + people.length + '</span></div>';
-  h += people.length ? '<div class="gov-voters">' + people.map(a =>
-    '<div class="gov-voter"><div class="gov-voter-top"><span class="gov-who">' + esc(shortAcc(a)) + '</span>' +
-    '<span class="gov-vp">' + (v.stake[a] > 0n ? L(v.stake[a]) + ' LUNC' : 'no stake') + '</span>' + tag(v.votes[a]) + '</div>' +
-    '<div class="gov-memo">' + esc(v.memo[a]) + '</div></div>').join('') + '</div>'
-    : '<div class="tiny">No voter has left a comment yet. Comments are read from the memo of each vote.</div>';
+  const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">Not voted</b>';
+  const byAcc = {};
+  vals.forEach(x => { byAcc[x.acc] = x; });
+  // Who chose what: the chain's own record while voting is open; once it
+  // ends the chain clears that record, and each voter's last vote transaction
+  // is what remains.
+  const votes = Object.assign({}, v.txv || {}, live ? v.votes : {});
+  // One list: every validator, and every other address that left a comment,
+  // ranked by voting power (a validator weighs what is bonded to it, anyone
+  // else what they have staked). Each row carries its vote and its comment.
+  const weight = a => byAcc[a] ? byAcc[a].tokens : (v.stake[a] || 0n);
+  const accs = vals.filter(x => x.acc).map(x => x.acc).concat(Object.keys(v.memo).filter(a => !byAcc[a]));
+  accs.sort((a, b) => (weight(b) > weight(a) ? 1 : weight(b) < weight(a) ? -1 : 0));
+  const voted = accs.filter(a => votes[a]).length;
+  const said = accs.filter(a => v.memo[a]).length;
+  let h = '<div class="head" style="margin:20px 2px 8px"><h2>Voters</h2><span>' + voted + ' of ' + accs.length + ' voted</span></div>' +
+    '<div class="gv-filter" id="gov-filter"><button class="on" data-f="all" type="button">All</button>' +
+    '<button data-f="yes" type="button">Voted</button><button data-f="no" type="button">Not voted</button>' +
+    (said ? '<button data-f="memo" type="button">With comments</button>' : '') + '</div>' +
+    '<div class="gov-voters gv-comments" id="gov-vals">' + accs.map((a, i) => {
+      const val = byAcc[a], w = weight(a), o = votes[a], c = v.memo[a];
+      return '<div class="gov-voter' + (i >= 20 ? ' more' : '') + '" data-v="' + (o ? 'yes' : 'no') + '"' + (c ? ' data-m="1"' : '') + '>' +
+        '<div class="gov-voter-top"><span class="gov-rank">' + (i + 1) + '</span>' + face(val ? val.name : a.slice(6), a, val && val.op) +
+        '<span class="gov-who">' + esc(val ? val.name : shortAcc(a)) + '<small>' +
+        (w > 0n ? 'VP ' + share(w, total) + '% \u00b7 ' + L(w) + ' LUNC' : 'no stake') + '</small></span>' + tag(o) + '</div>' +
+        (c ? '<div class="gov-memo">' + esc(c) + '</div>' : '') + '</div>';
+    }).join('') + '</div>' +
+    (accs.length > 20 ? '<button class="dust" id="gov-vals-all" type="button">Show all ' + accs.length + '</button>' : '') +
+    (live ? '' : '<p class="tiny gv-note">Read from the vote transactions: the chain clears its own record when voting ends.</p>');
   box.innerHTML = h;
+  // a missing logo falls back to the letter under it
+  box.querySelectorAll('.gv-ava img').forEach(img => img.addEventListener('error', () => img.remove(), { once: true }));
   const all = $('#gov-vals-all');
   if (all) all.addEventListener('click', () => { $('#gov-vals').classList.add('all'); all.remove(); });
+  const fl = $('#gov-filter');
+  if (fl) fl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    fl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    const w = $('#gov-vals');
+    w.setAttribute('data-f', b.getAttribute('data-f'));
+    if (b.getAttribute('data-f') !== 'all') { w.classList.add('all'); if (all) all.remove(); }
+  });
 }
 
 
 async function review(opt){
   const f = FLOW;
-  f.opt = opt; f.armed = false; f.sent = false;
+  f.opt = opt; f.armed = false; f.sent = false; f.ready = false;
+  // each review is numbered: one that answers after a newer one started (the
+  // comment changed meanwhile) is dropped, so its fee and its button never land
+  const seq = f.seq = (f.seq || 0) + 1;
+  const stale = () => FLOW !== f || f.opt !== opt || f.seq !== seq;
   const out = $('#gov-review');
   out.innerHTML = '<div class="p2p-lines"><div class="p2p-line"><span>Vote</span><b>' + esc(LABEL[opt]) + ' on #' + esc(f.id) + '</b></div>' +
     '<div class="p2p-line"><span>Weight</span><b>' + (DATA.power > 0n ? L(DATA.power) + ' LUNC staked' : 'none - nothing staked') + '</b></div></div>' +
     (opt === 'veto' ? '<p class="tiny" style="text-align:left">No with veto also counts as No. If vetoes pass ' + (DATA.rules.veto * 100).toFixed(1) +
       '% the proposal fails and its deposit is burned.</p>' : '') +
-    '<div class="field" style="margin-top:10px"><label>Comment <span class="tiny">optional, public, in the vote memo</span></label>' +
-    '<textarea id="gov-memo" rows="3" placeholder="Why you vote this way"></textarea>' +
-    '<div class="tiny" id="gov-memo-n" style="text-align:right">0 / ' + MEMO_MAX + '</div></div>' +
     '<div class="tiny" id="gov-fee" style="text-align:left">Checking with the chain\u2026</div>' +
     '<div id="gov-out"></div><button class="btn solid" id="gov-go" type="button" disabled>Vote ' + esc(LABEL[opt]) + '</button>';
-  // The limit is in bytes (the chain's max_memo_characters counts bytes), so
-  // accents and emoji use more than one each. Over it, the button waits.
   const memoBox = $('#gov-memo');
-  const memoOver = () => new TextEncoder().encode(memoBox.value.trim()).length > MEMO_MAX;
-  memoBox.addEventListener('input', () => {
-    const n = new TextEncoder().encode(memoBox.value.trim()).length;
-    $('#gov-memo-n').textContent = n + ' / ' + MEMO_MAX + (n > MEMO_MAX ? ' - too long' : '');
-    $('#gov-memo-n').style.color = n > MEMO_MAX ? 'var(--red)' : '';
-    const b = $('#gov-go');
-    if (b && f.ready && !f.sent) b.disabled = n > MEMO_MAX;
-  });
+  const memoOver = () => !!memoBox && new TextEncoder().encode(memoBox.value.trim()).length > MEMO_MAX;
+  // the estimate carries the comment, as the signed vote will: the memo adds
+  // bytes and so gas, and the fee reviewed here is the cap on the fee signed
+  const memo = memoBox ? memoBox.value.trim() : '';
+  f.memo = memo;
   try {
-    const est = await dryRunVote(addrOf(), f.id, opt, S.MNEMONIC);
-    if (FLOW !== f || f.opt !== opt) return;
+    const est = await dryRunVote(addrOf(), f.id, opt, S.MNEMONIC, memoOver() ? '' : memo);
+    if (stale()) return;
+    f.fee = est.gasFee;                     // the fee reviewed; signing refuses more (audit F04)
     $('#gov-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
-    f.fee = est.gasFee;
     const btn = $('#gov-go');
     f.ready = true;
     btn.disabled = memoOver();
-    btn.addEventListener('click', () => confirm(btn, f, opt));
+    // one handler, whatever happens: two would sign on the first tap and skip
+    // the "press again" step
+    btn.onclick = () => confirm(btn, f, opt);
   } catch (e) {
-    if (FLOW !== f || f.opt !== opt) return;
+    if (stale()) return;
     $('#gov-fee').textContent = '';
     $('#gov-out').innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>';
   }

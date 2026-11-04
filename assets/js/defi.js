@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=47963caf';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=47963caf';
-import { $, go, tap } from './shell.js?v=47963caf';
-import { S } from './state.js?v=47963caf';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=47963caf';
-import * as P from './defi-parse.js?v=47963caf';
-import { dryRunSwap, sendSwap } from './tx.js?v=47963caf';
-import { notify } from './notify.js?v=47963caf';
-import { buzz } from './shell.js?v=47963caf';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=47963caf';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=1e00b604';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=1e00b604';
+import { $, go, tap } from './shell.js?v=1e00b604';
+import { S } from './state.js?v=1e00b604';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=1e00b604';
+import * as P from './defi-parse.js?v=1e00b604';
+import { dryRunSwap, sendSwap } from './tx.js?v=1e00b604';
+import { notify } from './notify.js?v=1e00b604';
+import { buzz } from './shell.js?v=1e00b604';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=1e00b604';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -816,6 +816,8 @@ function detail(c){
 const skel = () => '<div class="tk-card">' + '<div class="tk-skel"></div>'.repeat(4) + '</div>';
 function status(t){ const s = $('#earn-status'); if (s) { s.textContent = t; s.hidden = !t; } }
 
+// the card's own mark, put back when a wallet has no positions known
+const STACK0 = (document.getElementById('earn-stack') || {}).innerHTML || '';
 function homeLine(n, total, rewards, rows){
   const sub = $('#earn-sub'), r = $('#earn-home-total'), rw = $('#earn-home-rew'), st = $('#earn-stack');
   if (sub) sub.textContent = n ? n + (n === 1 ? ' position' : ' positions') + ' \u00b7 Garuda, Terraport, Juris'
@@ -830,8 +832,11 @@ function homeLine(n, total, rewards, rows){
       st.innerHTML = rows.map(x => iconHTML(x)).join('') + (n > rows.length ? '<span class="earn-more">+' + (n - rows.length) + '</span>' : '');
       st.classList.add('logos');
       paintIcons(st);
-    } else if (!n) {
+    } else {
+      // nothing to show (no positions, or positions whose logos are not
+      // known): the plain mark, never the previous wallet's logos
       st.classList.remove('logos');
+      st.innerHTML = STACK0;
     }
   }
   const addr = me();

@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=47963caf';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=47963caf';
-import { $, go } from './shell.js?v=47963caf';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=1e00b604';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=1e00b604';
+import { $, go } from './shell.js?v=1e00b604';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -250,6 +250,8 @@ function scanProgress(done, total){
 let LAST_ADDR = null;
 // One pass at a time, and not more often than the chain produces blocks.
 let RUNNING = false, LOADED_AT = 0;
+// which address the running pass reads, and which pass is the latest
+let RUN_FOR = '', RUN_GEN = 0;
 // This node answers 501 to denom_traces: the endpoint is not built here, and
 // it will not be built by the next open either. That is a fact about the node,
 // worth learning once a session rather than rediscovering with two sequential
@@ -482,6 +484,8 @@ function tweenTotal(el, from, to){
 function renderTokens(list, found, px, hint){
   // a reading of another wallet, finishing after a switch, is not drawn
   if (found && found.__addr && found.__addr !== LAST_ADDR) return;
+  // an older pass of the same wallet (A, B, back to A while A still read)
+  if (found && found.__gen && found.__gen !== RUN_GEN) return;
   LAST = { found: found, px: px, hint: hint };
 
   const rows = found.map(t => {
@@ -641,9 +645,16 @@ function renderTokens(list, found, px, hint){
 async function loadBalances(addr, force){
   // The guard lives here because there is no other way in. Callers used to
   // reach around it, which is how three passes ended up sharing one list.
-  if (RUNNING) return;
+  // One pass per address. A pass still reading the previous wallet used to
+  // hold the new one back for up to a minute (switchTo waited, then gave up
+  // while it was still running), and Home kept showing the old wallet's
+  // numbers. That pass draws nothing (every draw checks the address), so
+  // the new one starts at once beside it.
+  if (RUNNING && RUN_FOR === addr) return;
   if (!force && addr === LAST_ADDR && Date.now() - LOADED_AT < 15000) return;
   RUNNING = true;
+  RUN_FOR = addr;
+  const gen = ++RUN_GEN;
   // the list on screen already belongs to this address and is newer than any
   // snapshot, so redrawing the snapshot over it only flashes old numbers
   const warm = LAST_ADDR === addr && LAST.found.length > 0;
@@ -660,6 +671,7 @@ async function loadBalances(addr, force){
     const snap = cacheGetStale('snap:' + addr);
     if (!warm && snap && Array.isArray(snap.found) && snap.found.length) {
       snap.found.__addr = addr;
+      snap.found.__gen = gen;
       SWEEPING = false;              // that reading was complete when it was saved
       FROM_SNAP = true;              // its pools are hours old: shown, not reused
       try { renderTokens(list, snap.found, snap.px || {}, ''); }
@@ -687,7 +699,7 @@ async function loadBalances(addr, force){
       if (!fresh || (!fresh.LUNC && !fresh.USTC)) return;
       cacheSet('px', fresh);
       Object.assign(px, fresh);
-      if (LAST_ADDR !== addr || !LAST.found.length) return;
+      if (LAST_ADDR !== addr || gen !== RUN_GEN || !LAST.found.length) return;
       // whichever pass owns the screen now, not necessarily this one
       Object.assign(LAST.px, fresh);
       renderTokens(list, LAST.found, LAST.px, LAST.hint);
@@ -695,6 +707,7 @@ async function loadBalances(addr, force){
 
     const found = [];
     found.__addr = addr;
+    found.__gen = gen;
 
     // every native denom the address actually holds, ibc ones resolved to
     // whatever they were before they crossed the bridge
@@ -704,7 +717,7 @@ async function loadBalances(addr, force){
         // the denom is what a swap has to name in offer_asset; the symbol is
         // only what a human reads
         found.push({ sym: m.sym, v: amt(b.amount, m.dec), note: '', denom: b.denom, dec: m.dec });
-        if (b.denom === 'uluna') LUNC_RAW = Number(b.amount);
+        if (b.denom === 'uluna' && LAST_ADDR === addr) LUNC_RAW = Number(b.amount);
       } else if (KNOWN_IBC[b.denom]) {
         // named here, ahead of the market map: two different USDCs must never
         // show under the same name, and one of them is being retired
@@ -894,14 +907,16 @@ async function loadBalances(addr, force){
       'Could not read every exchange just now, so some prices may be based on ' +
       'the wrong pool. Reopening usually fixes it.');
   } catch (e) {
+    if (LAST_ADDR !== addr || gen !== RUN_GEN) return;     // a read of the previous wallet failing: not this screen's news
     SWEEPING = false;
     list.innerHTML = '<li class="empty">Could not reach the chain: ' + esc(e.message || e) + '</li>';
     // a failed read is not a zero balance, and must not be drawn as one
     if (TOTAL_SHOWN === null) $('#bal-total').textContent = '\u2014';
   }
   } finally {
-    RUNNING = false;
-    LOADED_AT = Date.now();
+    // only the latest pass ends the run; an older one finishing late must not
+    // free the guard while the newer one still reads
+    if (gen === RUN_GEN) { RUNNING = false; RUN_FOR = ''; LOADED_AT = Date.now(); }
   }
 }
 
@@ -919,7 +934,7 @@ async function refreshBalances(force){
   // A forced read comes from someone who knows the chain just moved. A pass
   // already running may have read the old state, and loadBalances returns at
   // once while it runs - which swallowed exactly the refresh after a send.
-  if (force) { for (let i = 0; RUNNING && i < 200; i++) await nap(300); }
+  if (force) { for (let i = 0; RUNNING && RUN_FOR === LAST_ADDR && i < 200; i++) await nap(300); }
   try { await loadBalances(LAST_ADDR, force); }
   catch (e) { /* a failed refresh is not a failed swap */ }
 }
@@ -941,7 +956,6 @@ document.addEventListener('visibilitychange', () => { if (onHome()) refreshBalan
    screen is emptied, the new address is read in full, and a pass still
    running for the old address finishes without drawing anything. */
 async function switchTo(addr){
-  for (let i = 0; RUNNING && i < 200; i++) await nap(300);
   if (LAST_ADDR === addr) loadBalances(addr, true);
 }
 function openWallet(addr){
@@ -952,6 +966,8 @@ function openWallet(addr){
     const tot = $('#bal-total'); if (tot) { tot.textContent = '...'; tot.classList.remove('stale'); }
     const sp = $('#bal-split'); if (sp) sp.hidden = true;
     const n = $('#tok-count'); if (n) n.textContent = '';
+    // the Core assets cells belong to the old wallet too: drawn again by the new read
+    const core = $('#core'); if (core) core.innerHTML = '';
     LAST_ADDR = addr;
     $('#home-addr').textContent = addr.slice(0,14) + '\u2026' + addr.slice(-6);
     go('home');

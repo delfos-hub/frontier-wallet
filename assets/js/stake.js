@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=47963caf';
-import { $, buzz } from './shell.js?v=47963caf';
-import { S } from './state.js?v=47963caf';
-import { luncRaw, refreshBalances } from './tokens.js?v=47963caf';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=47963caf';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=1e00b604';
+import { $, buzz } from './shell.js?v=1e00b604';
+import { S } from './state.js?v=1e00b604';
+import { luncRaw, refreshBalances } from './tokens.js?v=1e00b604';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=1e00b604';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -267,7 +267,7 @@ function draw(){
       '<button class="btn solid" id="stk-new" type="button">Stake LUNC</button></section>' +
       '<div class="stk-steps">' + [['Pick', 'a validator'], ['Stake', 'any amount'], ['Claim', 'rewards anytime']].map((x, i) =>
         '<div><span>' + (i + 1) + '</span><b>' + x[0] + '</b><small>' + x[1] + '</small></div>').join('') + '</div>' +
-      '<div class="head" style="margin:18px 4px 10px"><h2>Popular validators</h2><button class="dust" id="stk-all" type="button">See all</button></div>' +
+      '<div class="head" style="margin:18px 4px 10px"><h2>Popular validators</h2><span class="stk-acts"><button class="stk-find" id="stk-find" type="button" aria-label="Search validators"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></button><button class="dust" id="stk-all" type="button">See all</button></span></div>' +
       top.map(v => '<button class="row stk-val stk-pop" data-val="' + esc(v.addr) + '" type="button">' + ico(v) +
         '<div class="row-main"><div class="row-name">' + esc(v.name) + '</div><div class="row-amt">' +
         (Number(v.tokens * 10000n / total) / 100).toFixed(2) + '% of votes</div></div>' +
@@ -350,6 +350,10 @@ function wire(){
   const c = $('#stk-claim'); if (c) c.addEventListener('click', () => startClaim('claim'));
   const rs = $('#stk-restake'); if (rs) rs.addEventListener('click', () => startClaim('restake'));
   const all = $('#stk-all'); if (all) all.addEventListener('click', () => startPick('delegate'));
+  // straight to the search: the full list with the box focused, in the same
+  // tap, so the keyboard opens (a delayed focus does not open it on iOS)
+  const find = $('#stk-find');
+  if (find) find.addEventListener('click', () => { startPick('delegate'); const q = $('#stk-q'); if (q) q.focus(); });
   document.querySelectorAll('#stk-body .stk-pop').forEach(b => b.addEventListener('click', () =>
     startAmount({ kind: 'delegate', validator: b.getAttribute('data-val') })));
   document.querySelectorAll('#stk-body .stk-card').forEach(el => el.addEventListener('click', function (ev) {
