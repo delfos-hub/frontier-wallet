@@ -12,11 +12,11 @@
        of a dash that reads like an error.
    It only adds elements next to the ones tokens.js owns and never writes into
    those, so the two cannot fight over the same text. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=1381fb60';
-import { $ } from './shell.js?v=1381fb60';
-import { S } from './state.js?v=1381fb60';
-import { stakingApr } from './stake.js?v=1381fb60';
-import { refreshBalances } from './tokens.js?v=1381fb60';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=913e6309';
+import { $ } from './shell.js?v=913e6309';
+import { S } from './state.js?v=913e6309';
+import { stakingApr } from './stake.js?v=913e6309';
+import { refreshBalances } from './tokens.js?v=913e6309';
 
 const MARKETS = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=terra-luna,terrausd' +
   '&sparkline=true&price_change_percentage=24h';
@@ -28,18 +28,30 @@ let APR = null, APR_P = null, STK_P = null;
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 
+// One request at a time; a failed or odd answer (429, an error page) keeps the
+// last good data on screen instead of blanking the cells, and is not cached.
+let MK_P = null;
 async function market(){
   if (MK && Date.now() - MK_AT < 5 * 60000) return MK;
-  const r = await getJSON(MARKETS, 10000, 2);
-  const out = {};
-  (Array.isArray(r) ? r : []).forEach(c => {
-    const sym = IDS[c.id];
-    if (!sym) return;
-    const pts = (c.sparkline_in_7d && c.sparkline_in_7d.price) || [];
-    out[sym] = { price: Number(c.current_price), ch: Number(c.price_change_percentage_24h), line: pts.slice(-25) };
-  });
-  MK = out; MK_AT = Date.now();
-  return MK;
+  if (MK_P) return MK_P;
+  MK_P = (async () => {
+    try {
+      const r = await getJSON(MARKETS, 10000, 2);
+      if (!Array.isArray(r) || !r.length) return MK || {};
+      const out = {};
+      r.forEach(c => {
+        const sym = IDS[c.id];
+        if (!sym) return;
+        const pts = (c.sparkline_in_7d && c.sparkline_in_7d.price) || [];
+        out[sym] = { price: Number(c.current_price), ch: Number(c.price_change_percentage_24h), line: pts.slice(-25) };
+      });
+      if (!Object.keys(out).length) return MK || {};
+      MK = out; MK_AT = Date.now();
+      return MK;
+    } catch (e) { return MK || {}; }
+    finally { MK_P = null; }
+  })();
+  return MK_P;
 }
 
 async function staked(addr){

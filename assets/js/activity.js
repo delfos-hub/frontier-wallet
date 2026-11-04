@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=1381fb60';
-import { DEC, knownAsset as marketAsset } from './market.js?v=1381fb60';
-import { $, go } from './shell.js?v=1381fb60';
-import { fiatOf, heldTokens } from './tokens.js?v=1381fb60';
-import { S } from './state.js?v=1381fb60';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=913e6309';
+import { DEC, knownAsset as marketAsset } from './market.js?v=913e6309';
+import { $, go } from './shell.js?v=913e6309';
+import { fiatOf, heldTokens } from './tokens.js?v=913e6309';
+import { S } from './state.js?v=913e6309';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -635,13 +635,18 @@ async function page(query, offset){
 // take() drops what does not belong to the wallet shown)
 let FETCH_P = null, FETCH_FOR = '';
 async function fetchMore(me, drawn){
-  if (FETCH_P) {
+  // one waiter at a time: after each wait, look again (another waiter may have
+  // started), and give up if this wallet is no longer the one shown
+  while (FETCH_P) {
     if (FETCH_FOR === me) return FETCH_P;
     await FETCH_P.catch(() => {});
+    if (LOADED_FOR !== me) return;
   }
   FETCH_FOR = me;
-  FETCH_P = pageIn(me, drawn);
-  try { return await FETCH_P; } finally { FETCH_P = null; FETCH_FOR = ''; }
+  const mine = pageIn(me, drawn);
+  FETCH_P = mine;
+  try { return await mine; }
+  finally { if (FETCH_P === mine) { FETCH_P = null; FETCH_FOR = ''; } }
 }
 async function pageIn(me, drawn){
   const off = PAGE_OFF;

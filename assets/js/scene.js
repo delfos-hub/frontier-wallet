@@ -13,7 +13,7 @@
    Motion source, best first: Telegram's DeviceOrientation (Bot API 8.0, no
    browser permission prompt), the browser's deviceorientation, and on a
    desktop the pointer. Nothing moves with "reduce motion" switched on. */
-import { tg } from './shell.js?v=1381fb60';
+import { tg } from './shell.js?v=913e6309';
 
 const STILL = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TABS = ['home', 'stake', 'gov', 'activity', 'settings'];
@@ -119,6 +119,10 @@ function enter(step){
   const a = TABS.indexOf(prev), b = TABS.indexOf(name);
   const dir = a >= 0 && b >= 0 ? (b > a ? 'right' : 'left') : b < 0 ? 'in' : 'out';
   step.classList.remove('room-right', 'room-left', 'room-in', 'room-out');
+  // back to a screen that is still leaving (two taps within half a second):
+  // its leave state would keep it pinned and untouchable until the timer ran
+  clearTimeout(step._leaveT);
+  step.classList.remove('leave-right', 'leave-left', 'leave-in', 'leave-out');
   scene.classList.remove('sc-move', 'sc-back');
   void scene.offsetWidth;                    // restart, even for the same direction twice
   // The old screen stays on for the move and leaves the other way, so the two

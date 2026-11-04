@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=1381fb60';
-import { $, buzz, go } from './shell.js?v=1381fb60';
-import { S } from './state.js?v=1381fb60';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=1381fb60';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=913e6309';
+import { $, buzz, go } from './shell.js?v=913e6309';
+import { S } from './state.js?v=913e6309';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=913e6309';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -520,6 +520,10 @@ async function showVoters(id, live){
 async function review(opt){
   const f = FLOW;
   f.opt = opt; f.armed = false; f.sent = false; f.ready = false;
+  // each review is numbered: one that answers after a newer one started (the
+  // comment changed meanwhile) is dropped, so its fee and its button never land
+  const seq = f.seq = (f.seq || 0) + 1;
+  const stale = () => FLOW !== f || f.opt !== opt || f.seq !== seq;
   const out = $('#gov-review');
   out.innerHTML = '<div class="p2p-lines"><div class="p2p-line"><span>Vote</span><b>' + esc(LABEL[opt]) + ' on #' + esc(f.id) + '</b></div>' +
     '<div class="p2p-line"><span>Weight</span><b>' + (DATA.power > 0n ? L(DATA.power) + ' LUNC staked' : 'none - nothing staked') + '</b></div></div>' +
@@ -535,15 +539,17 @@ async function review(opt){
   f.memo = memo;
   try {
     const est = await dryRunVote(addrOf(), f.id, opt, S.MNEMONIC, memoOver() ? '' : memo);
-    if (FLOW !== f || f.opt !== opt) return;
+    if (stale()) return;
     f.fee = est.gasFee;                     // the fee reviewed; signing refuses more (audit F04)
     $('#gov-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';
     const btn = $('#gov-go');
     f.ready = true;
     btn.disabled = memoOver();
-    btn.addEventListener('click', () => confirm(btn, f, opt));
+    // one handler, whatever happens: two would sign on the first tap and skip
+    // the "press again" step
+    btn.onclick = () => confirm(btn, f, opt);
   } catch (e) {
-    if (FLOW !== f || f.opt !== opt) return;
+    if (stale()) return;
     $('#gov-fee').textContent = '';
     $('#gov-out').innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>';
   }
