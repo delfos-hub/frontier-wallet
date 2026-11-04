@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=38eb43a7';
-import { $, buzz, go } from './shell.js?v=38eb43a7';
-import { S } from './state.js?v=38eb43a7';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=38eb43a7';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=cd6c58db';
+import { $, buzz, go } from './shell.js?v=cd6c58db';
+import { S } from './state.js?v=cd6c58db';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=cd6c58db';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -434,6 +434,12 @@ function open(id){
     c.classList.toggle('over', n > MEMO_MAX);
     const b = $('#gov-go');
     if (b && FLOW && FLOW.ready && !FLOW.sent) b.disabled = n > MEMO_MAX;
+    // a comment changed after the fee was shown: estimate again with it
+    clearTimeout(memoBox._t);
+    if (FLOW && FLOW.opt && !FLOW.sent && n <= MEMO_MAX) {
+      const f = FLOW;
+      memoBox._t = setTimeout(() => { if (FLOW === f && !f.sent && f.memo !== memoBox.value.trim()) review(f.opt); }, 700);
+    }
   });
   document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(x => x.classList.toggle('on', x === b));
@@ -523,8 +529,12 @@ async function review(opt){
     '<div id="gov-out"></div><button class="btn solid" id="gov-go" type="button" disabled>Vote ' + esc(LABEL[opt]) + '</button>';
   const memoBox = $('#gov-memo');
   const memoOver = () => !!memoBox && new TextEncoder().encode(memoBox.value.trim()).length > MEMO_MAX;
+  // the estimate carries the comment, as the signed vote will: the memo adds
+  // bytes and so gas, and the fee reviewed here is the cap on the fee signed
+  const memo = memoBox ? memoBox.value.trim() : '';
+  f.memo = memo;
   try {
-    const est = await dryRunVote(addrOf(), f.id, opt, S.MNEMONIC);
+    const est = await dryRunVote(addrOf(), f.id, opt, S.MNEMONIC, memoOver() ? '' : memo);
     if (FLOW !== f || f.opt !== opt) return;
     f.fee = est.gasFee;                     // the fee reviewed; signing refuses more (audit F04)
     $('#gov-fee').textContent = 'Network fee about ' + fmt(est.gasFee / 1e6) + ' LUNC';

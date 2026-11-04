@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=38eb43a7';
-import { DEC, knownAsset as marketAsset } from './market.js?v=38eb43a7';
-import { $, go } from './shell.js?v=38eb43a7';
-import { fiatOf, heldTokens } from './tokens.js?v=38eb43a7';
-import { S } from './state.js?v=38eb43a7';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=cd6c58db';
+import { DEC, knownAsset as marketAsset } from './market.js?v=cd6c58db';
+import { $, go } from './shell.js?v=cd6c58db';
+import { fiatOf, heldTokens } from './tokens.js?v=cd6c58db';
+import { S } from './state.js?v=cd6c58db';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -630,10 +630,20 @@ async function page(query, offset){
 
 // The three searches are slow on the public node, and the slowest one used to
 // hold the list back for all three: now each draws as soon as it arrives.
-let FETCHING = false;
+// one page read at a time: a second ask for the same wallet joins the running
+// one; a read for another wallet waits for it to end (it then counts for nothing,
+// take() drops what does not belong to the wallet shown)
+let FETCH_P = null, FETCH_FOR = '';
 async function fetchMore(me, drawn){
-  if (FETCHING) return;
-  FETCHING = true;
+  if (FETCH_P) {
+    if (FETCH_FOR === me) return FETCH_P;
+    await FETCH_P.catch(() => {});
+  }
+  FETCH_FOR = me;
+  FETCH_P = pageIn(me, drawn);
+  try { return await FETCH_P; } finally { FETCH_P = null; FETCH_FOR = ''; }
+}
+async function pageIn(me, drawn){
   const off = PAGE_OFF;
   PAGE_OFF += 25;
   // no "Load more" while a page is still coming in: a tap then would ask for
@@ -660,7 +670,7 @@ async function fetchMore(me, drawn){
     ]);
     // a read for an address no longer shown must not set the paging of the new one
     if (LOADED_FOR === me) MORE = lists.some(l => l.length === 25);
-  } finally { FETCHING = false; }
+  } catch (e) { if (LOADED_FOR === me) MORE = true; }
 }
 
 function render(){
@@ -772,6 +782,10 @@ let LOADED_FOR = '';
 // Read it in the background a few seconds after a wallet opens, when Home has
 // done its own reads: the tab then opens on a list instead of a spinner.
 document.addEventListener('frontier:wallet', () => {
+  // another wallet: the list shown belongs to the old one, and a read still
+  // running for it must not land here
+  const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+  if (LOADED_FOR && LOADED_FOR !== me) { LOADED_FOR = ''; LOADED = ''; ALL = []; MORE = true; }
   clearTimeout(load._pre);
   load._pre = setTimeout(() => {
     const a = document.getElementById('st-activity');
