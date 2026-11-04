@@ -63,6 +63,9 @@ NETS.mainnet = {
   ready: true,
   chain: 'columbus-5',
   lcd: 'https://terra-classic-lcd.publicnode.com',
+  // a second, independent node: the seller's lock is read from both before
+  // the buyer's secret leaves the device (audit round 4, B3)
+  lcd2: 'https://lcd.terra-classic.hexxagon.io',
   // offers Worker htlc-offers-mainnet, Delfos Hub account (widgets#55)
   worker: 'https://htlc-offers-mainnet.delfoshub-team.workers.dev',
   // htlc-swap code 11746, instantiated on columbus-5 with no admin

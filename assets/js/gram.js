@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d1e8b95c';
-import { GRAM_NET, TERMS } from './gram-net.js?v=d1e8b95c';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d1e8b95c';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=d1e8b95c';
-import { S } from './state.js?v=d1e8b95c';
-import { decryptSeed } from './storage.js?v=d1e8b95c';
-import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=d1e8b95c';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d1e8b95c';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d1e8b95c';
-import { chime, notify } from './notify.js?v=d1e8b95c';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=5c652b49';
+import { GRAM_NET, TERMS } from './gram-net.js?v=5c652b49';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=5c652b49';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=5c652b49';
+import { S } from './state.js?v=5c652b49';
+import { decryptSeed } from './storage.js?v=5c652b49';
+import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=5c652b49';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=5c652b49';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=5c652b49';
+import { chime, notify } from './notify.js?v=5c652b49';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -583,7 +583,7 @@ $('#gx-post').addEventListener('click', async function(){
     ['Buyers take', 'from ' + human(f.min, 6) + ' LUNC'],
     ['GRAM goes to', f.ton],
     ['Ends', new Date(expires * 1000).toLocaleString()],
-    ['Network', NET.chain + ' + TON testnet']
+    ['Network', NET.chain + ' + TON ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet')]
   ];
   say('#gx-msg', '');
   try {
@@ -885,7 +885,7 @@ async function answerTake(t, b){
       ['Buyer', t.taker_terra],
       ['Claim until', 'about ' + new Date(c.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (set when you sign)'],
       ['If unclaimed', 'the LUNC comes back to you after that'],
-      ['Network', NET.chain + ' + TON testnet']
+      ['Network', NET.chain + ' + TON ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet')]
     ];
     const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you.';
     await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m, st){
@@ -1281,6 +1281,11 @@ async function selfClaim(id){
       JSON.stringify({ claim: { id: b.terraLockId, secret: '(hidden: the secret kept on this device)' } }),
       async function (m, st) {
         st(0);
+        // the sheet may have stayed open a while: the lock is read again now,
+        // right before signing (audit round 4, B2)
+        const l = await terraLockRead(b.terraLockId);
+        if (!l || l.status !== 'open') throw new Error('the seller\u2019s lock is no longer open. Nothing was signed.');
+        if (Number(l.timeout) - now() < CLAIM_MARGIN / 2) throw new Error('too close to the end of the seller\u2019s lock to claim safely now. Nothing was signed.');
         const r = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
         st(1);
         if (!(await r.wait())) throw new Error('the claim was sent but is not confirmed yet (tx ' + r.hash.slice(0, 10) + '\u2026). It usually lands within a minute.');
@@ -1371,7 +1376,15 @@ $('#gx-hero').addEventListener('click', onRefund);
 // check the seller's Terra lock before the secret leaves the device
 async function sellerLockOk(b, take){
   const q = btoa(JSON.stringify({ lock: { id: Number(take.terra_lock_id) } }));
-  const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 2)).data || {};
+  const path = '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q;
+  // From two independent nodes where the network has them (audit round 4,
+  // B3): one node could show a lock that is not there. Both must answer and
+  // agree, or the secret stays on the device.
+  const reads = await Promise.all([NET.lcd].concat(NET.lcd2 ? [NET.lcd2] : [])
+    .map(u => getJSON(u + path, 8000, 2).then(r => (r && r.data) || null, () => null)));
+  if (reads.some(r => !r)) return ['the seller\u2019s lock could not be read' + (reads.length > 1 ? ' from both nodes' : '') + ' right now'];
+  if (reads.length > 1 && JSON.stringify(reads[0]) !== JSON.stringify(reads[1])) return ['two nodes disagree about the seller\u2019s lock'];
+  const l = reads[0];
   if (!POLICY) setPolicy((await api('/offers')).policy);
   if (!POLICY) return [POLICY_ERR || 'the swap rules could not be loaded'];
   const p = POLICY;
