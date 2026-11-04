@@ -132,23 +132,30 @@ function lean0(){ document.getElementById('tabs') && document.getElementById('ta
 
 document.addEventListener('touchcancel', () => { release(); s = null; }, { passive: true });
 
-/* While the keyboard is up the tab bar steps aside: the keyboard pushes the
-   fixed bar up with it, and it covered the field being typed in (the token
-   search). The field is then brought to the middle of what is left. */
+/* While a software keyboard is up the tab bar steps aside: the keyboard pushes
+   the fixed bar up with it, and it covered the field being typed in (the token
+   search). Only on touch devices, and only if the visible area really shrank:
+   with a hardware keyboard the bar stays, so Tab still reaches it. The field
+   is brought to the middle of what is left. */
 const TYPING = 'input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]),textarea,[contenteditable="true"]';
-let kbT = 0;
+const TOUCH = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+const VV = window.visualViewport;
+let kbT = 0, kbCheck = 0, fullH = VV ? VV.height : window.innerHeight;
+const typingNow = () => { const a = document.activeElement; return !!(a && a.matches && a.matches(TYPING)); };
+if (VV) VV.addEventListener('resize', () => { if (!typingNow()) fullH = Math.max(VV.height, window.innerHeight * 0.5); });
 document.addEventListener('focusin', e => {
-  if (!e.target.matches || !e.target.matches(TYPING)) return;
-  clearTimeout(kbT);
+  if (!TOUCH || !e.target.matches || !e.target.matches(TYPING)) return;
+  clearTimeout(kbT); clearTimeout(kbCheck);
   document.body.classList.add('kb-open');
   const el = e.target;
-  setTimeout(() => { try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {} }, 320);
+  kbCheck = setTimeout(() => {
+    // no software keyboard after all: the visible area kept its height
+    if (VV && fullH - VV.height < 120) { document.body.classList.remove('kb-open'); return; }
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {}
+  }, 450);
 });
 document.addEventListener('focusout', e => {
   if (!e.target.matches || !e.target.matches(TYPING)) return;
   // a moment's grace: moving from one field to the next keeps the bar away
-  kbT = setTimeout(() => {
-    const a = document.activeElement;
-    if (!(a && a.matches && a.matches(TYPING))) document.body.classList.remove('kb-open');
-  }, 150);
+  kbT = setTimeout(() => { if (!typingNow()) document.body.classList.remove('kb-open'); }, 150);
 });

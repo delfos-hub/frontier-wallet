@@ -390,6 +390,9 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-flip svg{width:17px;height:17px;stroke:#00D4FF;stroke-width:1.7;fill:none;
   stroke-linecap:round;stroke-linejoin:round}
 .sw-flip:active{transform:scale(.92)}
+/* room for the half of the flip button that reaches into each card */
+.sw-pane>.sw-side:first-child{padding-bottom:24px}
+.sw-pane>.sw-side:last-of-type{padding-top:22px}
 .sw-detail{min-height:20px;margin:0 4px 14px;display:flex;flex-direction:column;gap:6px}
 
 /* The outcome, which used to look exactly like the quote it replaced. */
