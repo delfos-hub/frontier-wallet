@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=6389b78d';
-import { GRAM_NET, TERMS } from './gram-net.js?v=6389b78d';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=6389b78d';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=6389b78d';
-import { S } from './state.js?v=6389b78d';
-import { decryptSeed } from './storage.js?v=6389b78d';
-import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=6389b78d';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=6389b78d';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=6389b78d';
-import { chime, notify } from './notify.js?v=6389b78d';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=47963caf';
+import { GRAM_NET, TERMS } from './gram-net.js?v=47963caf';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=47963caf';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=47963caf';
+import { S } from './state.js?v=47963caf';
+import { decryptSeed } from './storage.js?v=47963caf';
+import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=47963caf';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=47963caf';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=47963caf';
+import { chime, notify } from './notify.js?v=47963caf';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1195,6 +1195,13 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     // the secret is kept BEFORE any GRAM moves: without it the LUNC could not be claimed
     saveBuy(id, { offerId: q.o.id, lunc: String(q.lunc), gram: String(q.gram), tip: String(q.tip), secret: toHex(secret), hash: hash,
                   timeout: terms.timeout, address: lock.address, stage: 'paying', created: now() });
+    // read it back: a browser that refuses to store (private window, storage
+    // full or blocked) would otherwise lose the secret when the page closes
+    const kept = buys()[id];
+    if (!kept || kept.secret !== toHex(secret) || kept.address !== lock.address) {
+      say('#gx-bb-msg', 'This browser did not keep the swap\u2019s data, so nothing was paid. Allow this site to store data (not a private window) and try again.', true);
+      return;
+    }
     say('#gx-bb-msg', 'Confirm the payment in your TON wallet');
     // after validUntil the payment can no longer land, so the chain gives a
     // sure answer then even if the wallet's answer is lost (audit round 3, D1)
