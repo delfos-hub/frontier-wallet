@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=dfbc2dde';
-import { GRAM_NET, TERMS } from './gram-net.js?v=dfbc2dde';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=dfbc2dde';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=dfbc2dde';
-import { S } from './state.js?v=dfbc2dde';
-import { decryptSeed } from './storage.js?v=dfbc2dde';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=dfbc2dde';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=dfbc2dde';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=dfbc2dde';
-import { chime, notify } from './notify.js?v=dfbc2dde';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89d3f0e5';
+import { GRAM_NET, TERMS } from './gram-net.js?v=89d3f0e5';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89d3f0e5';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=89d3f0e5';
+import { S } from './state.js?v=89d3f0e5';
+import { decryptSeed } from './storage.js?v=89d3f0e5';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=89d3f0e5';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89d3f0e5';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89d3f0e5';
+import { chime, notify } from './notify.js?v=89d3f0e5';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -70,6 +70,9 @@ function pinPolicy(p){
   const pin = NET.policy;
   if (!pin || NET.ready === false) throw new Error('the swap is not open on ' + NET.name + ' in this wallet yet');
   if (!p) throw new Error('the swap rules could not be loaded');
+  // the Worker pauses offers and takes while the chain's burn tax differs from
+  // its own (audit round 4, E1): nothing is published or paid until it is updated
+  if (p.paused) throw new Error('Swaps are paused for now: the network\u2019s burn tax changed and the service is being updated. Nothing was paid. Try again later.');
   const bad = [];
   let tip = '';
   try { tip = tonRaw(String(p.tip_address || '')); } catch (e) {}
@@ -83,6 +86,24 @@ function pinPolicy(p){
   return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash });
 }
 // GRAM per deal, from the pinned rules: { min, max } in nanoGRAM (0n = none)
+// The burn tax for a seller's lock and the buyer's check of it: the higher of
+// the rate the Worker publishes and the chain's own (audit round 4, E2). A
+// governance change the Worker has not caught up with must not leave the
+// buyer short. A chain that cannot be read leaves the published rate.
+let CHAIN_TAX = { bps: null, at: 0 };
+async function chainTaxBps(){
+  if (CHAIN_TAX.bps !== null && now() - CHAIN_TAX.at < 300) return CHAIN_TAX.bps;
+  try {
+    const r = await getJSON(NET.lcd + '/terra/tax/v1beta1/burn_tax_rate', 8000, 2);
+    const bps = Math.round(Number(r && r.tax_rate) * 10000);
+    if (Number.isInteger(bps) && bps >= 0 && bps <= 10000) CHAIN_TAX = { bps: bps, at: now() };
+  } catch (e) {}
+  return CHAIN_TAX.bps;
+}
+async function taxBpsFor(p){
+  const chain = await chainTaxBps();
+  return Math.max(Number(p.tax_bps), chain === null ? 0 : chain);
+}
 function dealLimits(){
   const p = POLICY || NET.policy || {};
   return { min: p.min_deal ? BigInt(p.min_deal) : 0n, max: p.max_deal ? BigInt(p.max_deal) : 0n };
@@ -791,7 +812,7 @@ async function checkTake(t){
   }
   const timeout = terraTimeout(n);
   if (!problems.length && timeout < now() + p.min_terra_left_sec + 60) problems.push('the TON lock ends too soon to answer safely');
-  const tax = BigInt(p.tax_bps);
+  const tax = BigInt(await taxBpsFor(p));
   const gross = ceilDiv(BigInt(t.lunc) * 10000n, 10000n - tax);
   return { offer: offer, n: n, problems: problems, timeout: timeout, gross: gross };
 }
@@ -1192,6 +1213,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       else say('#gx-bb-msg', 'The offer could not be checked just now. Try again in a moment.', true);
       return;
     }
+    if (fresh.paused) { say('#gx-bb-msg', 'Swaps are paused for now: the network\u2019s burn tax changed and the service is being updated. Nothing was paid. Try again later.', true); load(); return; }
     if (!fresh.live) { say('#gx-bb-msg', 'This offer was cancelled or is no longer shown to buyers. Pick another one.', true); load(); return; }
     if (fresh.price !== q.o.price || fresh.maker_ton !== q.o.maker_ton) { say('#gx-bb-msg', 'The seller changed this offer. Check it again before paying.', true); load(); return; }
     if (BigInt(fresh.remaining_lunc) < q.lunc || BigInt(fresh.min_lunc) > q.lunc || Number(fresh.expires) < now() + policy.answer_window_sec) {
@@ -1403,7 +1425,7 @@ async function sellerLockOk(b, take){
   if (!POLICY) setPolicy((await api('/offers')).policy);
   if (!POLICY) return [POLICY_ERR || 'the swap rules could not be loaded'];
   const p = POLICY;
-  const keep = 10000n - BigInt(p.tax_bps);
+  const keep = 10000n - BigInt(await taxBpsFor(p));
   const problems = [];
   if (l.status !== 'open') problems.push('the seller\u2019s lock is ' + l.status);
   if (String(l.hash).toLowerCase() !== b.hash) problems.push('another hash');
