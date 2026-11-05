@@ -140,14 +140,20 @@ document.addEventListener('touchcancel', () => { release(); s = null; }, { passi
 const TYPING = 'input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]),textarea,[contenteditable="true"]';
 const TOUCH = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 const VV = window.visualViewport;
-let kbT = 0, kbCheck = 0, fullH = VV ? VV.height : window.innerHeight;
+let kbT = 0, kbCheck = 0;
+// the full visible height of each orientation, measured with no field focused
+// (a phone turned while typing must not keep the other orientation's)
+const orient = () => (window.innerWidth > window.innerHeight ? 'land' : 'port');
+const fullH = { [orient()]: VV ? VV.height : window.innerHeight };
 const typingNow = () => { const a = document.activeElement; return !!(a && a.matches && a.matches(TYPING)); };
 if (VV) VV.addEventListener('resize', () => {
-  if (!typingNow()) { fullH = Math.max(VV.height, window.innerHeight * 0.5); return; }
+  if (!typingNow()) { fullH[orient()] = Math.max(VV.height, window.innerHeight * 0.5); return; }
   if (!TOUCH) return;
+  const base = fullH[orient()];
+  if (!base) return;                               // not known yet for this orientation: leave the bar as it is
   // the keyboard can close while the field keeps focus (iOS "Done", a swipe
   // down) and open again: the bar follows the visible area itself
-  document.body.classList.toggle('kb-open', fullH - VV.height >= 120);
+  document.body.classList.toggle('kb-open', base - VV.height >= 120);
 });
 document.addEventListener('focusin', e => {
   if (!TOUCH || !e.target.matches || !e.target.matches(TYPING)) return;
@@ -157,7 +163,8 @@ document.addEventListener('focusin', e => {
   kbCheck = setTimeout(() => {
     if (document.activeElement !== el) return;      // focus moved on meanwhile
     // no software keyboard after all: the visible area kept its height
-    if (VV && fullH - VV.height < 120) { document.body.classList.remove('kb-open'); return; }
+    const base = fullH[orient()];
+    if (VV && base && base - VV.height < 120) { document.body.classList.remove('kb-open'); return; }
     try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {}
   }, 450);
 });
