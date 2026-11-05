@@ -90,9 +90,11 @@ ok('back to the production mini app after paying', NETS.mainnet.twaReturnUrl ===
 ok('consents name the network in use, never a fixed "TON testnet" (R4-C1)', !/TON testnet'/.test(src));
 ok('a second node for the seller\u2019s lock on mainnet (R4-B3)', !!NETS.mainnet.lcd2 && NETS.mainnet.lcd2 !== NETS.mainnet.lcd && /NET\.lcd2/.test(lift(src, 'async function sellerLockOk(b, take){')));
 ok('every GRAM Terra signing shows its fee in the consent first (R4-D1)', (src.match(/await feeFor\(\[step\]\)/g) || []).length === 3 && !/NO_FEE_REVIEW/.test(src));
-ok('a paused book is refused (R4-E1)', (() => { try { pinMain(Object.assign({}, WORKER_MAIN, { paused: 'tax changed' })); return false; } catch (e) { return /paused/.test(e.message); } })());
+ok('a paused book keeps its rules, flagged paused, so swaps under way go on (R4-E1, review of 1379f8a)', (() => { try { const r = pinMain(Object.assign({}, WORKER_MAIN, { paused: 'tax changed' })); return r.paused === 'tax changed' && r.tax_bps === 150; } catch (e) { return false; } })());
+ok('publishing and paying stop while paused (R4-E1)', /if \(POLICY && POLICY\.paused\) \{ say\('#gx-msg', PAUSED_MSG/.test(src) && /if \(policy\.paused\) \{ say\('#gx-bb-msg', PAUSED_MSG/.test(src));
 ok('the pay step refuses a paused offer (R4-E1)', /if \(fresh\.paused\)/.test(src));
-ok('the seller\u2019s lock and the buyer\u2019s check use the higher of published and chain tax (R4-E2)', (src.match(/await taxBpsFor\(p\)/g) || []).length === 2 && /Math\.max\(Number\(p\.tax_bps\)/.test(src));
+ok('the seller\u2019s lock and the buyer\u2019s check use the higher of published and chain tax (R4-E2)', (src.match(/taxBps = await taxBpsFor\(p\)/g) || []).length === 2 && /Math\.max\(Number\(p\.tax_bps\)/.test(src));
+ok('a chain rate above max_tax_bps is never used (review of 1379f8a)', /chain > max\) \{\s*throw/.test(lift(src, 'async function taxBpsFor(p){')));
 ok('self-claim reads the lock again before signing (R4-B2)', /terraLockRead\(b\.terraLockId\)/.test(lift(src, 'async function selfClaim(id){')));
 ok('min TON time left = answer window + 5 h + 24 h + 10 min', m.min_ton_left_sec === m.answer_window_sec + m.min_terra_left_sec + m.terra_gap_sec + 600);
 ok('the agreed numbers: 30 min, 6 h, 0.3%, 0.05 GRAM', m.answer_window_sec === 1800 && m.t_terra_sec === 21600 && m.fee_bps === 30 && m.min_tip === '50000000');

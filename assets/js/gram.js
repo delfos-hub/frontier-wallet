@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89d3f0e5';
-import { GRAM_NET, TERMS } from './gram-net.js?v=89d3f0e5';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89d3f0e5';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=89d3f0e5';
-import { S } from './state.js?v=89d3f0e5';
-import { decryptSeed } from './storage.js?v=89d3f0e5';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=89d3f0e5';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89d3f0e5';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89d3f0e5';
-import { chime, notify } from './notify.js?v=89d3f0e5';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=a7932775';
+import { GRAM_NET, TERMS } from './gram-net.js?v=a7932775';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=a7932775';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=a7932775';
+import { S } from './state.js?v=a7932775';
+import { decryptSeed } from './storage.js?v=a7932775';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=a7932775';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=a7932775';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=a7932775';
+import { chime, notify } from './notify.js?v=a7932775';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -70,9 +70,6 @@ function pinPolicy(p){
   const pin = NET.policy;
   if (!pin || NET.ready === false) throw new Error('the swap is not open on ' + NET.name + ' in this wallet yet');
   if (!p) throw new Error('the swap rules could not be loaded');
-  // the Worker pauses offers and takes while the chain's burn tax differs from
-  // its own (audit round 4, E1): nothing is published or paid until it is updated
-  if (p.paused) throw new Error('Swaps are paused for now: the network\u2019s burn tax changed and the service is being updated. Nothing was paid. Try again later.');
   const bad = [];
   let tip = '';
   try { tip = tonRaw(String(p.tip_address || '')); } catch (e) {}
@@ -83,8 +80,13 @@ function pinPolicy(p){
   const tax = Number(p.tax_bps);
   if (!Number.isInteger(tax) || tax < pin.min_tax_bps || tax > pin.max_tax_bps) bad.push('burn tax');
   if (bad.length) throw new Error('the offers service publishes swap rules that differ from this wallet\u2019s (' + bad.join(', ') + '). Not trading under them; update the wallet or try later.');
-  return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash });
+  // The Worker pauses new offers and takes while the chain's burn tax differs
+  // from its own (audit round 4, E1). Only publishing and paying stop; a take
+  // already announced is still answered and checked, at the higher of the two
+  // rates (E2), so no buyer's GRAM is left waiting for the TON timeout.
+  return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash, paused: p.paused ? String(p.paused) : '' });
 }
+const PAUSED_MSG = 'Swaps are paused for now: the network\u2019s burn tax changed and the service is being updated. Nothing was paid. Try again later.';
 // GRAM per deal, from the pinned rules: { min, max } in nanoGRAM (0n = none)
 // The burn tax for a seller's lock and the buyer's check of it: the higher of
 // the rate the Worker publishes and the chain's own (audit round 4, E2). A
@@ -100,8 +102,15 @@ async function chainTaxBps(){
   } catch (e) {}
   return CHAIN_TAX.bps;
 }
+// Above max_tax_bps the chain's answer is not used (a broken or lying node
+// could ask for 10x the LUNC, or divide by zero at 10000): nothing is
+// answered or accepted, as during a pause, until the rates agree again.
 async function taxBpsFor(p){
   const chain = await chainTaxBps();
+  const max = Number((NET.policy || {}).max_tax_bps);
+  if (chain !== null && Number.isFinite(max) && chain > max) {
+    throw new Error('the network reports a burn tax of ' + (chain / 100) + '%, above what this wallet accepts. Not answering until it is checked; nothing was locked.');
+  }
   return Math.max(Number(p.tax_bps), chain === null ? 0 : chain);
 }
 function dealLimits(){
@@ -215,6 +224,7 @@ async function load(){
     ]);
     setPolicy(book.policy);
     if (POLICY_ERR) say('#gx-status', POLICY_ERR, true);
+    else if (POLICY && POLICY.paused) say('#gx-status', PAUSED_MSG, true);
     BAL = BigInt((bal.balance && bal.balance.amount) || '0');
     $('#gx-bal').textContent = human(BAL, 6) + ' LUNC';
     const mine = (book.offers || []).filter(o => o.maker === me);
@@ -602,6 +612,7 @@ $('#gx-post').addEventListener('click', async function(){
   const f = readForm();
   if (f.errs.length) { say('#gx-msg', f.errs[0], true); buzz('error'); return; }
   if (!(await needTerms())) { say('#gx-msg', 'Accept the Terms of Use to publish an offer.', true); return; }
+  if (POLICY && POLICY.paused) { say('#gx-msg', PAUSED_MSG, true); return; }
   try { localStorage.setItem(tonKey(), f.ton); } catch (e) {}
   const expires = now() + f.hours * 3600 - 120;     // 2 min under the limit: a phone clock may run ahead
   const payload = JSON.stringify({
@@ -812,7 +823,9 @@ async function checkTake(t){
   }
   const timeout = terraTimeout(n);
   if (!problems.length && timeout < now() + p.min_terra_left_sec + 60) problems.push('the TON lock ends too soon to answer safely');
-  const tax = BigInt(await taxBpsFor(p));
+  let taxBps = Number(p.tax_bps);
+  try { taxBps = await taxBpsFor(p); } catch (e) { problems.push(e.message); }
+  const tax = BigInt(taxBps);
   const gross = ceilDiv(BigInt(t.lunc) * 10000n, 10000n - tax);
   return { offer: offer, n: n, problems: problems, timeout: timeout, gross: gross };
 }
@@ -1205,6 +1218,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (acc.chain !== NET.tonChain) { say('#gx-bb-msg', 'Your TON wallet is on the wrong network: switch it to ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet') + '.', true); return; }
     const policy = POLICY || setPolicy((await api('/offers')).policy);
     if (!policy) { say('#gx-bb-msg', POLICY_ERR || 'The swap rules could not be loaded. Try again in a minute.', true); return; }
+    if (policy.paused) { say('#gx-bb-msg', PAUSED_MSG, true); return; }
     // the offer as it stands now, not as the book showed it (audit round 3, D2)
     let fresh;
     try { fresh = await api('/offers/' + encodeURIComponent(q.o.id)); }
@@ -1213,7 +1227,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       else say('#gx-bb-msg', 'The offer could not be checked just now. Try again in a moment.', true);
       return;
     }
-    if (fresh.paused) { say('#gx-bb-msg', 'Swaps are paused for now: the network\u2019s burn tax changed and the service is being updated. Nothing was paid. Try again later.', true); load(); return; }
+    if (fresh.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
     if (!fresh.live) { say('#gx-bb-msg', 'This offer was cancelled or is no longer shown to buyers. Pick another one.', true); load(); return; }
     if (fresh.price !== q.o.price || fresh.maker_ton !== q.o.maker_ton) { say('#gx-bb-msg', 'The seller changed this offer. Check it again before paying.', true); load(); return; }
     if (BigInt(fresh.remaining_lunc) < q.lunc || BigInt(fresh.min_lunc) > q.lunc || Number(fresh.expires) < now() + policy.answer_window_sec) {
@@ -1425,7 +1439,9 @@ async function sellerLockOk(b, take){
   if (!POLICY) setPolicy((await api('/offers')).policy);
   if (!POLICY) return [POLICY_ERR || 'the swap rules could not be loaded'];
   const p = POLICY;
-  const keep = 10000n - BigInt(await taxBpsFor(p));
+  let taxBps;
+  try { taxBps = await taxBpsFor(p); } catch (e) { return [e.message]; }
+  const keep = 10000n - BigInt(taxBps);
   const problems = [];
   if (l.status !== 'open') problems.push('the seller\u2019s lock is ' + l.status);
   if (String(l.hash).toLowerCase() !== b.hash) problems.push('another hash');
