@@ -42,13 +42,36 @@ function rail(on){
     logo = document.createElement('img');
     logo.className = 'dk-logo'; logo.alt = 'Frontier'; logo.src = 'assets/frontier-wordmark.png';
     tabs.prepend(logo);
+    // the balance under the wordmark (Nans): a mirror of Home's own figures,
+    // which the wallet keeps up to date; a click refreshes, like Home's button
+    const bal = document.createElement('div');
+    bal.className = 'dk-bal'; bal.title = 'Refresh';
+    bal.innerHTML = '<div class="dk-bal-l">Total balance</div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
+    bal.addEventListener('click', () => { const r = document.getElementById('bal-refresh'); if (r) r.click(); });
+    logo.after(bal);
+    mirror();
     foot = document.createElement('div');
     foot.className = 'dk-foot';
     foot.innerHTML = '<b>FRONTIER WEB</b>Non-custodial. Your keys stay in this browser.';
     tabs.append(foot);
   }
-  if (!on) { if (logo) logo.remove(); if (foot) foot.remove(); }
+  if (!on) { if (logo) logo.remove(); if (foot) foot.remove(); const b = tabs.querySelector('.dk-bal'); if (b) b.remove(); }
 }
+
+// Home's total and its wallet / DeFi split, copied into the rail whenever
+// the wallet changes them
+function mirror(){
+  const box = tabs && tabs.querySelector('.dk-bal');
+  if (!box) return;
+  const total = document.getElementById('bal-total'), split = document.getElementById('bal-split');
+  box.querySelector('.dk-bal-v').textContent = total ? total.textContent : '';
+  const s = box.querySelector('.dk-bal-s');
+  s.innerHTML = split && !split.hidden ? split.innerHTML : '';
+}
+['bal-total', 'bal-split'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) new MutationObserver(mirror).observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+});
 
 function apply(){
   const on = WIDE.matches;
