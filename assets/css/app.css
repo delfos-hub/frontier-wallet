@@ -1989,3 +1989,47 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
   border:1px solid rgba(0,212,255,.35);background:rgba(0,212,255,.07);-webkit-tap-highlight-color:transparent}
 .stk-find:active{transform:scale(.94)}
 .stk-find svg{width:16px;height:16px;fill:none;stroke:#00D4FF;stroke-width:2.2;stroke-linecap:round}
+
+/* Hover: with a mouse, cards and rows answer the pointer, without a light
+   following it: cards lift and light their edge, each Core asset takes its
+   coin's colour, rows tint, icons rise. Only where the device can hover
+   (a mouse or a trackpad); a phone's tap never leaves anything lit. */
+@media (hover:hover) and (pointer:fine){
+  :is(.core-cell,.gv-card,.xc,.earn-entry,.rows li.row,.stk-row,.ea-pos,.wl-row,.ac-row,.tk-card,.ep-row){
+    transition:transform .22s cubic-bezier(.22,1,.36,1),border-color .22s,box-shadow .22s,background-color .22s}
+
+  /* cards that stand on their own lift and light their edge */
+  :is(.gv-card,.xc,.earn-entry,.rows li.row,.stk-row,.wl-row,.tk-card):hover{
+    transform:translateY(-2px);border-color:rgba(124,92,255,.45)!important;
+    box-shadow:0 14px 34px -18px rgba(124,92,255,.55),0 0 0 1px rgba(59,227,255,.08)}
+
+  /* Core assets: each half takes its coin's colour on its edge and from its
+     top corner; the line brightens and the coin turns a little */
+  .core-cell[data-sym="LUNC"]{--hv-edge:rgba(245,200,66,.5);--hv-wash:rgba(245,200,66,.10)}
+  .core-cell[data-sym="USTC"]{--hv-edge:rgba(80,140,255,.55);--hv-wash:rgba(80,140,255,.12)}
+  .core-cell:hover{box-shadow:inset 0 0 0 1px var(--hv-edge,rgba(124,92,255,.4));
+    background-image:linear-gradient(160deg,var(--hv-wash,rgba(124,92,255,.08)),transparent 60%)}
+  .core-cell svg{transition:filter .25s}
+  .core-cell:hover svg{filter:drop-shadow(0 0 6px rgba(52,211,153,.55)) brightness(1.25)}
+  :is(.core-cell,.rows li.row) .sym{transition:transform .25s cubic-bezier(.22,1,.36,1)}
+  :is(.core-cell,.rows li.row):hover .sym{transform:scale(1.08) rotate(-4deg)}
+
+  /* rows inside a list: a tint, no lift (they share one card) */
+  :is(.ea-pos,.ac-row,.ep-row):hover{background-color:rgba(124,92,255,.06)}
+  .st-row:not(.st-info):hover{background:linear-gradient(90deg,rgba(124,92,255,.10),transparent 80%)}
+  .st-row:not(.st-info):hover svg{color:#3BE3FF}
+
+  /* the four actions: the icon rises and glows */
+  .act svg{transition:transform .22s cubic-bezier(.22,1,.36,1),filter .22s}
+  .act:hover{color:#fff}
+  .act:hover svg{transform:translateY(-3px);filter:drop-shadow(0 0 8px rgba(59,227,255,.7))}
+
+  /* buttons brighten; the main one glows */
+  .btn{transition:filter .2s,box-shadow .2s,transform .2s}
+  .btn:not(:disabled):hover{filter:brightness(1.12)}
+  .btn.solid:not(:disabled):hover{box-shadow:0 10px 30px -10px rgba(124,92,255,.8)}
+  .btn:not(:disabled):active{transform:scale(.98)}
+}
+@media (prefers-reduced-motion:reduce){
+  :is(.gv-card,.xc,.earn-entry,.rows li.row,.stk-row,.wl-row,.tk-card):hover{transform:none!important}
+}
