@@ -2074,8 +2074,7 @@ html.dk .dk-a,html.dk .dk-b{display:flex;flex-direction:column;gap:16px;min-widt
 html.dk .dk-a>*,html.dk .dk-b>*{margin-top:0!important;margin-bottom:0!important}
 html.dk .wtop{margin-bottom:6px}
 /* the token list scrolls inside its column, so the rest stays in view */
-html.dk #pane-tok .rows{max-height:max(300px,calc(100vh - 480px));overflow-y:auto;scrollbar-width:thin;
-  scrollbar-color:rgba(120,140,255,.3) transparent;padding-right:4px}
+html.dk #pane-tok .rows{max-height:max(300px,calc(100vh - 480px));overflow-y:auto;padding-right:4px}
 html.dk #pane-tok .rows li{transition:background .15s,transform .15s}
 html.dk #pane-tok .rows li:hover{background:rgba(120,140,255,.07);transform:translateX(2px)}
 html.dk .act:hover,html.dk .earn-entry:hover,html.dk .xc:hover{filter:brightness(1.12)}
