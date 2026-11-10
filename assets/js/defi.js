@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=fcc11ed6';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=fcc11ed6';
-import { $, go, tap } from './shell.js?v=fcc11ed6';
-import { S } from './state.js?v=fcc11ed6';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=fcc11ed6';
-import * as P from './defi-parse.js?v=fcc11ed6';
-import { dryRunSwap, sendSwap } from './tx.js?v=fcc11ed6';
-import { notify } from './notify.js?v=fcc11ed6';
-import { buzz } from './shell.js?v=fcc11ed6';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=fcc11ed6';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=fe6ad509';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=fe6ad509';
+import { $, go, tap } from './shell.js?v=fe6ad509';
+import { S } from './state.js?v=fe6ad509';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=fe6ad509';
+import * as P from './defi-parse.js?v=fe6ad509';
+import { dryRunSwap, sendSwap } from './tx.js?v=fe6ad509';
+import { notify } from './notify.js?v=fe6ad509';
+import { buzz } from './shell.js?v=fe6ad509';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=fe6ad509';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -526,9 +526,15 @@ const ICON = {
 };
 
 function worth(p){
-  let sum = 0, all = true;
-  for (const x of p.holds) { const d = dollars(x); if (d === null) all = false; else sum += d; }
-  return { usd: sum, complete: all && p.holds.length > 0 };
+  let sum = 0, priced = 0;
+  for (const x of p.holds) { const d = dollars(x); if (d !== null) { sum += d; priced++; } }
+  // A constant-product pool holds equal value on each side, so a pair with one
+  // side unpriced is worth twice the other: what the exchange itself shows
+  // (IDEV/LTK on Garuda), marked as an estimate rather than "at least".
+  if ((p.kind === 'farm' || p.kind === 'pool') && p.holds.length === 2 && priced === 1 && sum > 0) {
+    return { usd: sum * 2, complete: false, est: true };
+  }
+  return { usd: sum, complete: priced === p.holds.length && p.holds.length > 0 };
 }
 function rewardWorth(p){
   let sum = 0;
@@ -607,7 +613,7 @@ function card(p){
     '<div class="ea-top">' + logos(p) +
       '<div class="ea-mid"><b>' + esc(titleOf(p)) + '</b><span>' + esc(p.label) +
         (p.share ? ' \u00b7 ' + pct(p.share) + ' of pool' : '') + tag + '</span></div>' +
-      '<div class="ea-usd">' + (w.usd > 0 ? (w.complete ? '' : '\u2265 ') + usd(w.usd) : '') + '</div>' +
+      '<div class="ea-usd">' + (w.usd > 0 ? (w.complete ? '' : w.est ? '\u2248 ' : '\u2265 ') + usd(w.usd) : '') + '</div>' +
       '<svg class="ea-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>' +
     (p.missing ? '<div class="ea-note">Could not value the LP right now</div>' : '<div class="ea-holds">' + holds + '</div>') +
     rew +
@@ -798,7 +804,7 @@ function detail(c){
   $('#ep-logos').outerHTML = logos(p, true).replace('<span class="ea-logos', '<span id="ep-logos" class="ea-logos');
   $('#ep-title').textContent = titleOf(p);
   $('#ep-sub').textContent = p.platform + ' \u00b7 ' + p.label;
-  $('#ep-usd').textContent = w.usd > 0 ? (w.complete ? '' : '\u2265 ') + usd(w.usd) : '\u2014';
+  $('#ep-usd').textContent = w.usd > 0 ? (w.complete ? '' : w.est ? '\u2248 ' : '\u2265 ') + usd(w.usd) : '\u2014';
   $('#ep-share').textContent = p.share ? pct(p.share) + ' of the pool' : (p.ready ? 'Ready to withdraw' : '');
   $('#ep-holds').innerHTML = p.missing ? '<div class="tk-none">Could not value the LP right now.</div>'
     : p.holds.map(x => amountRow(x)).join('');
