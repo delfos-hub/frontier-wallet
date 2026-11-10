@@ -2037,7 +2037,17 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
 .rows li.row .row-star svg{width:12px;height:12px;fill:none;stroke:#C9B8FF;stroke-width:2}
 .rows li.row .row-star.on{opacity:1;background:#2a2208;border-color:rgba(245,200,66,.7);box-shadow:0 0 10px -2px rgba(245,200,66,.6)}
 .rows li.row .row-star.on svg{fill:#F5C842;stroke:#F5C842}
+/* the star on a token's page, at the right of its top bar */
+#st-token .bar{display:flex;align-items:center}
+.tk-fav{margin-left:auto;display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:17px;cursor:pointer;
+  border:1px solid rgba(124,92,255,.35);background:rgba(124,92,255,.08);color:#C9B8FF;font:inherit;font-size:12px;font-weight:600;
+  transition:background .2s,border-color .2s,color .2s}
+.tk-fav[hidden]{display:none}
+.tk-fav svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
+.tk-fav.on{color:#F5C842;border-color:rgba(245,200,66,.55);background:rgba(245,200,66,.10)}
+.tk-fav.on svg{fill:#F5C842;stroke:#F5C842}
 @media (hover:hover) and (pointer:fine){
+  .tk-fav:hover{border-color:#F5C842;color:#F5C842}
   .rows li.row:hover .row-star{opacity:1}
   .rows li.row .row-star:hover{transform:scale(1.15);border-color:#F5C842}
   .fav-card:hover{transform:translateY(-2px);border-color:rgba(124,92,255,.45);box-shadow:0 14px 34px -18px rgba(124,92,255,.55)}

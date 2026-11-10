@@ -10,10 +10,10 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=50a47d51';
-import { S } from './state.js?v=50a47d51';
-import { esc, iconHTML, paintIcons } from './chain.js?v=50a47d51';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=50a47d51';
+import { $ } from './shell.js?v=6ccaff7b';
+import { S } from './state.js?v=6ccaff7b';
+import { esc, iconHTML, paintIcons } from './chain.js?v=6ccaff7b';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=6ccaff7b';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
@@ -128,7 +128,7 @@ function toggle(k, meta){
   else favs.push(Object.assign({ k: k }, meta || {}));
   save(favs);
   try { const h = window.Telegram && Telegram.WebApp && Telegram.WebApp.HapticFeedback; if (h) h.impactOccurred('light'); } catch (e) {}
-  stars(); render();
+  stars(); render(); if (PAGE) paintPage();
 }
 function flash(msg){
   const sec = section(), n = document.createElement('div');
@@ -233,7 +233,34 @@ document.addEventListener('drop', e => {
 });
 document.addEventListener('dragend', () => { DRAG = -1; document.querySelectorAll('.fav-card.drag').forEach(c => c.classList.remove('drag')); });
 
-document.addEventListener('frontier:wallet', () => { stars(); render(); });
+/* the star on a token's own page, in its top bar */
+let PAGE = '';
+function pageStar(){
+  const bar = document.querySelector('#st-token .bar');
+  if (!bar) return null;
+  let b = bar.querySelector('.tk-fav');
+  if (!b) {
+    b = document.createElement('button');
+    b.type = 'button'; b.className = 'tk-fav'; b.innerHTML = STAR + '<span></span>';
+    b.addEventListener('click', () => {
+      const sym = (document.getElementById('tk-sym') || {}).textContent || '';
+      toggle(PAGE, { sym: sym });
+      paintPage();
+    });
+    bar.appendChild(b);
+  }
+  return b;
+}
+function paintPage(){
+  const b = pageStar(); if (!b) return;
+  b.hidden = !PAGE || CORE.indexOf(PAGE) >= 0;
+  const on = has(PAGE);
+  b.classList.toggle('on', on);
+  b.querySelector('span').textContent = on ? 'In favorites' : 'Add to favorites';
+}
+document.addEventListener('frontier:token', e => { PAGE = (e.detail && e.detail.key) || ''; paintPage(); });
+
+document.addEventListener('frontier:wallet', () => { stars(); render(); paintPage(); });
 window.addEventListener('resize', () => { if (SEC) section(); });
 render();
 

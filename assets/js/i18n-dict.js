@@ -276,6 +276,8 @@ const EXTRA = {
   'Add a token': ['Добавить токен', 'Ajouter un jeton', 'Aggiungi un token', 'Añadir un token', 'Token ekle'],
   'star it in the list': ['звёздочкой в списке', 'étoile dans la liste', 'stella nella lista', 'estrella en la lista', 'listede yıldızla'],
   'Up to 6 favorites. Remove one first.': ['Не больше 6 избранных. Сначала уберите один.', '6 favoris au maximum. Retirez-en un d\u2019abord.', 'Al massimo 6 preferiti. Togline prima uno.', 'Como máximo 6 favoritos. Quita uno primero.', 'En fazla 6 favori. Önce birini kaldırın.'],
+  'Add to favorites': ['В избранное', 'Ajouter aux favoris', 'Aggiungi ai preferiti', 'Añadir a favoritos', 'Favorilere ekle'],
+  'In favorites': ['В избранном', 'Dans les favoris', 'Nei preferiti', 'En favoritos', 'Favorilerde'],
   'Tap the star on a token in the list.': ['Нажмите звёздочку у токена в списке.', 'Touchez l\u2019étoile d\u2019un jeton dans la liste.', 'Tocca la stella di un token nella lista.', 'Toca la estrella de un token en la lista.', 'Listedeki bir tokenın yıldızına dokunun.'],
 };
 const XL = ['ru', 'fr', 'it', 'es', 'tr'];
