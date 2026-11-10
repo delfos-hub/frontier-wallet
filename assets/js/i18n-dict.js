@@ -279,6 +279,9 @@ const EXTRA = {
   'Add to favorites': ['В избранное', 'Ajouter aux favoris', 'Aggiungi ai preferiti', 'Añadir a favoritos', 'Favorilere ekle'],
   'In favorites': ['В избранном', 'Dans les favoris', 'Nei preferiti', 'En favoritos', 'Favorilerde'],
   'Up to 6 favorites': ['Не больше 6 избранных', '6 favoris au maximum', 'Al massimo 6 preferiti', 'Como máximo 6 favoritos', 'En fazla 6 favori'],
+  'Long-press a token in the list to keep it here, under LUNC and USTC. Up to 6, kept on this device.': ['Удерживайте токен в списке, чтобы держать его здесь, под LUNC и USTC. До 6, хранится на этом устройстве.', 'Appuyez longuement sur un jeton de la liste pour le garder ici, sous LUNC et USTC. Jusqu\u2019à 6, gardés sur cet appareil.', 'Tieni premuto un token nella lista per tenerlo qui, sotto LUNC e USTC. Fino a 6, salvati su questo dispositivo.', 'Mantén pulsado un token de la lista para tenerlo aquí, bajo LUNC y USTC. Hasta 6, guardados en este dispositivo.', 'Burada, LUNC ve USTC altında tutmak için listedeki bir tokena uzun basın. En fazla 6, bu cihazda saklanır.'],
+  'long-press it in the list': ['удерживайте его в списке', 'appui long dans la liste', 'tienilo premuto nella lista', 'mantenlo pulsado en la lista', 'listede uzun basın'],
+  'Long-press a token in the list.': ['Удерживайте токен в списке.', 'Appuyez longuement sur un jeton de la liste.', 'Tieni premuto un token nella lista.', 'Mantén pulsado un token de la lista.', 'Listedeki bir tokena uzun basın.'],
   'Tap the star on a token in the list.': ['Нажмите звёздочку у токена в списке.', 'Touchez l\u2019étoile d\u2019un jeton dans la liste.', 'Tocca la stella di un token nella lista.', 'Toca la estrella de un token en la lista.', 'Listedeki bir tokenın yıldızına dokunun.'],
 };
 const XL = ['ru', 'fr', 'it', 'es', 'tr'];

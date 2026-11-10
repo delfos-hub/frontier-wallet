@@ -10,16 +10,24 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=d4ca4f59';
-import { S } from './state.js?v=d4ca4f59';
-import { esc, iconHTML, paintIcons } from './chain.js?v=d4ca4f59';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=d4ca4f59';
+import { $ } from './shell.js?v=b8904430';
+import { S } from './state.js?v=b8904430';
+import { esc, iconHTML, paintIcons } from './chain.js?v=b8904430';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=b8904430';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
 const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.8 5.8 6.4.9-4.6 4.5 1.1 6.4L12 17.4l-5.7 3 1.1-6.4L2.8 9.5l6.4-.9z"/></svg>';
 const now = () => Math.floor(Date.now() / 1000);
 const addr = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+// the home list's tokens, only when they are this wallet's: right after a
+// switch the list can still hold the previous wallet's rows (CodeRabbit)
+function mine(){
+  const list = heldTokens();
+  return list && list.__addr && list.__addr !== addr() ? [] : list;
+}
+// a finger long-presses a row; a mouse uses the star (hover shows it)
+const TOUCH = !(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
 
 // Stored values are checked for shape, not only parsed: an older or
 // hand-edited value must not leave the section blank (CodeRabbit).
@@ -103,7 +111,7 @@ function render(){
   const core = $('#core');
   if (!core || !addr()) { if (SEC) SEC.hidden = true; return; }
   const sec = section(); sec.hidden = false;
-  const held = {}; heldTokens().forEach(t => { held[tokKey(t)] = t; });
+  const held = {}; mine().forEach(t => { held[tokKey(t)] = t; });
   const favs = load();
   let changed = false;
   favs.forEach(f => { const t = held[f.k]; if (t && (f.sym !== t.sym || f.logo !== t.logo)) { f.sym = t.sym; f.logo = t.logo; changed = true; } });
@@ -112,7 +120,8 @@ function render(){
     (favs.length ? '<span class="fav-n">' + favs.length + '/' + MAX + '<span class="fav-drag"> \u00b7 <span>drag to reorder</span></span></span>' : '') + '</div>';
   if (!favs.length) {
     sec.innerHTML = head + '<div class="fav-empty">' + STAR + '<div><b>Pin the tokens you watch</b><br>' +
-      '<span>Tap the star on a token to keep it here, under LUNC and USTC. Up to 6, kept on this device.</span></div></div>';
+      '<span>' + (TOUCH ? 'Long-press a token in the list to keep it here, under LUNC and USTC. Up to 6, kept on this device.'
+        : 'Tap the star on a token to keep it here, under LUNC and USTC. Up to 6, kept on this device.') + '</span></div></div>';
     return;
   }
   let html = '<div class="fav-grid">';
@@ -130,7 +139,7 @@ function render(){
       // ticker and the price keep their own full lines
       (ch ? line(ch.pts, up) + '<span class="fav-span"><b class="fav-ch ' + (up ? 'up' : 'dn') + '">' + (ch.pct >= 0 ? '+' : '') + ch.pct.toFixed(1) + '%</b>' + ch.hours + 'h</span>' : '<div class="fav-nol"></div>') + '</div>';
   });
-  if (favs.length < MAX) html += '<button class="fav-add" type="button"><i>+</i><span>Add a token</span><small>star it in the list</small></button>';
+  if (favs.length < MAX) html += '<button class="fav-add" type="button"><i>+</i><span>Add a token</span><small>' + (TOUCH ? 'long-press it in the list' : 'star it in the list') + '</small></button>';
   sec.innerHTML = head + html + '</div>';
   paintIcons(sec);
 }
@@ -156,7 +165,7 @@ function flash(msg){
 const list = $('#tok-list');
 function keyOfRow(li){
   const k = li.getAttribute('data-k');
-  const t = heldTokens().filter(x => (x.contract || x.denom || ('sym:' + x.sym)) === k)[0];
+  const t = mine().filter(x => (x.contract || x.denom || ('sym:' + x.sym)) === k)[0];
   return t ? { key: tokKey(t), t: t } : null;
 }
 function stars(){
@@ -224,7 +233,7 @@ document.addEventListener('click', e => {
   if (off) { e.stopPropagation(); toggle(off.getAttribute('data-k')); return; }
   if (e.target.closest('.fav-add')) {
     const box = $('#tok-list'); if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    flash('Tap the star on a token in the list.');
+    flash(TOUCH ? 'Long-press a token in the list.' : 'Tap the star on a token in the list.');
     return;
   }
   const card = e.target.closest('.fav-card');

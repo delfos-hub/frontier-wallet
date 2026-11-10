@@ -2014,6 +2014,8 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
 /* hidden controls take no taps; a 44 px target around the small ones (CodeRabbit) */
 .fav-off::before,.rows li.row .row-star::before{content:'';position:absolute;inset:-10px}
 .fav-card:focus-within .fav-off,.fav-off:focus-visible{opacity:1;pointer-events:auto}
+/* a keyboard reaching a row's star sees it (CodeRabbit) */
+.rows li.row .row-star:focus-visible{opacity:1;pointer-events:auto;outline:2px solid #3BE3FF;outline-offset:2px}
 .fav-off:focus-visible,.fav-card:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
 .fav-off svg{width:14px;height:14px;fill:#F5C842}
 .fav-v{margin-top:10px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Rajdhani','Exo 2',sans-serif;font-size:21px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
