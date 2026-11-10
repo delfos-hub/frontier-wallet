@@ -46,8 +46,10 @@ function rail(on){
     // which the wallet keeps up to date; a click refreshes, like Home's button
     const bal = document.createElement('div');
     bal.className = 'dk-bal'; bal.title = 'Refresh';
-    bal.innerHTML = '<div class="dk-bal-l">Total balance</div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
+    bal.tabIndex = 0; bal.setAttribute('role', 'button');
+    bal.innerHTML = '<div class="dk-bal-l"><span>Total balance</span><span class="dk-bal-upd" aria-hidden="true">Updated</span></div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
     bal.addEventListener('click', () => { const r = document.getElementById('bal-refresh'); if (r) r.click(); });
+    bal.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bal.click(); } });
     logo.after(bal);
     mirror();
     foot = document.createElement('div');
@@ -64,13 +66,22 @@ function mirror(){
   const box = tabs && tabs.querySelector('.dk-bal');
   if (!box) return;
   const total = document.getElementById('bal-total'), split = document.getElementById('bal-split');
-  box.querySelector('.dk-bal-v').textContent = total ? total.textContent : '';
+  const v = box.querySelector('.dk-bal-v');
+  v.textContent = total ? total.textContent : '';
+  // dimmed while the figure is still loading, as Home's own is (Pablo)
+  v.classList.toggle('stale', !!(total && total.classList.contains('stale')));
+  const upd = document.getElementById('bal-upd'), u = box.querySelector('.dk-bal-upd');
+  if (u) {
+    const on = !!(upd && upd.classList.contains('on'));
+    u.classList.toggle('on', on);
+    u.setAttribute('aria-hidden', on ? 'false' : 'true');   // read only while it is shown (CodeRabbit)
+  }
   const s = box.querySelector('.dk-bal-s');
   s.innerHTML = split && !split.hidden ? split.innerHTML : '';
 }
-['bal-total', 'bal-split'].forEach(id => {
+['bal-total', 'bal-split', 'bal-upd'].forEach(id => {
   const el = document.getElementById(id);
-  if (el) new MutationObserver(mirror).observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  if (el) new MutationObserver(mirror).observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
 });
 
 function apply(){

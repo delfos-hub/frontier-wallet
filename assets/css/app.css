@@ -2098,3 +2098,10 @@ html.dk .tabs .dk-bal-s b{color:#E6ECFF;font-weight:600}
 /* the wordmark over the PIN on a wide screen, as the rail is not shown there */
 html.dk #st-unlock::before{content:'';display:block;width:220px;height:46px;margin:0 auto 34px;
   background:url(../frontier-wordmark.png) center/contain no-repeat;filter:drop-shadow(0 0 18px rgba(59,227,255,.35))}
+/* the rail's balance: the "Updated" note after a refresh, and dimmed while
+   the figure is still loading, like Home's own */
+html.dk .tabs .dk-bal-l{display:flex;align-items:center;justify-content:space-between;gap:8px}
+html.dk .tabs .dk-bal-upd{font-size:9.5px;letter-spacing:.08em;color:var(--green);opacity:0;transform:translateY(2px);transition:opacity .3s,transform .3s}
+html.dk .tabs .dk-bal-upd.on{opacity:1;transform:none}
+html.dk .tabs .dk-bal-v.stale{color:var(--muted);text-shadow:none;transition:color .35s ease}
+html.dk .tabs .dk-bal:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
