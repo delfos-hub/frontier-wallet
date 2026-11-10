@@ -46,7 +46,7 @@ function rail(on){
     // which the wallet keeps up to date; a click refreshes, like Home's button
     const bal = document.createElement('div');
     bal.className = 'dk-bal'; bal.title = 'Refresh';
-    bal.innerHTML = '<div class="dk-bal-l"><span>Total balance</span><span class="dk-bal-upd">Updated</span></div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
+    bal.innerHTML = '<div class="dk-bal-l"><span>Total balance</span><span class="dk-bal-upd" aria-hidden="true">Updated</span></div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
     bal.addEventListener('click', () => { const r = document.getElementById('bal-refresh'); if (r) r.click(); });
     logo.after(bal);
     mirror();
@@ -69,7 +69,11 @@ function mirror(){
   // dimmed while the figure is still loading, as Home's own is (Pablo)
   v.classList.toggle('stale', !!(total && total.classList.contains('stale')));
   const upd = document.getElementById('bal-upd'), u = box.querySelector('.dk-bal-upd');
-  if (u) u.classList.toggle('on', !!(upd && upd.classList.contains('on')));
+  if (u) {
+    const on = !!(upd && upd.classList.contains('on'));
+    u.classList.toggle('on', on);
+    u.setAttribute('aria-hidden', on ? 'false' : 'true');   // read only while it is shown (CodeRabbit)
+  }
   const s = box.querySelector('.dk-bal-s');
   s.innerHTML = split && !split.hidden ? split.innerHTML : '';
 }
