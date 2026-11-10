@@ -10,10 +10,10 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=6ccaff7b';
-import { S } from './state.js?v=6ccaff7b';
-import { esc, iconHTML, paintIcons } from './chain.js?v=6ccaff7b';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=6ccaff7b';
+import { $ } from './shell.js?v=d4ca4f59';
+import { S } from './state.js?v=d4ca4f59';
+import { esc, iconHTML, paintIcons } from './chain.js?v=d4ca4f59';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=d4ca4f59';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
@@ -21,15 +21,30 @@ const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.8 5
 const now = () => Math.floor(Date.now() / 1000);
 const addr = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 
+// Stored values are checked for shape, not only parsed: an older or
+// hand-edited value must not leave the section blank (CodeRabbit).
 function load(){
-  try { const v = JSON.parse(localStorage.getItem('fw:fav:' + addr()) || '[]'); return Array.isArray(v) ? v.filter(f => f && f.k).slice(0, MAX) : []; }
-  catch (e) { return []; }
+  try {
+    const v = JSON.parse(localStorage.getItem('fw:fav:' + addr()) || '[]');
+    if (!Array.isArray(v)) return [];
+    return v.filter(f => f && typeof f.k === 'string' && /^(cw20:|native:)/.test(f.k))
+      .map(f => ({ k: f.k, sym: typeof f.sym === 'string' ? f.sym : '', logo: typeof f.logo === 'string' ? f.logo : undefined }))
+      .slice(0, MAX);
+  } catch (e) { return []; }
 }
 function save(list){ try { localStorage.setItem('fw:fav:' + addr(), JSON.stringify(list.slice(0, MAX))); } catch (e) {} }
 const has = k => load().some(f => f.k === k);
 
 // this device's own price record for the favorites
-function pxBook(){ try { return JSON.parse(localStorage.getItem('fw:favpx') || '{}') || {}; } catch (e) { return {}; } }
+function pxBook(){
+  try {
+    const v = JSON.parse(localStorage.getItem('fw:favpx') || '{}');
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+    const out = {};
+    for (const k in v) if (Array.isArray(v[k])) out[k] = v[k].filter(p => Array.isArray(p) && isFinite(p[0]) && p[1] > 0);
+    return out;
+  } catch (e) { return {}; }
+}
 function record(k, px){
   if (!(px > 0)) return;
   const book = pxBook(), t = now();
@@ -102,7 +117,7 @@ function render(){
   }
   let html = '<div class="fav-grid">';
   favs.forEach((f, i) => {
-    const t = held[f.k] || { sym: f.sym, logo: f.logo, v: 0, contract: f.k.slice(0, 5) === 'cw20:' ? f.k.slice(5) : undefined, denom: f.k.slice(0, 7) === 'native:' ? f.k.slice(7) : undefined };
+    const t = held[f.k] || { sym: f.sym || '?', logo: f.logo, v: 0, contract: f.k.slice(0, 5) === 'cw20:' ? f.k.slice(5) : undefined, denom: f.k.slice(0, 7) === 'native:' ? f.k.slice(7) : undefined };
     const unit = held[f.k] ? fiatOf(Object.assign({}, t, { v: 1 })) : null;
     if (unit) record(f.k, unit);
     const ch = change(f.k), up = !ch || ch.pct >= 0;
@@ -124,11 +139,12 @@ function toggle(k, meta){
   if (!k || CORE.indexOf(k) >= 0) return;
   const favs = load(), i = favs.findIndex(f => f.k === k);
   if (i >= 0) favs.splice(i, 1);
-  else if (favs.length >= MAX) { flash('Up to 6 favorites. Remove one first.'); return; }
+  else if (favs.length >= MAX) { flash('Up to 6 favorites. Remove one first.'); return false; }
   else favs.push(Object.assign({ k: k }, meta || {}));
   save(favs);
   try { const h = window.Telegram && Telegram.WebApp && Telegram.WebApp.HapticFeedback; if (h) h.impactOccurred('light'); } catch (e) {}
   stars(); render(); if (PAGE) paintPage();
+  return true;
 }
 function flash(msg){
   const sec = section(), n = document.createElement('div');
@@ -190,7 +206,9 @@ if (list) {
       if (r && CORE.indexOf(r.key) < 0) { PRESSED = true; toggle(r.key, { sym: r.t.sym, logo: r.t.logo }); }
     }, 550);
   }, { passive: true });
-  const cancel = () => clearTimeout(PRESS);
+  // some touch browsers send no click after a long press: the flag clears
+  // itself, or the next ordinary tap would be swallowed (CodeRabbit)
+  const cancel = () => { clearTimeout(PRESS); if (PRESSED) setTimeout(() => { PRESSED = false; }, 700); };
   list.addEventListener('pointerup', cancel, { passive: true });
   list.addEventListener('pointercancel', cancel, { passive: true });
   list.addEventListener('pointermove', e => {
@@ -212,9 +230,11 @@ document.addEventListener('click', e => {
   const card = e.target.closest('.fav-card');
   if (card) document.dispatchEvent(new CustomEvent('frontier:token', { detail: { key: card.getAttribute('data-k') } }));
 });
+// the card itself (role=button) opens on Enter and Space; its own buttons keep
+// their native keys, so nothing fires twice
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Enter' || !e.target.closest || !e.target.closest('.fav-card')) return;
-  e.target.click();
+  if ((e.key !== 'Enter' && e.key !== ' ') || !e.target.classList || !e.target.classList.contains('fav-card')) return;
+  e.preventDefault(); e.target.click();
 });
 let DRAG = -1;
 document.addEventListener('dragstart', e => {
@@ -244,8 +264,10 @@ function pageStar(){
     b.type = 'button'; b.className = 'tk-fav'; b.innerHTML = STAR + '<span></span>';
     b.addEventListener('click', () => {
       const sym = (document.getElementById('tk-sym') || {}).textContent || '';
-      toggle(PAGE, { sym: sym });
+      const ok = toggle(PAGE, { sym: sym });
       paintPage();
+      // the limit said where it is seen: on this button, not on Home
+      if (ok === false) { b.querySelector('span').textContent = 'Up to 6 favorites'; b.classList.add('full'); setTimeout(() => { b.classList.remove('full'); paintPage(); }, 2600); }
     });
     bar.appendChild(b);
   }
