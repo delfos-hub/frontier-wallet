@@ -268,6 +268,15 @@ const EXTRA = {
   'Available {x}': ['Доступно {x}', 'Disponible {x}', 'Disponibile {x}', 'Disponible {x}', 'Kullanılabilir {x}'],
   '{n} days each': ['по {n} дней', '{n} jours chacun', '{n} giorni ciascuno', '{n} días cada uno', 'her biri {n} gün'],
   'from {v} \u00b7 {a} of {b} days': ['от {v} \u00b7 {a} из {b} дней', 'de {v} \u00b7 {a} sur {b} jours', 'da {v} \u00b7 {a} di {b} giorni', 'de {v} \u00b7 {a} de {b} días', '{v} \u00b7 {b} günün {a}. günü'],
+  // favorites (fav.js)
+  'Favorites': ['Избранное', 'Favoris', 'Preferiti', 'Favoritos', 'Favoriler'],
+  'drag to reorder': ['перетащите, чтобы поменять порядок', 'glissez pour réordonner', 'trascina per riordinare', 'arrastra para reordenar', 'sıralamak için sürükleyin'],
+  'Pin the tokens you watch': ['Закрепите токены, за которыми следите', 'Épinglez les jetons que vous suivez', 'Fissa i token che segui', 'Fija los tokens que sigues', 'Takip ettiğiniz tokenları sabitleyin'],
+  'Tap the star on a token to keep it here, under LUNC and USTC. Up to 6, kept on this device.': ['Нажмите звёздочку у токена, чтобы держать его здесь, под LUNC и USTC. До 6, хранится на этом устройстве.', 'Touchez l\u2019étoile d\u2019un jeton pour le garder ici, sous LUNC et USTC. Jusqu\u2019à 6, gardés sur cet appareil.', 'Tocca la stella di un token per tenerlo qui, sotto LUNC e USTC. Fino a 6, salvati su questo dispositivo.', 'Toca la estrella de un token para tenerlo aquí, bajo LUNC y USTC. Hasta 6, guardados en este dispositivo.', 'Bir tokenı burada, LUNC ve USTC altında tutmak için yıldızına dokunun. En fazla 6, bu cihazda saklanır.'],
+  'Add a token': ['Добавить токен', 'Ajouter un jeton', 'Aggiungi un token', 'Añadir un token', 'Token ekle'],
+  'star it in the list': ['звёздочкой в списке', 'étoile dans la liste', 'stella nella lista', 'estrella en la lista', 'listede yıldızla'],
+  'Up to 6 favorites. Remove one first.': ['Не больше 6 избранных. Сначала уберите один.', '6 favoris au maximum. Retirez-en un d\u2019abord.', 'Al massimo 6 preferiti. Togline prima uno.', 'Como máximo 6 favoritos. Quita uno primero.', 'En fazla 6 favori. Önce birini kaldırın.'],
+  'Tap the star on a token in the list.': ['Нажмите звёздочку у токена в списке.', 'Touchez l\u2019étoile d\u2019un jeton dans la liste.', 'Tocca la stella di un token nella lista.', 'Toca la estrella de un token en la lista.', 'Listedeki bir tokenın yıldızına dokunun.'],
 };
 const XL = ['ru', 'fr', 'it', 'es', 'tr'];
 for (const k in EXTRA) XL.forEach((code, i) => { DICT[code][k] = EXTRA[k][i]; });
