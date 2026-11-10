@@ -1982,3 +1982,6 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
   border:1px solid rgba(0,212,255,.35);background:rgba(0,212,255,.07);-webkit-tap-highlight-color:transparent}
 .stk-find:active{transform:scale(.94)}
 .stk-find svg{width:16px;height:16px;fill:none;stroke:#00D4FF;stroke-width:2.2;stroke-linecap:round}
+/* Telegram alerts from the web: the link to the bot under the switch */
+.gx-tg-open{display:inline-flex;align-items:center;justify-content:center;margin-top:10px;text-decoration:none}
+.gx-tg-hint{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}

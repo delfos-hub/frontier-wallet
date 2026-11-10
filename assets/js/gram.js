@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=a7932775';
-import { GRAM_NET, TERMS } from './gram-net.js?v=a7932775';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=a7932775';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=a7932775';
-import { S } from './state.js?v=a7932775';
-import { decryptSeed } from './storage.js?v=a7932775';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=a7932775';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=a7932775';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=a7932775';
-import { chime, notify } from './notify.js?v=a7932775';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=54ad8709';
+import { GRAM_NET, TERMS } from './gram-net.js?v=54ad8709';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=54ad8709';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=54ad8709';
+import { S } from './state.js?v=54ad8709';
+import { decryptSeed } from './storage.js?v=54ad8709';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=54ad8709';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=54ad8709';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=54ad8709';
+import { chime, notify } from './notify.js?v=54ad8709';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -687,20 +687,32 @@ const TG_INIT = (TGW && TGW.initData) || '';
 const TG_USER = TGW && TGW.initDataUnsafe && TGW.initDataUnsafe.user ? TGW.initDataUnsafe.user.id : null;
 let TG_LINKED = false;
 let TG_BUSY = false;
+let TG_WAIT = null;          // web: { code, url, until } while waiting for Start in the bot
 
 function tgPaint(){
   const sw = $('#gx-tg-btn');
   sw.setAttribute('aria-checked', TG_LINKED ? 'true' : 'false');
-  sw.classList.toggle('busy', TG_BUSY);
+  sw.classList.toggle('busy', TG_BUSY || !!TG_WAIT);
   sw.disabled = TG_BUSY;
   $('#gx-tg-line').classList.toggle('on', TG_LINKED);
   $('#gx-tg-sub').textContent = TG_LINKED
     ? 'The wallet bot messages you when a buyer locks GRAM, even with the wallet closed.'
     : 'Get a message from the wallet bot when a buyer locks GRAM, even with the wallet closed.';
 }
+// Outside Telegram there is no initData: the account is proven by pressing
+// Start on a one-time link to the bot (the Worker's web path, widgets #68).
+const TG_WEB = !(TG_INIT && TG_USER);
 async function tgStatus(){
   const line = $('#gx-tg-line');
-  if (!line || !TG_INIT || !TG_USER || !addrOf()) return;      // outside Telegram: nothing to link
+  if (!line || !addrOf()) return;
+  if (TG_WEB) {
+    try {
+      const st = await api('/notify/web/status', { address: addrOf() });
+      line.hidden = !st.enabled;
+      if (!TG_BUSY && !TG_WAIT) { TG_LINKED = !!st.linked; tgPaint(); }
+    } catch (e) { line.hidden = true; }
+    return;
+  }
   try {
     const st = await api('/notify/status', { initData: TG_INIT, address: addrOf() });
     line.hidden = !st.enabled;
@@ -713,8 +725,85 @@ function writeAccess(){
     try { TGW.requestWriteAccess(ok => resolve(!!ok)); } catch (e) { resolve(true); }
   });
 }
+function tgLinkBox(url){
+  const box = $('#gx-tg-msg');
+  box.textContent = '';
+  box.classList.remove('err');
+  const a = document.createElement('a');
+  a.className = 'btn solid gx-tg-open'; a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  a.textContent = 'Open @' + (url.split('t.me/')[1] || '').split('?')[0];
+  const p = document.createElement('p');
+  p.className = 'gx-tg-hint';
+  p.textContent = 'Press Start in the chat that opens. This switch turns on by itself; the link works once, for 10 minutes.';
+  box.append(a, p);
+}
+async function tgWaitForStart(){
+  while (TG_WAIT && Date.now() < TG_WAIT.until) {
+    await new Promise(r => setTimeout(r, 3000));
+    if (!TG_WAIT) return;
+    try {
+      const st = await api('/notify/web/status', { address: addrOf(), code: TG_WAIT.code });
+      if (st.linked) {
+        TG_WAIT = null; TG_LINKED = true; tgPaint();
+        say('#gx-tg-msg', 'Telegram alerts are on. The wallet bot will message you when a buyer locks GRAM for your offer.');
+        return;
+      }
+    } catch (e) { /* a missed check is retried */ }
+  }
+  if (TG_WAIT) { TG_WAIT = null; tgPaint(); say('#gx-tg-msg', 'The link to the bot expired. Turn the switch on again for a new one.', true); }
+}
+async function tgWebOn(){
+  TG_BUSY = true; tgPaint();
+  say('#gx-tg-msg', '');
+  try {
+    const payload = JSON.stringify({ type: 'frontier-notify-web', v: 1, network: NET.name, address: addrOf(), ts: now() });
+    let got = null;
+    await consent('Turn on Telegram alerts', [
+      ['Address', addrOf().slice(0, 12) + '\u2026' + addrOf().slice(-6)],
+      ['Alerts go to', 'the Telegram account that presses Start'],
+      ['When', 'a buyer locks GRAM for your offer']
+    ], payload, async function (m, step) {
+      step(0);
+      const signed = await signArbitrary(m, addrOf(), payload);
+      step(1);
+      got = await api('/notify/web/start', signed);
+    }, null, {
+      steps: ['Signing the request', 'Getting a link to the wallet bot'],
+      done: () => ({ title: 'One more step in Telegram', text: 'Open the wallet bot from the button under the switch and press Start.' })
+    });
+    if (got && got.url) {
+      TG_WAIT = { code: got.code, url: got.url, until: Date.now() + 10 * 60 * 1000 };
+      tgLinkBox(got.url);
+      tgWaitForStart();
+    }
+  } catch (e) {
+    if (e && !e.shown && e.message !== 'cancelled' && e.message !== 'watch only') say('#gx-tg-msg', e.message || String(e), true);
+  } finally {
+    TG_BUSY = false; tgPaint();
+  }
+}
+async function tgWebOff(){
+  TG_BUSY = true; tgPaint();
+  say('#gx-tg-msg', '');
+  try {
+    const payload = JSON.stringify({ type: 'frontier-notify-unlink', v: 1, network: NET.name, address: addrOf(), ts: now() });
+    await consent('Turn off Telegram alerts', [
+      ['Address', addrOf().slice(0, 12) + '\u2026' + addrOf().slice(-6)],
+      ['Stops', 'every Telegram account linked to this address']
+    ], payload, async function (m, step) {
+      step(0);
+      await api('/notify/web/unlink', await signArbitrary(m, addrOf(), payload));
+      TG_LINKED = false;
+    }, null, { steps: ['Signing the request'], done: () => ({ title: 'Telegram alerts are off', text: 'Turn them on again whenever you like.' }) });
+  } catch (e) {
+    if (e && !e.shown && e.message !== 'cancelled' && e.message !== 'watch only') say('#gx-tg-msg', 'Could not turn alerts off: ' + (e.message || e), true);
+  } finally {
+    TG_BUSY = false; tgPaint();
+  }
+}
 async function tgTurnOn(){
   if (TG_BUSY || TG_LINKED) return;
+  if (TG_WEB) { if (!TG_WAIT) return tgWebOn(); return; }
   TG_BUSY = true; tgPaint();
   say('#gx-tg-msg', '');
   try {
@@ -741,7 +830,9 @@ async function tgTurnOn(){
   }
 }
 async function tgTurnOff(){
+  if (TG_WEB && TG_WAIT && !TG_LINKED) { TG_WAIT = null; say('#gx-tg-msg', ''); tgPaint(); return; }
   if (TG_BUSY || !TG_LINKED) return;
+  if (TG_WEB) return tgWebOff();
   TG_BUSY = true; tgPaint();
   say('#gx-tg-msg', '');
   try {
@@ -753,7 +844,7 @@ async function tgTurnOff(){
     TG_BUSY = false; tgPaint();
   }
 }
-$('#gx-tg-btn').addEventListener('click', () => (TG_LINKED ? tgTurnOff() : tgTurnOn()));
+$('#gx-tg-btn').addEventListener('click', () => (TG_LINKED || TG_WAIT ? tgTurnOff() : tgTurnOn()));
 
 /* ---------------- answering a take (stage 3) ----------------
    1. Read the buyer's TON lock on the chain (not the Worker's word): the
