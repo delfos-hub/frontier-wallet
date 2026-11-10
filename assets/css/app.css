@@ -1989,3 +1989,97 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
   border:1px solid rgba(0,212,255,.35);background:rgba(0,212,255,.07);-webkit-tap-highlight-color:transparent}
 .stk-find:active{transform:scale(.94)}
 .stk-find svg{width:16px;height:16px;fill:none;stroke:#00D4FF;stroke-width:2.2;stroke-linecap:round}
+
+/* Frontier Web on a wide screen (desktop.js marks the page dk when the window
+   is at least 1100 px wide). The phone layout stays as it is; this only
+   rearranges it: the tab bar becomes a side rail with the wordmark, Home
+   becomes two columns (money on the left, positions and tokens on the
+   right), and every other screen gets room to breathe. The 3D room behind
+   stays the backdrop of everything. */
+html.dk{--rail:240px}
+/* the room for the rail only while it is shown: the lock, welcome and setup
+   screens have no rail and stay centred on the whole window */
+html.dk body:has(#tabs.on){padding-left:var(--rail)}
+/* a screen on its way out is pinned to the window while it leaves: beside the
+   rail too, or it would jump left by half the rail before exiting */
+html.dk body.has-scene:has(#tabs.on) .step:is(.leave-right,.leave-left,.leave-in,.leave-out){left:var(--rail)!important;right:0!important}
+
+/* the side rail */
+html.dk .tabs{left:0!important;right:auto!important;top:0;bottom:0!important;transform:none!important;
+  width:var(--rail)!important;max-width:none!important;height:100vh;border-radius:0!important;
+  flex-direction:column;justify-content:flex-start;align-items:stretch;gap:4px!important;
+  padding:28px 14px 24px!important;
+  /* a short window: the rail scrolls, every section stays reachable */
+  overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;
+  background:linear-gradient(180deg,rgba(14,18,34,.86),rgba(10,13,26,.92))!important;
+  border:0!important;border-right:1px solid rgba(120,140,255,.14)!important;
+  box-shadow:24px 0 60px -40px rgba(80,90,255,.35)!important;
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+html.dk .tabs::before,html.dk .tabs::after{display:none!important}
+html.dk .tabs .dk-logo{display:block;width:150px;height:auto;margin:6px auto 30px;
+  filter:drop-shadow(0 0 18px rgba(59,227,255,.35))}
+html.dk .tabs .tab{flex:none!important;flex-direction:row!important;justify-content:flex-start!important;
+  gap:14px!important;height:50px!important;min-height:0!important;padding:0 18px!important;
+  border-radius:14px!important;font-size:12.5px!important;letter-spacing:.12em;
+  border:1px solid transparent!important;background:transparent!important;
+  transition:background .2s,border-color .2s,color .2s}
+html.dk .tabs .tab svg{width:20px!important;height:20px!important;margin:0!important}
+html.dk .tabs .tab:hover{background:rgba(120,140,255,.08)!important}
+html.dk .tabs .tab.sel{background:linear-gradient(90deg,rgba(124,92,255,.22),rgba(59,227,255,.08))!important;
+  border-color:rgba(124,92,255,.35)!important;box-shadow:inset 3px 0 0 #3BE3FF}
+html.dk .tabs .tab-ind{display:none!important}
+html.dk .tabs .tab-badge{position:static!important;margin-left:auto;order:3}
+html.dk .tabs .dk-foot{margin-top:auto;padding:14px 10px 0;border-top:1px solid rgba(120,140,255,.12);
+  font-size:11px;line-height:1.5;color:var(--muted);letter-spacing:.04em}
+html.dk .tabs .dk-foot b{display:block;color:#9DF1FF;font-weight:600;letter-spacing:.14em;font-size:10px;margin-bottom:4px}
+
+/* screens: centred in what the rail leaves */
+html.dk #st-home{max-width:min(1400px,calc(100vw - var(--rail) - 80px))!important;margin:0 auto!important;
+  padding-left:0!important;padding-right:0!important}
+html.dk :is(#st-gov,#st-stake,#st-activity,#st-settings,#st-earn,#st-epos,#st-token,#st-gram){
+  max-width:min(1000px,calc(100vw - var(--rail) - 80px))!important;margin:0 auto!important}
+html.dk :is(#st-swap,#st-send,#st-receive){max-width:620px!important;margin:0 auto!important}
+/* welcome, setup, recovery phrase, PIN, lock: the phone's own width, centred */
+html.dk :is(#st-welcome,#st-setup,#st-seed,#st-verify,#st-import,#st-watch,#st-watching,#st-unlock,#st-done){
+  max-width:520px!important;margin:0 auto!important;
+  /* on a phone the buttons sit at the bottom of the screen; on a desktop they
+     follow the content, so the PIN box and its buttons read as one card */
+  min-height:0!important;padding-top:14vh!important;padding-bottom:48px!important}
+html.dk .fw-brand{display:none!important}
+html.dk #st-home{padding-top:30px!important}
+
+/* Home: two columns */
+/* the middle column is the wide one (what is going on: actions, core
+   assets, swaps under way); the right one, narrower, holds what is owned */
+html.dk .dk-home{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:24px;align-items:start;margin-top:8px}
+/* the balance lives in the rail, under the wordmark (Nans): not twice */
+html.dk .dk-a>.bal{display:none!important}
+html.dk .dk-a,html.dk .dk-b{display:flex;flex-direction:column;gap:16px;min-width:0}
+html.dk .dk-a>*,html.dk .dk-b>*{margin-top:0!important;margin-bottom:0!important}
+html.dk .wtop{margin-bottom:6px}
+/* the token list scrolls inside its column, so the rest stays in view */
+html.dk #pane-tok .rows{max-height:max(300px,calc(100vh - 480px));overflow-y:auto;scrollbar-width:thin;
+  scrollbar-color:rgba(120,140,255,.3) transparent;padding-right:4px}
+html.dk #pane-tok .rows li{transition:background .15s,transform .15s}
+html.dk #pane-tok .rows li:hover{background:rgba(120,140,255,.07);transform:translateX(2px)}
+html.dk .act:hover,html.dk .earn-entry:hover,html.dk .xc:hover{filter:brightness(1.12)}
+
+/* sheets open as panels in the middle, not from the bottom edge */
+html.dk .sw-sheet{left:var(--rail)!important}
+
+/* the balance in the rail, under the wordmark; mirrors Home's own figures */
+html.dk .tabs .dk-bal{display:block;margin:-8px 4px 26px;padding:18px 16px 16px;border-radius:18px;cursor:pointer;
+  text-align:left;background:linear-gradient(160deg,rgba(124,92,255,.20),rgba(59,227,255,.06) 70%);
+  border:1px solid rgba(124,92,255,.32);box-shadow:0 10px 40px -18px rgba(124,92,255,.6),inset 0 1px 0 rgba(255,255,255,.06);
+  transition:border-color .2s,transform .2s}
+html.dk .tabs .dk-bal:hover{border-color:rgba(59,227,255,.5);transform:translateY(-1px)}
+html.dk .tabs .dk-bal-l{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+html.dk .tabs .dk-bal-v{margin-top:6px;font-family:'Rajdhani','Exo 2',sans-serif;font-weight:700;font-size:34px;line-height:1.05;
+  color:#fff;text-shadow:0 0 24px rgba(59,227,255,.25);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.dk .tabs .dk-bal-s{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;margin-top:8px;font-size:11.5px;line-height:1.5;color:var(--muted)}
+/* the dot between wallet and DeFi becomes a line break: one figure per line */
+html.dk .tabs .dk-bal-s i{flex-basis:100%;width:0;height:0}
+html.dk .tabs .dk-bal-s b{color:#E6ECFF;font-weight:600}
+/* the wordmark over the PIN on a wide screen, as the rail is not shown there */
+html.dk #st-unlock::before{content:'';display:block;width:220px;height:46px;margin:0 auto 34px;
+  background:url(../frontier-wordmark.png) center/contain no-repeat;filter:drop-shadow(0 0 18px rgba(59,227,255,.35))}
