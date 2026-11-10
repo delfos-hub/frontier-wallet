@@ -76,7 +76,14 @@ NETS.mainnet = {
   tonChain: '-239',
   relayer: 'https://relayer.delfos-hub.net',
   tonConnectScript: NETS.testnet.tonConnectScript,
-  twaReturnUrl: 'https://t.me/Frontier_WalletBot/frontier',
+  // no Mini App return on mainnet: the swap runs in Frontier Web, where TON
+  // Connect comes back by itself (R4-B1; the bot becomes a plain bot)
+  twaReturnUrl: '',
+  // where the mainnet swap is offered: Frontier Web's own addresses only, never
+  // the Mini App's, which is being retired (a deal's secret stays with the
+  // address it was started on)
+  origins: ['https://wallet.delfos-hub.net', 'https://frontier-web-26s.pages.dev',
+    'https://frontier-gram-test-e3v.pages.dev', 'http://localhost:8080', 'http://127.0.0.1:8080'],
   tonApi: 'https://toncenter.com/api/v2',
   tonExplorer: 'https://tonviewer.com/',
   terraExplorer: 'https://finder.terraclassic.community/columbus-5/tx/',

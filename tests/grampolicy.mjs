@@ -86,7 +86,10 @@ ok('open, every deploy value filled', NETS.mainnet.ready === true && !/REPLACE_/
 ok('the swap runs on mainnet', GRAM_NET === NETS.mainnet);
 ok('the mainnet Worker\u2019s rules are accepted as published', (() => { try { const r = pinMain(WORKER_MAIN); return r.tax_bps === 150 && r.fee_bps === 30; } catch (e) { return false; } })());
 ok('the mainnet Worker on another fee address is refused', (() => { try { pinMain(Object.assign({}, WORKER_MAIN, { tip_address: WORKER.tip_address })); return false; } catch (e) { return /fee address/.test(e.message); } })());
-ok('back to the production mini app after paying', NETS.mainnet.twaReturnUrl === 'https://t.me/Frontier_WalletBot/frontier');
+ok('no Mini App return on mainnet (the swap runs on the web)', !NETS.mainnet.twaReturnUrl);
+ok('the mainnet swap is offered on Frontier Web only, never on the Mini App\u2019s address', Array.isArray(NETS.mainnet.origins) &&
+  NETS.mainnet.origins.indexOf('https://wallet.delfos-hub.net') >= 0 && NETS.mainnet.origins.every(o => o.indexOf('github.io') < 0) &&
+  /NET\.origins\.indexOf\(location\.origin\)/.test(src));
 ok('consents name the network in use, never a fixed "TON testnet" (R4-C1)', !/TON testnet'/.test(src));
 ok('a second node for the seller\u2019s lock on mainnet (R4-B3)', !!NETS.mainnet.lcd2 && NETS.mainnet.lcd2 !== NETS.mainnet.lcd && /NET\.lcd2/.test(lift(src, 'async function sellerLockOk(b, take){')));
 ok('every GRAM Terra signing shows its fee in the consent first (R4-D1)', (src.match(/await feeFor\(\[step\]\)/g) || []).length === 3 && !/NO_FEE_REVIEW/.test(src));

@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=54ad8709';
-import { GRAM_NET, TERMS } from './gram-net.js?v=54ad8709';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=54ad8709';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=54ad8709';
-import { S } from './state.js?v=54ad8709';
-import { decryptSeed } from './storage.js?v=54ad8709';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=54ad8709';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=54ad8709';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=54ad8709';
-import { chime, notify } from './notify.js?v=54ad8709';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=483e7996';
+import { GRAM_NET, TERMS } from './gram-net.js?v=483e7996';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=483e7996';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=483e7996';
+import { S } from './state.js?v=483e7996';
+import { decryptSeed } from './storage.js?v=483e7996';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=483e7996';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=483e7996';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=483e7996';
+import { chime, notify } from './notify.js?v=483e7996';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -188,7 +188,9 @@ const LABS = (function () {
     // ?labs=1 too: inside Telegram the mini app's #hash is taken by the launch params
     if (location.hash === '#labs' || new URLSearchParams(location.search).get('labs') === '1') localStorage.setItem('fw:labs', '1');
     if (location.hash === '#nolabs') localStorage.removeItem('fw:labs');
-    return NET.name !== 'testnet' || localStorage.getItem('fw:labs') === '1';
+    // mainnet: only on Frontier Web's own addresses (gram-net.js origins)
+    if (NET.name !== 'testnet') return !NET.origins || NET.origins.indexOf(location.origin) >= 0;
+    return localStorage.getItem('fw:labs') === '1';
   } catch (e) { return false; }
 })();
 // the "Testnet" badges and the testnet line belong to the test networks only
