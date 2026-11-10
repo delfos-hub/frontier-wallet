@@ -2089,3 +2089,4 @@ html.dk .tabs .dk-bal-l{display:flex;align-items:center;justify-content:space-be
 html.dk .tabs .dk-bal-upd{font-size:9.5px;letter-spacing:.08em;color:var(--green);opacity:0;transform:translateY(2px);transition:opacity .3s,transform .3s}
 html.dk .tabs .dk-bal-upd.on{opacity:1;transform:none}
 html.dk .tabs .dk-bal-v.stale{color:var(--muted);text-shadow:none;transition:color .35s ease}
+html.dk .tabs .dk-bal:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
