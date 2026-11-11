@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=67804f56';
-import { GRAM_NET, TERMS } from './gram-net.js?v=67804f56';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=67804f56';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=67804f56';
-import { S } from './state.js?v=67804f56';
-import { decryptSeed } from './storage.js?v=67804f56';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=67804f56';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=67804f56';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=67804f56';
-import { chime, notify } from './notify.js?v=67804f56';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d034d3c6';
+import { GRAM_NET, TERMS } from './gram-net.js?v=d034d3c6';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d034d3c6';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=d034d3c6';
+import { S } from './state.js?v=d034d3c6';
+import { decryptSeed } from './storage.js?v=d034d3c6';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=d034d3c6';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d034d3c6';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d034d3c6';
+import { chime, notify } from './notify.js?v=d034d3c6';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -705,16 +705,18 @@ function tgPaint(){
 // Start on a one-time link to the bot (the Worker's web path, widgets #68).
 const TG_WEB = !(TG_INIT && TG_USER);
 const tgWebKey = () => 'fw:tgweb:' + NET.name + ':' + addrOf();
-const tgWebKept = () => { try { return localStorage.getItem(tgWebKey()) === '1'; } catch (e) { return false; } };
-const tgWebKeep = on => { try { if (on) localStorage.setItem(tgWebKey(), '1'); else localStorage.removeItem(tgWebKey()); } catch (e) {} };
+const tgWebCode = () => { try { const v = localStorage.getItem(tgWebKey()); return v && v !== '1' ? v : ''; } catch (e) { return ''; } };
+const tgWebKeep = code => { try { if (code) localStorage.setItem(tgWebKey(), code); else localStorage.removeItem(tgWebKey()); } catch (e) {} };
 async function tgStatus(){
   const line = $('#gx-tg-line');
   if (!line || !addrOf()) return;
   if (TG_WEB) {
     try {
-      const st = await api('/notify/web/status', {});
+      const code = tgWebCode();
+      const st = await api('/notify/web/status', code ? { address: addrOf(), code: code } : {});
       line.hidden = !st.enabled;
-      if (!TG_BUSY && !TG_WAIT) { TG_LINKED = tgWebKept(); tgPaint(); }
+      if (code && st.enabled && !st.linked) tgWebKeep('');      // turned off in the chat (/stop)
+      if (!TG_BUSY && !TG_WAIT) { TG_LINKED = !!(code && st.linked); tgPaint(); }
     } catch (e) { line.hidden = true; }
     return;
   }
@@ -749,7 +751,8 @@ async function tgWaitForStart(){
     try {
       const st = await api('/notify/web/status', { address: addrOf(), code: TG_WAIT.code });
       if (st.linked) {
-        TG_WAIT = null; TG_LINKED = true; tgWebKeep(true); tgPaint();
+        const code = TG_WAIT.code;
+        TG_WAIT = null; TG_LINKED = true; tgWebKeep(code); tgPaint();
         say('#gx-tg-msg', 'Telegram alerts are on. The wallet bot will message you when a buyer locks GRAM for your offer.');
         return;
       }
@@ -798,7 +801,7 @@ async function tgWebOff(){
     ], payload, async function (m, step) {
       step(0);
       await api('/notify/web/unlink', await signArbitrary(m, addrOf(), payload));
-      TG_LINKED = false; tgWebKeep(false);
+      TG_LINKED = false; tgWebKeep('');
     }, null, { steps: ['Signing the request'], done: () => ({ title: 'Telegram alerts are off', text: 'Turn them on again whenever you like.' }) });
   } catch (e) {
     if (e && !e.shown && e.message !== 'cancelled' && e.message !== 'watch only') say('#gx-tg-msg', 'Could not turn alerts off: ' + (e.message || e), true);
