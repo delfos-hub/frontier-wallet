@@ -131,3 +131,45 @@ document.addEventListener('touchend', e => {
 function lean0(){ document.getElementById('tabs') && document.getElementById('tabs').classList.remove('dragging'); ind.lean(0); }
 
 document.addEventListener('touchcancel', () => { release(); s = null; }, { passive: true });
+
+/* While a software keyboard is up the tab bar steps aside: the keyboard pushes
+   the fixed bar up with it, and it covered the field being typed in (the token
+   search). Only on touch devices, and only if the visible area really shrank:
+   with a hardware keyboard the bar stays, so Tab still reaches it. The field
+   is brought to the middle of what is left. */
+const TYPING = 'input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]),textarea,[contenteditable="true"]';
+const TOUCH = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+const VV = window.visualViewport;
+let kbT = 0, kbCheck = 0;
+// the full visible height of each orientation, measured with no field focused
+// (a phone turned while typing must not keep the other orientation's)
+const orient = () => (window.innerWidth > window.innerHeight ? 'land' : 'port');
+const fullH = { [orient()]: VV ? VV.height : window.innerHeight };
+const typingNow = () => { const a = document.activeElement; return !!(a && a.matches && a.matches(TYPING)); };
+if (VV) VV.addEventListener('resize', () => {
+  if (!typingNow()) { fullH[orient()] = Math.max(VV.height, window.innerHeight * 0.5); return; }
+  if (!TOUCH) return;
+  const base = fullH[orient()];
+  if (!base) return;                               // not known yet for this orientation: leave the bar as it is
+  // the keyboard can close while the field keeps focus (iOS "Done", a swipe
+  // down) and open again: the bar follows the visible area itself
+  document.body.classList.toggle('kb-open', base - VV.height >= 120);
+});
+document.addEventListener('focusin', e => {
+  if (!TOUCH || !e.target.matches || !e.target.matches(TYPING)) return;
+  clearTimeout(kbT); clearTimeout(kbCheck);
+  document.body.classList.add('kb-open');
+  const el = e.target;
+  kbCheck = setTimeout(() => {
+    if (document.activeElement !== el) return;      // focus moved on meanwhile
+    // no software keyboard after all: the visible area kept its height
+    const base = fullH[orient()];
+    if (VV && base && base - VV.height < 120) { document.body.classList.remove('kb-open'); return; }
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {}
+  }, 450);
+});
+document.addEventListener('focusout', e => {
+  if (!e.target.matches || !e.target.matches(TYPING)) return;
+  // a moment's grace: moving from one field to the next keeps the bar away
+  kbT = setTimeout(() => { if (!typingNow()) document.body.classList.remove('kb-open'); }, 150);
+});

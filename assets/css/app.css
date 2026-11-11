@@ -382,12 +382,17 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sw-pick{flex:none;background:#161E30;border:1px solid #1E2A42;border-radius:10px;
   color:#E8F0FF;font-family:inherit;font-size:13px;font-weight:600;padding:9px 10px;
   max-width:44%}
-.sw-flip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;
+/* on the seam between the two cards, whatever their heights: in the flow, with
+   negative margins as tall as half the button, not at the middle of the pane */
+.sw-flip{position:relative;align-self:center;margin:-19px 0;z-index:2;
   width:38px;height:38px;border-radius:50%;border:1px solid #1E2A42;background:#0B0F1A;
   display:grid;place-items:center;cursor:pointer;padding:0}
 .sw-flip svg{width:17px;height:17px;stroke:#00D4FF;stroke-width:1.7;fill:none;
   stroke-linecap:round;stroke-linejoin:round}
-.sw-flip:active{transform:translate(-50%,-50%) scale(.92)}
+.sw-flip:active{transform:scale(.92)}
+/* room for the half of the flip button that reaches into each card */
+.sw-pane>.sw-side:first-child{padding-bottom:24px}
+.sw-pane>.sw-side:last-of-type{padding-top:22px}
 .sw-detail{min-height:20px;margin:0 4px 14px;display:flex;flex-direction:column;gap:6px}
 
 /* The outcome, which used to look exactly like the quote it replaced. */
@@ -907,6 +912,8 @@ button.row.gov-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:
 .gov-memo{margin-top:6px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 #gov-memo{width:100%;box-sizing:border-box;resize:vertical;font:inherit}
 body.sheet-open .tabs{visibility:hidden}
+/* while the keyboard is up (swipe.js) */
+body.kb-open .tabs{visibility:hidden}
 .gov-link{color:var(--accent);text-decoration:underline;word-break:break-all}
 
 /* ══ GRAM swap: Cross-chain card + maker screen ══ */
@@ -1985,3 +1992,246 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
 /* Telegram alerts from the web: the link to the bot under the switch */
 .gx-tg-open{display:inline-flex;align-items:center;justify-content:center;margin-top:10px;text-decoration:none}
 .gx-tg-hint{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+
+
+/* Favorites (fav.js): up to 6 tokens pinned under Core assets */
+.fav{margin-top:16px}
+.fav[hidden]{display:none}
+.fav-head{display:flex;align-items:center;justify-content:space-between;margin:0 2px 10px}
+.fav-head h3{margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.fav-head h3 svg{width:15px;height:15px;fill:#F5C842;filter:drop-shadow(0 0 6px rgba(245,200,66,.5))}
+.fav-n{font-size:11px;color:var(--muted);letter-spacing:.06em}
+.fav-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.fav-card{position:relative;overflow:hidden;border-radius:16px;padding:12px 13px 10px;min-height:116px;
+  background:linear-gradient(160deg,rgba(26,32,56,.92),rgba(14,18,34,.92));border:1px solid rgba(120,140,255,.16);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);cursor:pointer;
+  transition:transform .22s cubic-bezier(.22,1,.36,1),border-color .22s,box-shadow .22s,opacity .2s}
+.fav-card.drag{opacity:.45}
+.fav-top{display:flex;align-items:center;gap:8px;min-width:0}
+.fav-top .sym{width:24px!important;height:24px!important;flex:none;font-size:11px}
+.fav-top b{flex:1 1 auto;min-width:0;padding-right:22px;font-size:13px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fav-ch{font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;letter-spacing:0}
+.fav-ch.up{color:#34D399;background:rgba(52,211,153,.12)}
+.fav-ch.dn{color:#F87171;background:rgba(248,113,113,.12)}
+.fav-off{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;border:0;padding:0;cursor:pointer;
+  display:grid;place-items:center;background:rgba(245,200,66,.12);opacity:0;pointer-events:none;transition:opacity .2s}
+/* hidden controls take no taps; a 44 px target around the small ones (CodeRabbit) */
+.fav-off::before,.rows li.row .row-star::before{content:'';position:absolute;inset:-10px}
+.fav-card:focus-within .fav-off,.fav-off:focus-visible{opacity:1;pointer-events:auto}
+/* a keyboard reaching a row's star sees it (CodeRabbit) */
+.rows li.row .row-star:focus-visible{opacity:1;pointer-events:auto;outline:2px solid #3BE3FF;outline-offset:2px}
+.fav-off:focus-visible,.fav-card:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
+.fav-off svg{width:14px;height:14px;fill:#F5C842}
+.fav-v{margin-top:10px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Rajdhani','Exo 2',sans-serif;font-size:21px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.fav-q{margin-top:3px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fav-ln{display:block;width:calc(100% + 26px);height:30px;margin:8px -13px -10px}
+.fav-nol{height:30px}
+.fav-span{position:absolute;right:8px;bottom:6px;display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--muted);letter-spacing:.06em}
+.fav-add{display:grid;place-items:center;align-content:center;gap:4px;min-height:116px;padding:10px;border-radius:16px;
+  border:1px dashed rgba(124,92,255,.35);background:transparent;color:var(--muted);font:inherit;font-size:11.5px;
+  text-align:center;cursor:pointer;transition:border-color .2s,color .2s}
+.fav-add i{font-style:normal;font-size:22px;line-height:1;color:#7c5cff}
+.fav-add small{font-size:10px;opacity:.8}
+.fav-empty{display:flex;align-items:center;gap:14px;padding:16px;border-radius:16px;border:1px dashed rgba(124,92,255,.35);
+  color:var(--muted);font-size:12.5px;line-height:1.5}
+.fav-empty b{color:#E6ECFF}
+.fav-empty svg{width:28px;height:28px;flex:none;fill:none;stroke:#F5C842;stroke-width:1.6}
+.fav-flash{margin:0 2px 10px;padding:8px 12px;border-radius:12px;font-size:12px;color:#F5C842;
+  background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.25)}
+/* the star on a token row: a small badge on the token's icon, the same place
+   on every row; lit on a favorite, shown on hover otherwise */
+.rows li.row{position:relative}
+.rows li.row .row-star{position:absolute;left:44px;top:6px;z-index:2;width:22px;height:22px;border-radius:50%;padding:0;cursor:pointer;
+  display:grid;place-items:center;background:#141a2e;border:1px solid rgba(124,92,255,.45);opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s,background .2s}
+.rows li.row .row-star svg{width:12px;height:12px;fill:none;stroke:#C9B8FF;stroke-width:2}
+.rows li.row .row-star.on{opacity:1;pointer-events:auto;background:#2a2208;border-color:rgba(245,200,66,.7);box-shadow:0 0 10px -2px rgba(245,200,66,.6)}
+.rows li.row .row-star.on svg{fill:#F5C842;stroke:#F5C842}
+/* the star on a token's page, at the right of its top bar */
+#st-token .bar{display:flex;align-items:center}
+.tk-fav{margin-left:auto;display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:17px;cursor:pointer;
+  border:1px solid rgba(124,92,255,.35);background:rgba(124,92,255,.08);color:#C9B8FF;font:inherit;font-size:12px;font-weight:600;
+  transition:background .2s,border-color .2s,color .2s}
+.tk-fav[hidden]{display:none}
+.tk-fav svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
+.tk-fav.on{color:#F5C842;border-color:rgba(245,200,66,.55);background:rgba(245,200,66,.10)}
+.tk-fav.on svg{fill:#F5C842;stroke:#F5C842}
+.tk-fav.full{color:#F87171;border-color:rgba(248,113,113,.5)}
+@media (hover:hover) and (pointer:fine){
+  .tk-fav:hover{border-color:#F5C842;color:#F5C842}
+  .rows li.row:hover .row-star{opacity:1;pointer-events:auto}
+  .rows li.row .row-star:hover{transform:scale(1.15);border-color:#F5C842}
+  .fav-card:hover{transform:translateY(-2px);border-color:rgba(124,92,255,.45);box-shadow:0 14px 34px -18px rgba(124,92,255,.55)}
+  .fav-card:hover .fav-off{opacity:1;pointer-events:auto}
+  .fav-add:hover{border-color:#3BE3FF;color:#E6ECFF}
+}
+@media (hover:none){ .fav-drag{display:none} }
+/* phone: a row of cards that slides sideways */
+@media (max-width:640px){
+  .fav-grid{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:10px;padding-bottom:4px;scrollbar-width:none}
+  .fav-grid::-webkit-scrollbar{display:none}
+  .fav-card,.fav-add{flex:0 0 47%;scroll-snap-align:start}
+}
+
+/* Hover: with a mouse, cards and rows answer the pointer, without a light
+   following it: cards lift and light their edge, each Core asset takes its
+   coin's colour, rows tint, icons rise. Only where the device can hover
+   (a mouse or a trackpad); a phone's tap never leaves anything lit. */
+@media (hover:hover) and (pointer:fine){
+  :is(.core-cell,.gv-card,.xc,.earn-entry,.rows li.row,.stk-row,.ea-pos,.wl-row,.ac-row,.tk-card,.ep-row){
+    transition:transform .22s cubic-bezier(.22,1,.36,1),border-color .22s,box-shadow .22s,background-color .22s}
+
+  /* cards that stand on their own lift and light their edge */
+  :is(.gv-card,.xc,.earn-entry,.rows li.row,.stk-row,.wl-row,.tk-card):hover{
+    transform:translateY(-2px);border-color:rgba(124,92,255,.45)!important;
+    box-shadow:0 14px 34px -18px rgba(124,92,255,.55),0 0 0 1px rgba(59,227,255,.08)}
+
+  /* Core assets: each half takes its coin's colour on its edge and from its
+     top corner; the line brightens and the coin turns a little */
+  .core-cell[data-sym="LUNC"]{--hv-edge:rgba(245,200,66,.5);--hv-wash:rgba(245,200,66,.10)}
+  .core-cell[data-sym="USTC"]{--hv-edge:rgba(80,140,255,.55);--hv-wash:rgba(80,140,255,.12)}
+  .core-cell:hover{box-shadow:inset 0 0 0 1px var(--hv-edge,rgba(124,92,255,.4));
+    background-image:linear-gradient(160deg,var(--hv-wash,rgba(124,92,255,.08)),transparent 60%)}
+  .core-cell svg{transition:filter .25s}
+  /* a neutral glow: the line keeps its own colour, red when the coin is down */
+  .core-cell:hover svg{filter:drop-shadow(0 0 6px rgba(255,255,255,.28)) brightness(1.2)}
+  :is(.core-cell,.rows li.row) .sym{transition:transform .25s cubic-bezier(.22,1,.36,1)}
+  :is(.core-cell,.rows li.row):hover .sym{transform:scale(1.08) rotate(-4deg)}
+
+  /* rows inside a list: a tint, no lift (they share one card) */
+  :is(.ea-pos,.ac-row,.ep-row):hover{background-color:rgba(124,92,255,.06)}
+  .st-row:not(.st-info):hover{background:linear-gradient(90deg,rgba(124,92,255,.10),transparent 80%)}
+  .st-row:not(.st-info):hover svg{color:#3BE3FF}
+
+  /* the four actions: the icon rises and glows */
+  .act svg{transition:transform .22s cubic-bezier(.22,1,.36,1),filter .22s}
+  .act:hover{color:#fff}
+  .act:hover svg{transform:translateY(-3px);filter:drop-shadow(0 0 8px rgba(59,227,255,.7))}
+
+  /* buttons brighten; the main one glows */
+  .btn{transition:filter .2s,box-shadow .2s,transform .2s}
+  .btn:not(:disabled):hover{filter:brightness(1.12)}
+  .btn.solid:not(:disabled):hover{box-shadow:0 10px 30px -10px rgba(124,92,255,.8)}
+  .btn:not(:disabled):active{transform:scale(.98)}
+}
+@media (prefers-reduced-motion:reduce){
+  :is(.gv-card,.xc,.earn-entry,.rows li.row,.stk-row,.wl-row,.tk-card):hover{transform:none!important}
+  /* no movement at all: the coin's turn and the icons' rise stop too (Pablo) */
+  :is(.core-cell,.rows li.row):hover .sym,.act:hover svg{transform:none!important}
+}
+
+/* Scroll bars in the wallet's colours: thin, the brand gradient on a clear
+   track, no arrow buttons. Firefox has no ::-webkit-scrollbar, so it gets the
+   standard thin bar in the brand violet; in Chrome scrollbar-color would turn
+   the styled bar off, so it is set only where ::-webkit-scrollbar is missing. */
+@supports not selector(::-webkit-scrollbar){
+  *{scrollbar-width:thin;scrollbar-color:#8A6CFF transparent}   /* solid: 3:1 on the page (CodeRabbit) */
+}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{border-radius:8px;border:2px solid transparent;background-clip:padding-box;
+  background-color:rgba(124,92,255,.55);background-image:linear-gradient(180deg,rgba(124,92,255,.85),rgba(59,227,255,.75))}
+::-webkit-scrollbar-thumb:hover{background-image:linear-gradient(180deg,#8f73ff,#3BE3FF)}
+::-webkit-scrollbar-button{display:none;width:0;height:0}
+::-webkit-scrollbar-corner{background:transparent}
+textarea::-webkit-scrollbar{width:6px}
+
+/* Frontier Web on a wide screen (desktop.js marks the page dk when the window
+   is at least 1100 px wide). The phone layout stays as it is; this only
+   rearranges it: the tab bar becomes a side rail with the wordmark, Home
+   becomes two columns (money on the left, positions and tokens on the
+   right), and every other screen gets room to breathe. The 3D room behind
+   stays the backdrop of everything. */
+html.dk{--rail:240px}
+/* the room for the rail only while it is shown: the lock, welcome and setup
+   screens have no rail and stay centred on the whole window */
+html.dk body:has(#tabs.on){padding-left:var(--rail)}
+/* a screen on its way out is pinned to the window while it leaves: beside the
+   rail too, or it would jump left by half the rail before exiting */
+html.dk body.has-scene:has(#tabs.on) .step:is(.leave-right,.leave-left,.leave-in,.leave-out){left:var(--rail)!important;right:0!important}
+
+/* the side rail */
+html.dk .tabs{left:0!important;right:auto!important;top:0;bottom:0!important;transform:none!important;
+  width:var(--rail)!important;max-width:none!important;height:100vh;border-radius:0!important;
+  flex-direction:column;justify-content:flex-start;align-items:stretch;gap:4px!important;
+  padding:28px 14px 24px!important;
+  /* a short window: the rail scrolls, every section stays reachable */
+  overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;
+  background:linear-gradient(180deg,rgba(14,18,34,.86),rgba(10,13,26,.92))!important;
+  border:0!important;border-right:1px solid rgba(120,140,255,.14)!important;
+  box-shadow:24px 0 60px -40px rgba(80,90,255,.35)!important;
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+html.dk .tabs::before,html.dk .tabs::after{display:none!important}
+html.dk .tabs .dk-logo{display:block;width:150px;height:auto;margin:6px auto 30px;
+  filter:drop-shadow(0 0 18px rgba(59,227,255,.35))}
+html.dk .tabs .tab{flex:none!important;flex-direction:row!important;justify-content:flex-start!important;
+  gap:14px!important;height:50px!important;min-height:0!important;padding:0 18px!important;
+  border-radius:14px!important;font-size:12.5px!important;letter-spacing:.12em;
+  border:1px solid transparent!important;background:transparent!important;
+  transition:background .2s,border-color .2s,color .2s}
+html.dk .tabs .tab svg{width:20px!important;height:20px!important;margin:0!important}
+html.dk .tabs .tab:hover{background:rgba(120,140,255,.08)!important}
+html.dk .tabs .tab.sel{background:linear-gradient(90deg,rgba(124,92,255,.22),rgba(59,227,255,.08))!important;
+  border-color:rgba(124,92,255,.35)!important;box-shadow:inset 3px 0 0 #3BE3FF}
+html.dk .tabs .tab-ind{display:none!important}
+html.dk .tabs .tab-badge{position:static!important;margin-left:auto;order:3}
+html.dk .tabs .dk-foot{margin-top:auto;padding:14px 10px 0;border-top:1px solid rgba(120,140,255,.12);
+  font-size:11px;line-height:1.5;color:var(--muted);letter-spacing:.04em}
+html.dk .tabs .dk-foot b{display:block;color:#9DF1FF;font-weight:600;letter-spacing:.14em;font-size:10px;margin-bottom:4px}
+
+/* screens: centred in what the rail leaves */
+html.dk #st-home{max-width:min(1400px,calc(100vw - var(--rail) - 80px))!important;margin:0 auto!important;
+  padding-left:0!important;padding-right:0!important}
+html.dk :is(#st-gov,#st-stake,#st-activity,#st-settings,#st-earn,#st-epos,#st-token,#st-gram){
+  max-width:min(1000px,calc(100vw - var(--rail) - 80px))!important;margin:0 auto!important}
+html.dk :is(#st-swap,#st-send,#st-receive){max-width:620px!important;margin:0 auto!important}
+/* welcome, setup, recovery phrase, PIN, lock: the phone's own width, centred */
+html.dk :is(#st-welcome,#st-setup,#st-seed,#st-verify,#st-import,#st-watch,#st-watching,#st-unlock,#st-done){
+  max-width:520px!important;margin:0 auto!important;
+  /* on a phone the buttons sit at the bottom of the screen; on a desktop they
+     follow the content, so the PIN box and its buttons read as one card */
+  min-height:0!important;padding-top:14vh!important;padding-bottom:48px!important}
+html.dk .fw-brand{display:none!important}
+html.dk #st-home{padding-top:30px!important}
+
+/* Home: two columns */
+/* the middle column is the wide one (what is going on: actions, core
+   assets, swaps under way); the right one, narrower, holds what is owned */
+html.dk .dk-home{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:24px;align-items:start;margin-top:8px}
+/* the balance lives in the rail, under the wordmark (Nans): not twice */
+html.dk .dk-a>.bal{display:none!important}
+html.dk .dk-a,html.dk .dk-b{display:flex;flex-direction:column;gap:16px;min-width:0}
+html.dk .dk-a>*,html.dk .dk-b>*{margin-top:0!important;margin-bottom:0!important}
+html.dk .wtop{margin-bottom:6px}
+/* the token list scrolls inside its column, so the rest stays in view */
+html.dk #pane-tok .rows{max-height:max(300px,calc(100vh - 480px));overflow-y:auto;padding-right:4px}
+html.dk #pane-tok .rows li{transition:background .15s,transform .15s}
+html.dk #pane-tok .rows li:hover{background:rgba(120,140,255,.07)}   /* the lift is the hover's (#46) */
+html.dk .act:hover,html.dk .earn-entry:hover,html.dk .xc:hover{filter:brightness(1.12)}
+
+/* sheets open as panels in the middle, not from the bottom edge */
+html.dk .sw-sheet{left:var(--rail)!important}
+
+/* the balance in the rail, under the wordmark; mirrors Home's own figures */
+html.dk .tabs .dk-bal{display:block;margin:-8px 4px 26px;padding:18px 16px 16px;border-radius:18px;cursor:pointer;
+  text-align:left;background:linear-gradient(160deg,rgba(124,92,255,.20),rgba(59,227,255,.06) 70%);
+  border:1px solid rgba(124,92,255,.32);box-shadow:0 10px 40px -18px rgba(124,92,255,.6),inset 0 1px 0 rgba(255,255,255,.06);
+  transition:border-color .2s,transform .2s}
+html.dk .tabs .dk-bal:hover{border-color:rgba(59,227,255,.5);transform:translateY(-1px)}
+html.dk .tabs .dk-bal-l{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+html.dk .tabs .dk-bal-v{margin-top:6px;font-family:'Rajdhani','Exo 2',sans-serif;font-weight:700;font-size:34px;line-height:1.05;
+  color:#fff;text-shadow:0 0 24px rgba(59,227,255,.25);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.dk .tabs .dk-bal-s{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;margin-top:8px;font-size:11.5px;line-height:1.5;color:var(--muted)}
+/* the dot between wallet and DeFi becomes a line break: one figure per line */
+html.dk .tabs .dk-bal-s i{flex-basis:100%;width:0;height:0}
+html.dk .tabs .dk-bal-s b{color:#E6ECFF;font-weight:600}
+/* the wordmark over the PIN on a wide screen, as the rail is not shown there */
+html.dk #st-unlock::before{content:'';display:block;width:220px;height:46px;margin:0 auto 34px;
+  background:url(../frontier-wordmark.png) center/contain no-repeat;filter:drop-shadow(0 0 18px rgba(59,227,255,.35))}
+/* the rail's balance: the "Updated" note after a refresh, and dimmed while
+   the figure is still loading, like Home's own */
+html.dk .tabs .dk-bal-l{display:flex;align-items:center;justify-content:space-between;gap:8px}
+html.dk .tabs .dk-bal-upd{font-size:9.5px;letter-spacing:.08em;color:var(--green);opacity:0;transform:translateY(2px);transition:opacity .3s,transform .3s}
+html.dk .tabs .dk-bal-upd.on{opacity:1;transform:none}
+html.dk .tabs .dk-bal-v.stale{color:var(--muted);text-shadow:none;transition:color .35s ease}
+html.dk .tabs .dk-bal:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
