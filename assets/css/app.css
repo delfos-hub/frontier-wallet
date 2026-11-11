@@ -2033,6 +2033,8 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
 }
 @media (prefers-reduced-motion:reduce){
   :is(.gv-card,.xc,.earn-entry,.rows li.row,.stk-row,.wl-row,.tk-card):hover{transform:none!important}
+  /* no movement at all: the coin's turn and the icons' rise stop too (Pablo) */
+  :is(.core-cell,.rows li.row):hover .sym,.act:hover svg{transform:none!important}
 }
 
 /* Scroll bars in the wallet's colours: thin, the brand gradient on a clear
@@ -2121,7 +2123,7 @@ html.dk .wtop{margin-bottom:6px}
 /* the token list scrolls inside its column, so the rest stays in view */
 html.dk #pane-tok .rows{max-height:max(300px,calc(100vh - 480px));overflow-y:auto;padding-right:4px}
 html.dk #pane-tok .rows li{transition:background .15s,transform .15s}
-html.dk #pane-tok .rows li:hover{background:rgba(120,140,255,.07);transform:translateX(2px)}
+html.dk #pane-tok .rows li:hover{background:rgba(120,140,255,.07)}   /* the lift is the hover's (#46) */
 html.dk .act:hover,html.dk .earn-entry:hover,html.dk .xc:hover{filter:brightness(1.12)}
 
 /* sheets open as panels in the middle, not from the bottom edge */
