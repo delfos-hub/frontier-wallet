@@ -1,20 +1,20 @@
 // Loading order matches the order these blocks had in index.html.
 // Several of them attach handlers as they run, so the sequence is not
 // cosmetic.
-import './shell.js?v=15fecd56';
-import './onboarding.js?v=15fecd56';
-import './crypto.js?v=15fecd56';
-import './chain.js?v=15fecd56';
-import './market.js?v=15fecd56';
-import './tokens.js?v=15fecd56';
-import './tx.js?v=15fecd56';
-import './storage.js?v=15fecd56';
-import './boot.js?v=15fecd56';
+import './shell.js?v=b7a1dbf7';
+import './onboarding.js?v=b7a1dbf7';
+import './crypto.js?v=b7a1dbf7';
+import './chain.js?v=b7a1dbf7';
+import './market.js?v=b7a1dbf7';
+import './tokens.js?v=b7a1dbf7';
+import './tx.js?v=b7a1dbf7';
+import './storage.js?v=b7a1dbf7';
+import './boot.js?v=b7a1dbf7';
 // the 3D room behind the screens, following the phone in the hand
-import './scene.js?v=15fecd56';
+import './scene.js?v=b7a1dbf7';
 // a sideways swipe moves between the five tabs
-import './swipe.js?v=15fecd56';
+import './swipe.js?v=b7a1dbf7';
 // Core assets: market, stake and peg next to the balances
-import './core.js?v=15fecd56';
+import './core.js?v=b7a1dbf7';
 // interface language, last: it translates what the others have drawn
-import './i18n.js?v=15fecd56';
+import './i18n.js?v=b7a1dbf7';
