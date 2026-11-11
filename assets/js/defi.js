@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=bd148621';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=bd148621';
-import { $, go, tap } from './shell.js?v=bd148621';
-import { S } from './state.js?v=bd148621';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=bd148621';
-import * as P from './defi-parse.js?v=bd148621';
-import { dryRunSwap, sendSwap } from './tx.js?v=bd148621';
-import { notify } from './notify.js?v=bd148621';
-import { buzz } from './shell.js?v=bd148621';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=bd148621';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=3875134b';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=3875134b';
+import { $, go, tap } from './shell.js?v=3875134b';
+import { S } from './state.js?v=3875134b';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=3875134b';
+import * as P from './defi-parse.js?v=3875134b';
+import { dryRunSwap, sendSwap } from './tx.js?v=3875134b';
+import { notify } from './notify.js?v=3875134b';
+import { buzz } from './shell.js?v=3875134b';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=3875134b';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -65,7 +65,9 @@ const me = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const cut = a => !a ? '' : a.slice(0, 10) + '\u2026' + a.slice(-4);
-const day = t => t ? new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+// in the interface language (the translator sets the page's lang); English as before
+const dayLoc = () => { const l = document.documentElement.lang; return l && l !== 'en' ? l : 'en-GB'; };
+const day = t => t ? new Date(t * 1000).toLocaleDateString(dayLoc(), { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
 function permGet(k){ try { const v = localStorage.getItem('fw:perm:' + k); return v === null ? undefined : JSON.parse(v); } catch (e) { return undefined; } }
 function permSet(k, v){ try { localStorage.setItem('fw:perm:' + k, JSON.stringify(v)); } catch (e) {} }
