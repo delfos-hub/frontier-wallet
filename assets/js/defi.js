@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=b8904430';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=b8904430';
-import { $, go, tap } from './shell.js?v=b8904430';
-import { S } from './state.js?v=b8904430';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=b8904430';
-import * as P from './defi-parse.js?v=b8904430';
-import { dryRunSwap, sendSwap } from './tx.js?v=b8904430';
-import { notify } from './notify.js?v=b8904430';
-import { buzz } from './shell.js?v=b8904430';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=b8904430';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=bd148621';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=bd148621';
+import { $, go, tap } from './shell.js?v=bd148621';
+import { S } from './state.js?v=bd148621';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=bd148621';
+import * as P from './defi-parse.js?v=bd148621';
+import { dryRunSwap, sendSwap } from './tx.js?v=bd148621';
+import { notify } from './notify.js?v=bd148621';
+import { buzz } from './shell.js?v=bd148621';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=bd148621';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -526,9 +526,15 @@ const ICON = {
 };
 
 function worth(p){
-  let sum = 0, all = true;
-  for (const x of p.holds) { const d = dollars(x); if (d === null) all = false; else sum += d; }
-  return { usd: sum, complete: all && p.holds.length > 0 };
+  let sum = 0, priced = 0;
+  for (const x of p.holds) { const d = dollars(x); if (d !== null) { sum += d; priced++; } }
+  // A constant-product pool holds equal value on each side, so a pair with one
+  // side unpriced is worth twice the other: what the exchange itself shows
+  // (IDEV/LTK on Garuda), marked as an estimate rather than "at least".
+  if ((p.kind === 'farm' || p.kind === 'pool') && p.holds.length === 2 && priced === 1 && sum > 0) {
+    return { usd: sum * 2, complete: false, est: true };
+  }
+  return { usd: sum, complete: priced === p.holds.length && p.holds.length > 0 };
 }
 function rewardWorth(p){
   let sum = 0;
@@ -542,7 +548,8 @@ function draw(){
   if (!box) return;
   const total = list.reduce((a, p) => a + worth(p).usd, 0);
   const rewards = list.reduce((a, p) => a + rewardWorth(p), 0);
-  $('#earn-total').textContent = usd(total);
+  const est = list.some(p => worth(p).est);
+  $('#earn-total').textContent = (est ? '\u2248 ' : '') + usd(total);
   $('#earn-count').textContent = list.length ? list.length + (list.length === 1 ? ' position' : ' positions') +
     (rewards >= 0.01 ? ' \u00b7 ' + usd(rewards) + ' in rewards waiting' : '') : '';
   // the home card shows the tokens your biggest positions are in
@@ -554,7 +561,7 @@ function draw(){
   homeLine(list.length, total, rewards, tops.slice(0, 3).map(function (k) {
     const r = rowOf(k);
     return { sym: r.sym, contract: r.contract, denom: r.denom, logo: r.logo };
-  }));
+  }), est);
 
   if (!list.length) {
     box.innerHTML = BUSY ? skel() : '<div class="tk-none">No staking, farm or pool positions found on Garuda, Terraport or Juris for this address.</div>';
@@ -607,7 +614,7 @@ function card(p){
     '<div class="ea-top">' + logos(p) +
       '<div class="ea-mid"><b>' + esc(titleOf(p)) + '</b><span>' + esc(p.label) +
         (p.share ? ' \u00b7 ' + pct(p.share) + ' of pool' : '') + tag + '</span></div>' +
-      '<div class="ea-usd">' + (w.usd > 0 ? (w.complete ? '' : '\u2265 ') + usd(w.usd) : '') + '</div>' +
+      '<div class="ea-usd">' + (w.usd > 0 ? (w.complete ? '' : w.est ? '\u2248 ' : '\u2265 ') + usd(w.usd) : '') + '</div>' +
       '<svg class="ea-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>' +
     (p.missing ? '<div class="ea-note">Could not value the LP right now</div>' : '<div class="ea-holds">' + holds + '</div>') +
     rew +
@@ -798,7 +805,7 @@ function detail(c){
   $('#ep-logos').outerHTML = logos(p, true).replace('<span class="ea-logos', '<span id="ep-logos" class="ea-logos');
   $('#ep-title').textContent = titleOf(p);
   $('#ep-sub').textContent = p.platform + ' \u00b7 ' + p.label;
-  $('#ep-usd').textContent = w.usd > 0 ? (w.complete ? '' : '\u2265 ') + usd(w.usd) : '\u2014';
+  $('#ep-usd').textContent = w.usd > 0 ? (w.complete ? '' : w.est ? '\u2248 ' : '\u2265 ') + usd(w.usd) : '\u2014';
   $('#ep-share').textContent = p.share ? pct(p.share) + ' of the pool' : (p.ready ? 'Ready to withdraw' : '');
   $('#ep-holds').innerHTML = p.missing ? '<div class="tk-none">Could not value the LP right now.</div>'
     : p.holds.map(x => amountRow(x)).join('');
@@ -818,11 +825,11 @@ function status(t){ const s = $('#earn-status'); if (s) { s.textContent = t; s.h
 
 // the card's own mark, put back when a wallet has no positions known
 const STACK0 = (document.getElementById('earn-stack') || {}).innerHTML || '';
-function homeLine(n, total, rewards, rows){
+function homeLine(n, total, rewards, rows, est){
   const sub = $('#earn-sub'), r = $('#earn-home-total'), rw = $('#earn-home-rew'), st = $('#earn-stack');
   if (sub) sub.textContent = n ? n + (n === 1 ? ' position' : ' positions') + ' \u00b7 Garuda, Terraport, Juris'
                                : 'Staking, farms and pools on DEXes';
-  if (r) r.textContent = n && total > 0 ? usd(total) : '';
+  if (r) r.textContent = n && total > 0 ? (est ? '\u2248 ' : '') + usd(total) : '';
   setExtraUsd(n ? total : 0);
   if (rw) rw.textContent = n && rewards >= 0.01 ? '+' + usd(rewards) + ' rewards' : '';
   // up to three logos of what your positions hold, overlapping like a hand of
@@ -840,7 +847,7 @@ function homeLine(n, total, rewards, rows){
     }
   }
   const addr = me();
-  if (addr) keep('home:' + addr, { n: n, total: total, rewards: rewards || 0, rows: rows || [] });
+  if (addr) keep('home:' + addr, { n: n, total: total, rewards: rewards || 0, rows: rows || [], est: !!est });
 }
 
 /* ---------------- wiring ---------------- */
@@ -883,7 +890,7 @@ on('#ep-finder', 'click', function () {
 document.addEventListener('frontier:wallet', function () {
   FOUND = {};
   const h = kept('home:' + me());
-  homeLine(h ? h.n : 0, h ? h.total : 0, h ? h.rewards : 0, h ? h.rows : []);
+  homeLine(h ? h.n : 0, h ? h.total : 0, h ? h.rewards : 0, h ? h.rows : [], h && h.est);
 });
 document.addEventListener('frontier:locked', function () { FOUND = {}; SEQ++; });
 // balances and prices move on their own schedule; redraw what is on screen so
