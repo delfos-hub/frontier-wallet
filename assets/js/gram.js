@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=f67a981a';
-import { GRAM_NET, TERMS } from './gram-net.js?v=f67a981a';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=f67a981a';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=f67a981a';
-import { S } from './state.js?v=f67a981a';
-import { decryptSeed } from './storage.js?v=f67a981a';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=f67a981a';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=f67a981a';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=f67a981a';
-import { chime, notify } from './notify.js?v=f67a981a';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=6c100e45';
+import { GRAM_NET, TERMS } from './gram-net.js?v=6c100e45';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=6c100e45';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=6c100e45';
+import { S } from './state.js?v=6c100e45';
+import { decryptSeed } from './storage.js?v=6c100e45';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=6c100e45';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=6c100e45';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=6c100e45';
+import { chime, notify } from './notify.js?v=6c100e45';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -55,7 +55,7 @@ async function api(path, body){
   });
   let d = {};
   try { d = await r.json(); } catch (e) {}
-  if (!r.ok) { const e = new Error(d.error || ('offers service answered ' + r.status)); e.status = r.status; throw e; }
+  if (!r.ok) { const e = new Error(d.error || ('offers service answered ' + r.status)); e.status = r.status; if (d.code) e.code = String(d.code); throw e; }
   return d;
 }
 
@@ -84,7 +84,9 @@ function pinPolicy(p){
   // from its own (audit round 4, E1). Only publishing and paying stop; a take
   // already announced is still answered and checked, at the higher of the two
   // rates (E2), so no buyer's GRAM is left waiting for the TON timeout.
-  return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash, paused: p.paused ? String(p.paused) : '' });
+  return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash, paused: p.paused ? String(p.paused) : '',
+    // not a safety number: only tells this wallet the Worker registers takes before payment (R4-B1)
+    intent_ttl_sec: Number(p.intent_ttl_sec) > 0 ? Number(p.intent_ttl_sec) : 0 });
 }
 const PAUSED_MSG = 'Swaps are paused for now: the network\u2019s burn tax changed and the service is being updated. Nothing was paid. Try again later.';
 // GRAM per deal, from the pinned rules: { min, max } in nanoGRAM (0n = none)
@@ -1354,6 +1356,29 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       say('#gx-bb-msg', 'This browser did not keep the swap\u2019s data, so nothing was paid. Allow this site to store data (not a private window) and try again.', true);
       return;
     }
+    // R4-B1: register the take before paying, so the Worker announces it when
+    // the lock shows up on TON, even if this page is never opened again. A full
+    // cap or the rate limit (intents_full, rate_limited, any 429), a Worker
+    // without intents, or a session that cannot sign falls back to the old
+    // flow: pay, then announce on return. Any other refusal stops here, before
+    // any GRAM moves (Pablo, #67).
+    if (policy.intent_ttl_sec && S.MNEMONIC) {
+      say('#gx-bb-msg', 'Registering your buy');
+      try {
+        const intent = JSON.stringify({ type: 'htlc-take-intent', v: 1, network: NET.name, offer_id: q.o.id,
+          ton_lock: id, taker_terra: me, lunc: String(q.lunc), ts: now() });
+        await api('/intents', await signArbitrary(S.MNEMONIC, me, intent));
+        saveBuy(id, { intent: true });
+      } catch (e) {
+        if (!(e && (e.status === 429 || e.code === 'intents_full' || e.code === 'rate_limited'))) {
+          saveBuy(id, { stage: 'cancelled' });
+          say('#gx-bb-msg', (e && e.message ? e.message : String(e)) + ' Nothing was paid.', true);
+          load();
+          return;
+        }
+        // the old flow: nothing to do now, the take is announced on return
+      }
+    }
     say('#gx-bb-msg', 'Confirm the payment in your TON wallet');
     // after validUntil the payment can no longer land, so the chain gives a
     // sure answer then even if the wallet's answer is lost (audit round 3, D1)
@@ -1395,7 +1420,9 @@ const LIVE = ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswere
 function buyLine(b){
   const late = now() >= b.timeout;
   if (b.stage === 'paying') return (b.validUntil && now() > b.validUntil) ? 'Checking on TON whether your payment went through.' : 'Confirm the payment in your TON wallet. If you already did, this wallet finds it on TON by itself.';
-  if (b.stage === 'sent') return 'Your GRAM is on its way into the lock on TON. Usually under a minute.';
+  if (b.stage === 'sent') return b.intent
+    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands, even if you close this page.'
+    : 'Your GRAM is on its way into the lock on TON. Usually under a minute. Keep this page open, or come back within 30 minutes, so the seller is told.';
   if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + ').';
   if (b.stage === 'claiming') return 'The seller locked your LUNC and this wallet checked it \u2713. The relayer is claiming it for you now.';
   if (b.stage === 'unanswered') return 'The seller did not answer. Your GRAM can come back ' + (late ? 'now.' : 'in ' + left(b.timeout - now()) + '.');

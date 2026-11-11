@@ -10,10 +10,10 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=f67a981a';
-import { S } from './state.js?v=f67a981a';
-import { esc, iconHTML, paintIcons } from './chain.js?v=f67a981a';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=f67a981a';
+import { $ } from './shell.js?v=6c100e45';
+import { S } from './state.js?v=6c100e45';
+import { esc, iconHTML, paintIcons } from './chain.js?v=6c100e45';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=6c100e45';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
