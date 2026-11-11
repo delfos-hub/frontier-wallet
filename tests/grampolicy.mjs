@@ -106,4 +106,8 @@ ok('min TON time left = answer window + 5 h + 24 h + 10 min', m.min_ton_left_sec
 ok('the agreed numbers: 30 min, 6 h, 0.3%, 0.05 GRAM', m.answer_window_sec === 1800 && m.t_terra_sec === 21600 && m.fee_bps === 30 && m.min_tip === '50000000');
 ok('the same audited lock code as testnet', NETS.mainnet.tonCodeHash === NET.tonCodeHash && NETS.mainnet.tonCode === NET.tonCode);
 
+ok('R4-C2: the seller is told the answer window before publishing, and how to hear of a take',
+  /function dutyPaint\(\)/.test(src) && /answer_window_sec/.test(src.slice(src.indexOf('function dutyPaint'))) &&
+  /open Frontier at least once a day while your offer is live/.test(src) && /dutyPaint\(\);\n\}/.test(src));
+
 report();

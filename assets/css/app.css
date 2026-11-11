@@ -2235,3 +2235,6 @@ html.dk .tabs .dk-bal-upd{font-size:9.5px;letter-spacing:.08em;color:var(--green
 html.dk .tabs .dk-bal-upd.on{opacity:1;transform:none}
 html.dk .tabs .dk-bal-v.stale{color:var(--muted);text-shadow:none;transition:color .35s ease}
 html.dk .tabs .dk-bal:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
+/* the seller's answer duty under Sign and publish (R4-C2) */
+.gx-duty{margin:10px 4px 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.gx-duty:empty{display:none}

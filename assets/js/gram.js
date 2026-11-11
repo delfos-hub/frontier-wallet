@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=6c100e45';
-import { GRAM_NET, TERMS } from './gram-net.js?v=6c100e45';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=6c100e45';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=6c100e45';
-import { S } from './state.js?v=6c100e45';
-import { decryptSeed } from './storage.js?v=6c100e45';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=6c100e45';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=6c100e45';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=6c100e45';
-import { chime, notify } from './notify.js?v=6c100e45';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=bb457758';
+import { GRAM_NET, TERMS } from './gram-net.js?v=bb457758';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=bb457758';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=bb457758';
+import { S } from './state.js?v=bb457758';
+import { decryptSeed } from './storage.js?v=bb457758';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=bb457758';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=bb457758';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=bb457758';
+import { chime, notify } from './notify.js?v=bb457758';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -239,6 +239,7 @@ async function load(){
     drawBuys();
     TAKES = takes.takes || [];
     drawTakes(TAKES, takes.stats || {});
+    dutyPaint();
     tgStatus();
     say('#gx-status', '');
     preview();
@@ -701,8 +702,18 @@ function tgPaint(){
   sw.disabled = TG_BUSY;
   $('#gx-tg-line').classList.toggle('on', TG_LINKED);
   $('#gx-tg-sub').textContent = TG_LINKED
-    ? 'The wallet bot messages you when a buyer locks GRAM, even with the wallet closed.'
-    : 'Get a message from the wallet bot when a buyer locks GRAM, even with the wallet closed.';
+    ? 'The wallet bot messages you when a buyer locks GRAM, or when your LUNC from a buy waits to be claimed, even with the wallet closed.'
+    : 'Get a message from the wallet bot when a buyer locks GRAM, or when your LUNC from a buy waits to be claimed, even with the wallet closed.';
+  dutyPaint();
+}
+// What an offer asks of its seller, said before publishing (R4-C2): every
+// take answered within the window, or it counts against the offer.
+function dutyPaint(){
+  const el = $('#gx-duty'); if (!el) return;
+  const mins = Math.round(((POLICY && POLICY.answer_window_sec) || 1800) / 60);
+  el.textContent = TG_LINKED
+    ? 'Each buyer waits for you to lock their LUNC within ' + mins + ' min. The wallet bot tells you when a buyer takes your offer.'
+    : 'Each buyer waits for you to lock their LUNC within ' + mins + ' min, or the take counts against your offer. Turn on Telegram alerts below, or open Frontier at least once a day while your offer is live.';
 }
 // Outside Telegram there is no initData: the account is proven by pressing
 // Start on a one-time link to the bot (the Worker's web path, widgets #68).
@@ -756,7 +767,7 @@ async function tgWaitForStart(){
       if (st.linked) {
         const code = TG_WAIT.code;
         TG_WAIT = null; TG_LINKED = true; tgWebKeep(code); tgPaint();
-        say('#gx-tg-msg', 'Telegram alerts are on. The wallet bot will message you when a buyer locks GRAM for your offer.');
+        say('#gx-tg-msg', 'Telegram alerts are on. The wallet bot will message you when a buyer locks GRAM for your offer, or when your LUNC from a buy waits to be claimed.');
         return;
       }
     } catch (e) { /* a missed check is retried */ }
