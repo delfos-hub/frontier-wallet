@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d034d3c6';
-import { GRAM_NET, TERMS } from './gram-net.js?v=d034d3c6';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d034d3c6';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=d034d3c6';
-import { S } from './state.js?v=d034d3c6';
-import { decryptSeed } from './storage.js?v=d034d3c6';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=d034d3c6';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d034d3c6';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d034d3c6';
-import { chime, notify } from './notify.js?v=d034d3c6';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=b5bbe3ed';
+import { GRAM_NET, TERMS } from './gram-net.js?v=b5bbe3ed';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=b5bbe3ed';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=b5bbe3ed';
+import { S } from './state.js?v=b5bbe3ed';
+import { decryptSeed } from './storage.js?v=b5bbe3ed';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=b5bbe3ed';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=b5bbe3ed';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=b5bbe3ed';
+import { chime, notify } from './notify.js?v=b5bbe3ed';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -614,7 +614,8 @@ $('#gx-post').addEventListener('click', async function(){
   const f = readForm();
   if (f.errs.length) { say('#gx-msg', f.errs[0], true); buzz('error'); return; }
   if (!(await needTerms())) { say('#gx-msg', 'Accept the Terms of Use to publish an offer.', true); return; }
-  if (POLICY && POLICY.paused) { say('#gx-msg', PAUSED_MSG, true); return; }
+  // refused on the cached book: read it again, so the next try sees the pause end
+  if (POLICY && POLICY.paused) { say('#gx-msg', PAUSED_MSG, true); load(); return; }
   try { localStorage.setItem(tonKey(), f.ton); } catch (e) {}
   const expires = now() + f.hours * 3600 - 120;     // 2 min under the limit: a phone clock may run ahead
   const payload = JSON.stringify({
@@ -1317,7 +1318,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (acc.chain !== NET.tonChain) { say('#gx-bb-msg', 'Your TON wallet is on the wrong network: switch it to ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet') + '.', true); return; }
     const policy = POLICY || setPolicy((await api('/offers')).policy);
     if (!policy) { say('#gx-bb-msg', POLICY_ERR || 'The swap rules could not be loaded. Try again in a minute.', true); return; }
-    if (policy.paused) { say('#gx-bb-msg', PAUSED_MSG, true); return; }
+    if (policy.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
     // the offer as it stands now, not as the book showed it (audit round 3, D2)
     let fresh;
     try { fresh = await api('/offers/' + encodeURIComponent(q.o.id)); }

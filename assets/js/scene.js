@@ -13,7 +13,7 @@
    Motion source, best first: Telegram's DeviceOrientation (Bot API 8.0, no
    browser permission prompt), the browser's deviceorientation, and on a
    desktop the pointer. Nothing moves with "reduce motion" switched on. */
-import { tg } from './shell.js?v=d034d3c6';
+import { tg } from './shell.js?v=b5bbe3ed';
 
 const STILL = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TABS = ['home', 'stake', 'gov', 'activity', 'settings'];
