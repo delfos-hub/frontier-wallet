@@ -47,7 +47,7 @@ function rail(on){
     const bal = document.createElement('div');
     bal.className = 'dk-bal'; bal.title = 'Refresh';
     bal.tabIndex = 0; bal.setAttribute('role', 'button');
-    bal.innerHTML = '<div class="dk-bal-l"><span>Total balance</span><span class="dk-bal-upd" aria-hidden="true">Updated</span></div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
+    bal.innerHTML = '<span class="dk-sr">Refresh balance. </span><div class="dk-bal-l"><span>Total balance</span><span class="dk-bal-upd" aria-hidden="true">Updated</span></div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
     bal.addEventListener('click', () => { const r = document.getElementById('bal-refresh'); if (r) r.click(); });
     bal.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bal.click(); } });
     logo.after(bal);

@@ -10,10 +10,10 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=bd148621';
-import { S } from './state.js?v=bd148621';
-import { esc, iconHTML, paintIcons } from './chain.js?v=bd148621';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=bd148621';
+import { $ } from './shell.js?v=0d24441b';
+import { S } from './state.js?v=0d24441b';
+import { esc, iconHTML, paintIcons } from './chain.js?v=0d24441b';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=0d24441b';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
@@ -221,7 +221,9 @@ if (list) {
   list.addEventListener('pointerup', cancel, { passive: true });
   list.addEventListener('pointercancel', cancel, { passive: true });
   list.addEventListener('pointermove', e => {
-    if (START && Math.hypot(e.clientX - START[0], e.clientY - START[1]) > 8) cancel();
+    // a drift only stops a press still counting; once it has toggled, the
+    // flag waits for the release (Pablo, #47)
+    if (START && Math.hypot(e.clientX - START[0], e.clientY - START[1]) > 8) clearTimeout(PRESS);
   }, { passive: true });
   list.addEventListener('contextmenu', e => { if (PRESSED) e.preventDefault(); });
 }
