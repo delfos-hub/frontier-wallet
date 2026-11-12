@@ -984,7 +984,7 @@ body.kb-open .tabs{visibility:hidden}
 .gx-more{margin-top:14px;font-size:12.5px;color:var(--muted)}
 .gx-more summary{cursor:pointer;list-style:none}
 .gx-more summary::before{content:'+ '}
-.gx-more[open] summary::before{content:'2 '}
+.gx-more[open] summary::before{content:'\2212 '}
 .gx-sum{margin-top:14px;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;gap:1px}
 .gx-sum[hidden]{display:none}
 .gx-sum div{display:flex;justify-content:space-between;gap:12px;padding:9px 12px;background:var(--surface2);font-size:12.5px}
@@ -1989,6 +1989,10 @@ body.has-scene .step.leave-out{animation:leave-out .4s cubic-bezier(.22,1,.36,1)
   border:1px solid rgba(0,212,255,.35);background:rgba(0,212,255,.07);-webkit-tap-highlight-color:transparent}
 .stk-find:active{transform:scale(.94)}
 .stk-find svg{width:16px;height:16px;fill:none;stroke:#00D4FF;stroke-width:2.2;stroke-linecap:round}
+/* Telegram alerts from the web: the link to the bot under the switch */
+.gx-tg-open{display:inline-flex;align-items:center;justify-content:center;margin-top:10px;text-decoration:none}
+.gx-tg-hint{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+
 
 /* Favorites (fav.js): up to 6 tokens pinned under Core assets */
 .fav{margin-top:16px}
@@ -2231,6 +2235,10 @@ html.dk .tabs .dk-bal-upd{font-size:9.5px;letter-spacing:.08em;color:var(--green
 html.dk .tabs .dk-bal-upd.on{opacity:1;transform:none}
 html.dk .tabs .dk-bal-v.stale{color:var(--muted);text-shadow:none;transition:color .35s ease}
 html.dk .tabs .dk-bal:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
+/* the seller's answer duty under Sign and publish (R4-C2) */
+.gx-duty{margin:10px 4px 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.gx-duty:empty{display:none}
+
 
 /* Frontier Web on a wide screen, phase 2: Stake and Vote in two columns,
    the transaction's details beside History, other sheets in the middle */

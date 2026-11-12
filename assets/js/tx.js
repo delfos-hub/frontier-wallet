@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=5d689f3a';
-import { $, buzz, go, tap } from './shell.js?v=5d689f3a';
-import { S } from './state.js?v=5d689f3a';
-import { iconHTML, paintIcons } from './chain.js?v=5d689f3a';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=5d689f3a';
-import { notify } from './notify.js?v=5d689f3a';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=c56fd182';
+import { $, buzz, go, tap } from './shell.js?v=c56fd182';
+import { S } from './state.js?v=c56fd182';
+import { iconHTML, paintIcons } from './chain.js?v=c56fd182';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=c56fd182';
+import { notify } from './notify.js?v=c56fd182';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -156,8 +156,9 @@ async function simulateGas(body, auth, net = MAINNET){
    that stops before signing and sends the user back to review. */
 const FEE_SLACK = 1.25;
 /* A caller that forgets the reviewed fee must not skip the check silently, so
-   a missing one refuses. GRAM (testnet, no fee shown before consent) opts out
-   by passing NO_FEE_REVIEW on purpose. */
+   a missing one refuses. NO_FEE_REVIEW is the explicit way out; nothing uses
+   it now (the GRAM swap shows and passes its fee too, audit round 4, D1), and
+   any new use has to say so on purpose. */
 const NO_FEE_REVIEW = 'no fee review';
 function checkFee(gasFee, maxFee){
   if (maxFee === NO_FEE_REVIEW) return;

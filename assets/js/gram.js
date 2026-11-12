@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=5d689f3a';
-import { GRAM_NET, TERMS } from './gram-net.js?v=5d689f3a';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=5d689f3a';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=5d689f3a';
-import { S } from './state.js?v=5d689f3a';
-import { decryptSeed } from './storage.js?v=5d689f3a';
-import { sendSwap, signArbitrary, toRaw, NO_FEE_REVIEW } from './tx.js?v=5d689f3a';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=5d689f3a';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=5d689f3a';
-import { chime, notify } from './notify.js?v=5d689f3a';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=c56fd182';
+import { GRAM_NET, TERMS } from './gram-net.js?v=c56fd182';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=c56fd182';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=c56fd182';
+import { S } from './state.js?v=c56fd182';
+import { decryptSeed } from './storage.js?v=c56fd182';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=c56fd182';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=c56fd182';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=c56fd182';
+import { chime, notify } from './notify.js?v=c56fd182';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -55,7 +55,7 @@ async function api(path, body){
   });
   let d = {};
   try { d = await r.json(); } catch (e) {}
-  if (!r.ok) { const e = new Error(d.error || ('offers service answered ' + r.status)); e.status = r.status; throw e; }
+  if (!r.ok) { const e = new Error(d.error || ('offers service answered ' + r.status)); e.status = r.status; if (d.code) e.code = String(d.code); throw e; }
   return d;
 }
 
@@ -80,9 +80,41 @@ function pinPolicy(p){
   const tax = Number(p.tax_bps);
   if (!Number.isInteger(tax) || tax < pin.min_tax_bps || tax > pin.max_tax_bps) bad.push('burn tax');
   if (bad.length) throw new Error('the offers service publishes swap rules that differ from this wallet\u2019s (' + bad.join(', ') + '). Not trading under them; update the wallet or try later.');
-  return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash });
+  // The Worker pauses new offers and takes while the chain's burn tax differs
+  // from its own (audit round 4, E1). Only publishing and paying stop; a take
+  // already announced is still answered and checked, at the higher of the two
+  // rates (E2), so no buyer's GRAM is left waiting for the TON timeout.
+  return Object.assign({}, pin, { tax_bps: tax, ton_code_hash: NET.tonCodeHash, paused: p.paused ? String(p.paused) : '',
+    // not a safety number: only tells this wallet the Worker registers takes before payment (R4-B1)
+    intent_ttl_sec: Number(p.intent_ttl_sec) > 0 ? Number(p.intent_ttl_sec) : 0 });
 }
+const PAUSED_MSG = 'Swaps are paused for now: the network\u2019s burn tax changed and the service is being updated. Nothing was paid. Try again later.';
 // GRAM per deal, from the pinned rules: { min, max } in nanoGRAM (0n = none)
+// The burn tax for a seller's lock and the buyer's check of it: the higher of
+// the rate the Worker publishes and the chain's own (audit round 4, E2). A
+// governance change the Worker has not caught up with must not leave the
+// buyer short. A chain that cannot be read leaves the published rate.
+let CHAIN_TAX = { bps: null, at: 0 };
+async function chainTaxBps(){
+  if (CHAIN_TAX.bps !== null && now() - CHAIN_TAX.at < 300) return CHAIN_TAX.bps;
+  try {
+    const r = await getJSON(NET.lcd + '/terra/tax/v1beta1/burn_tax_rate', 8000, 2);
+    const bps = Math.round(Number(r && r.tax_rate) * 10000);
+    if (Number.isInteger(bps) && bps >= 0 && bps <= 10000) CHAIN_TAX = { bps: bps, at: now() };
+  } catch (e) {}
+  return CHAIN_TAX.bps;
+}
+// Above max_tax_bps the chain's answer is not used (a broken or lying node
+// could ask for 10x the LUNC, or divide by zero at 10000): nothing is
+// answered or accepted, as during a pause, until the rates agree again.
+async function taxBpsFor(p){
+  const chain = await chainTaxBps();
+  const max = Number((NET.policy || {}).max_tax_bps);
+  if (chain !== null && Number.isFinite(max) && chain > max) {
+    throw new Error('the network reports a burn tax of ' + (chain / 100) + '%, above what this wallet accepts. Not answering until it is checked; nothing was locked.');
+  }
+  return Math.max(Number(p.tax_bps), chain === null ? 0 : chain);
+}
 function dealLimits(){
   const p = POLICY || NET.policy || {};
   return { min: p.min_deal ? BigInt(p.min_deal) : 0n, max: p.max_deal ? BigInt(p.max_deal) : 0n };
@@ -117,7 +149,20 @@ function setPolicy(p){
 /* Offers this wallet signed, kept on the device (audit round 3, B1). When a
    buyer takes one, the lock is checked against what the seller signed, never
    against the Worker's copy of it. */
-const signedKey = () => 'fw:gram:signed:' + addrOf();
+// The network is in every key (Pablo, round 4): testnet and mainnet records
+// never mix. Records from before it was (all made on testnet) move to the
+// testnet keys the first time they are read there.
+function gk(kind){
+  const k = 'fw:gram:' + kind + ':' + NET.name + ':' + addrOf();
+  if (NET.name === 'testnet') {
+    try {
+      const old = 'fw:gram:' + kind + ':' + addrOf(), v = localStorage.getItem(old);
+      if (v !== null && localStorage.getItem(k) === null) { localStorage.setItem(k, v); localStorage.removeItem(old); }
+    } catch (e) {}
+  }
+  return k;
+}
+const signedKey = () => gk('signed');
 function signedAll(){ try { return JSON.parse(localStorage.getItem(signedKey()) || '{}'); } catch (e) { return {}; } }
 function signedOffer(id){ const s = signedAll()[id]; try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 function keepSigned(id, payload){
@@ -130,7 +175,7 @@ function keepSigned(id, payload){
 let BAL = null;            // maker's uluna on NET.chain
 let LOADING = false;
 let TAKES = [];            // my takes as last loaded
-const tonKey = () => 'fw:gram:ton:' + addrOf();
+const tonKey = () => gk('ton');
 
 /* ---------------- home card ---------------- */
 function paintPills(){
@@ -158,9 +203,13 @@ const LABS = (function () {
     // ?labs=1 too: inside Telegram the mini app's #hash is taken by the launch params
     if (location.hash === '#labs' || new URLSearchParams(location.search).get('labs') === '1') localStorage.setItem('fw:labs', '1');
     if (location.hash === '#nolabs') localStorage.removeItem('fw:labs');
-    return NET.name !== 'testnet' || localStorage.getItem('fw:labs') === '1';
+    // mainnet: only on Frontier Web's own addresses (gram-net.js origins)
+    if (NET.name !== 'testnet') return !NET.origins || NET.origins.indexOf(location.origin) >= 0;
+    return localStorage.getItem('fw:labs') === '1';
   } catch (e) { return false; }
 })();
+// the "Testnet" badges and the testnet line belong to the test networks only
+if (NET.name !== 'testnet') document.querySelectorAll('.gx-testnet').forEach(el => el.remove());
 const card = $('#xc-gram');
 if (card && LABS) { card.hidden = false; paintCard(); }
 if (card) card.addEventListener('click', () => { go('gram'); load(); });
@@ -192,6 +241,7 @@ async function load(){
     ]);
     setPolicy(book.policy);
     if (POLICY_ERR) say('#gx-status', POLICY_ERR, true);
+    else if (POLICY && POLICY.paused) say('#gx-status', PAUSED_MSG, true);
     BAL = BigInt((bal.balance && bal.balance.amount) || '0');
     $('#gx-bal').textContent = human(BAL, 6) + ' LUNC';
     const mine = (book.offers || []).filter(o => o.maker === me);
@@ -202,6 +252,7 @@ async function load(){
     drawBuys();
     TAKES = takes.takes || [];
     drawTakes(TAKES, takes.stats || {});
+    dutyPaint();
     tgStatus();
     say('#gx-status', '');
     preview();
@@ -234,10 +285,21 @@ function drawOffers(list){
    refunded on Terra, read from the chain) leaves the list for good, with a
    short note when it finishes while the screen is open; a take nobody
    answered in time leaves too. My record stays as one line. */
-const finalKey = () => 'fw:gram:final:' + addrOf();
+const finalKey = () => gk('final');
 function finals(){ try { return JSON.parse(localStorage.getItem(finalKey()) || '{}'); } catch (e) { return {}; } }
 function setFinal(ton, v){ const f = finals(); f[ton] = v; try { localStorage.setItem(finalKey(), JSON.stringify(f)); } catch (e) {} }
 const OPEN_SEEN = new Set();          // locked deals seen still open in this session
+
+// The network fee of a GRAM transaction on Terra, estimated before the consent
+// and shown in it; signing then refuses one more than 1.25x higher, like every
+// other signing in the wallet (audit round 4, D1). The estimate needs the
+// open wallet's key for the simulation, as the swap screen's does.
+async function feeFor(steps){
+  if (!S.MNEMONIC) throw new Error('open the wallet with your PIN first, then try again');
+  const est = await dryRunSwap(addrOf(), steps, S.MNEMONIC, NET);
+  return est.gasFee;
+}
+const feeLine = fee => ['Network fee', 'about ' + human(BigInt(Math.ceil(fee)), 6) + ' LUNC'];
 
 async function terraLockRead(id){
   const q = btoa(JSON.stringify({ lock: { id: Number(id) } }));
@@ -568,6 +630,8 @@ $('#gx-post').addEventListener('click', async function(){
   const f = readForm();
   if (f.errs.length) { say('#gx-msg', f.errs[0], true); buzz('error'); return; }
   if (!(await needTerms())) { say('#gx-msg', 'Accept the Terms of Use to publish an offer.', true); return; }
+  // refused on the cached book: read it again, so the next try sees the pause end
+  if (POLICY && POLICY.paused) { say('#gx-msg', PAUSED_MSG, true); load(); return; }
   try { localStorage.setItem(tonKey(), f.ton); } catch (e) {}
   const expires = now() + f.hours * 3600 - 120;     // 2 min under the limit: a phone clock may run ahead
   const payload = JSON.stringify({
@@ -581,7 +645,7 @@ $('#gx-post').addEventListener('click', async function(){
     ['Buyers take', 'from ' + human(f.min, 6) + ' LUNC'],
     ['GRAM goes to', f.ton],
     ['Ends', new Date(expires * 1000).toLocaleString()],
-    ['Network', NET.chain + ' + TON testnet']
+    ['Network', NET.chain + ' + TON ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet')]
   ];
   say('#gx-msg', '');
   try {
@@ -642,20 +706,57 @@ const TG_INIT = (TGW && TGW.initData) || '';
 const TG_USER = TGW && TGW.initDataUnsafe && TGW.initDataUnsafe.user ? TGW.initDataUnsafe.user.id : null;
 let TG_LINKED = false;
 let TG_BUSY = false;
+let TG_WAIT = null;          // web: { code, url, until } while waiting for Start in the bot
 
 function tgPaint(){
   const sw = $('#gx-tg-btn');
   sw.setAttribute('aria-checked', TG_LINKED ? 'true' : 'false');
-  sw.classList.toggle('busy', TG_BUSY);
+  sw.classList.toggle('busy', TG_BUSY || !!TG_WAIT);
   sw.disabled = TG_BUSY;
   $('#gx-tg-line').classList.toggle('on', TG_LINKED);
   $('#gx-tg-sub').textContent = TG_LINKED
-    ? 'The wallet bot messages you when a buyer locks GRAM, even with the wallet closed.'
-    : 'Get a message from the wallet bot when a buyer locks GRAM, even with the wallet closed.';
+    ? 'The wallet bot messages you when a buyer locks GRAM, or when your LUNC from a buy waits to be claimed, even with the wallet closed.'
+    : 'Get a message from the wallet bot when a buyer locks GRAM, or when your LUNC from a buy waits to be claimed, even with the wallet closed.';
+  dutyPaint();
 }
+// What an offer asks of its seller, said before publishing (R4-C2): every
+// take answered within the window, or it counts against the offer.
+function dutyPaint(){
+  const el = $('#gx-duty'); if (!el) return;
+  const mins = Math.round(((POLICY && POLICY.answer_window_sec) || 1800) / 60);
+  el.textContent = TG_LINKED
+    ? 'Each buyer waits for you to lock their LUNC within ' + mins + ' min. The wallet bot tells you when a buyer takes your offer.'
+    // no daily-visit advice here: a visit a day cannot meet a 30-minute window (Pablo)
+    : 'Each buyer waits for you to lock their LUNC within ' + mins + ' min, or the take counts against your offer. Turn on Telegram alerts below to hear of a take in time.';
+  // after the buyer claims the LUNC, the GRAM is the seller's to collect on TON
+  // (audit round 4, C2): the relayer does it; if it is down, the seller's own
+  // wallet does, within the gap between the two locks
+  const el2 = $('#gx-duty2');
+  if (el2) {
+    const hrs = Math.round(((POLICY && POLICY.terra_gap_sec) || 86400) / 3600);
+    el2.textContent = 'After a buyer claims the LUNC, the relayer claims your GRAM on TON for you. If it is down, open Frontier within about ' + hrs +
+      ' hours to claim it yourself' + (TG_LINKED ? '; the wallet bot tells you when a claim is due.' : '. Telegram alerts tell you when a claim is due.');
+  }
+}
+// Outside Telegram there is no initData: the account is proven by pressing
+// Start on a one-time link to the bot (the Worker's web path, widgets #68).
+const TG_WEB = !(TG_INIT && TG_USER);
+const tgWebKey = () => 'fw:tgweb:' + NET.name + ':' + addrOf();
+const tgWebCode = () => { try { const v = localStorage.getItem(tgWebKey()); return v && v !== '1' ? v : ''; } catch (e) { return ''; } };
+const tgWebKeep = code => { try { if (code) localStorage.setItem(tgWebKey(), code); else localStorage.removeItem(tgWebKey()); } catch (e) {} };
 async function tgStatus(){
   const line = $('#gx-tg-line');
-  if (!line || !TG_INIT || !TG_USER || !addrOf()) return;      // outside Telegram: nothing to link
+  if (!line || !addrOf()) return;
+  if (TG_WEB) {
+    try {
+      const code = tgWebCode();
+      const st = await api('/notify/web/status', code ? { address: addrOf(), code: code } : {});
+      line.hidden = !st.enabled;
+      if (code && st.enabled && !st.linked) tgWebKeep('');      // turned off in the chat (/stop)
+      if (!TG_BUSY && !TG_WAIT) { TG_LINKED = !!(code && st.linked); tgPaint(); }
+    } catch (e) { line.hidden = true; }
+    return;
+  }
   try {
     const st = await api('/notify/status', { initData: TG_INIT, address: addrOf() });
     line.hidden = !st.enabled;
@@ -668,8 +769,86 @@ function writeAccess(){
     try { TGW.requestWriteAccess(ok => resolve(!!ok)); } catch (e) { resolve(true); }
   });
 }
+function tgLinkBox(url){
+  const box = $('#gx-tg-msg');
+  box.textContent = '';
+  box.classList.remove('err');
+  const a = document.createElement('a');
+  a.className = 'btn solid gx-tg-open'; a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  a.textContent = 'Open @' + (url.split('t.me/')[1] || '').split('?')[0];
+  const p = document.createElement('p');
+  p.className = 'gx-tg-hint';
+  p.textContent = 'Press Start in the chat that opens. This switch turns on by itself; the link works once, for 10 minutes.';
+  box.append(a, p);
+}
+async function tgWaitForStart(){
+  while (TG_WAIT && Date.now() < TG_WAIT.until) {
+    await new Promise(r => setTimeout(r, 3000));
+    if (!TG_WAIT) return;
+    try {
+      const st = await api('/notify/web/status', { address: addrOf(), code: TG_WAIT.code });
+      if (st.linked) {
+        const code = TG_WAIT.code;
+        TG_WAIT = null; TG_LINKED = true; tgWebKeep(code); tgPaint();
+        say('#gx-tg-msg', 'Telegram alerts are on. The wallet bot will message you when a buyer locks GRAM for your offer, or when your LUNC from a buy waits to be claimed.');
+        return;
+      }
+    } catch (e) { /* a missed check is retried */ }
+  }
+  if (TG_WAIT) { TG_WAIT = null; tgPaint(); say('#gx-tg-msg', 'The link to the bot expired. Turn the switch on again for a new one.', true); }
+}
+async function tgWebOn(){
+  TG_BUSY = true; tgPaint();
+  say('#gx-tg-msg', '');
+  try {
+    const payload = JSON.stringify({ type: 'frontier-notify-web', v: 1, network: NET.name, address: addrOf(), ts: now() });
+    let got = null;
+    await consent('Turn on Telegram alerts', [
+      ['Address', addrOf().slice(0, 12) + '\u2026' + addrOf().slice(-6)],
+      ['Alerts go to', 'the Telegram account that presses Start'],
+      ['When', 'a buyer locks GRAM for your offer']
+    ], payload, async function (m, step) {
+      step(0);
+      const signed = await signArbitrary(m, addrOf(), payload);
+      step(1);
+      got = await api('/notify/web/start', signed);
+    }, null, {
+      steps: ['Signing the request', 'Getting a link to the wallet bot'],
+      done: () => ({ title: 'One more step in Telegram', text: 'Open the wallet bot from the button under the switch and press Start.' })
+    });
+    if (got && got.url) {
+      TG_WAIT = { code: got.code, url: got.url, until: Date.now() + 10 * 60 * 1000 };
+      tgLinkBox(got.url);
+      tgWaitForStart();
+    }
+  } catch (e) {
+    if (e && !e.shown && e.message !== 'cancelled' && e.message !== 'watch only') say('#gx-tg-msg', e.message || String(e), true);
+  } finally {
+    TG_BUSY = false; tgPaint();
+  }
+}
+async function tgWebOff(){
+  TG_BUSY = true; tgPaint();
+  say('#gx-tg-msg', '');
+  try {
+    const payload = JSON.stringify({ type: 'frontier-notify-unlink', v: 1, network: NET.name, address: addrOf(), ts: now() });
+    await consent('Turn off Telegram alerts', [
+      ['Address', addrOf().slice(0, 12) + '\u2026' + addrOf().slice(-6)],
+      ['Stops', 'every Telegram account linked to this address']
+    ], payload, async function (m, step) {
+      step(0);
+      await api('/notify/web/unlink', await signArbitrary(m, addrOf(), payload));
+      TG_LINKED = false; tgWebKeep('');
+    }, null, { steps: ['Signing the request'], done: () => ({ title: 'Telegram alerts are off', text: 'Turn them on again whenever you like.' }) });
+  } catch (e) {
+    if (e && !e.shown && e.message !== 'cancelled' && e.message !== 'watch only') say('#gx-tg-msg', 'Could not turn alerts off: ' + (e.message || e), true);
+  } finally {
+    TG_BUSY = false; tgPaint();
+  }
+}
 async function tgTurnOn(){
   if (TG_BUSY || TG_LINKED) return;
+  if (TG_WEB) { if (!TG_WAIT) return tgWebOn(); return; }
   TG_BUSY = true; tgPaint();
   say('#gx-tg-msg', '');
   try {
@@ -696,7 +875,9 @@ async function tgTurnOn(){
   }
 }
 async function tgTurnOff(){
+  if (TG_WEB && TG_WAIT && !TG_LINKED) { TG_WAIT = null; say('#gx-tg-msg', ''); tgPaint(); return; }
   if (TG_BUSY || !TG_LINKED) return;
+  if (TG_WEB) return tgWebOff();
   TG_BUSY = true; tgPaint();
   say('#gx-tg-msg', '');
   try {
@@ -708,7 +889,7 @@ async function tgTurnOff(){
     TG_BUSY = false; tgPaint();
   }
 }
-$('#gx-tg-btn').addEventListener('click', () => (TG_LINKED ? tgTurnOff() : tgTurnOn()));
+$('#gx-tg-btn').addEventListener('click', () => (TG_LINKED || TG_WAIT ? tgTurnOff() : tgTurnOn()));
 
 /* ---------------- answering a take (stage 3) ----------------
    1. Read the buyer's TON lock on the chain (not the Worker's word): the
@@ -720,7 +901,7 @@ $('#gx-tg-btn').addEventListener('click', () => (TG_LINKED ? tgTurnOff() : tgTur
       this device, so a lock is never made twice for one take and never
       reused for another (audit #34, A2). */
 const MARGIN = 600;                      // spec: the Terra lock ends this much before the gap
-const lockKey = () => 'fw:gram:locks:' + addrOf();
+const lockKey = () => gk('locks');
 function mineAll(){ try { return JSON.parse(localStorage.getItem(lockKey()) || '{}'); } catch (e) { return {}; } }
 function mineFor(ton){ return mineAll()[ton] || {}; }
 function remember(ton, v){
@@ -778,7 +959,9 @@ async function checkTake(t){
   }
   const timeout = terraTimeout(n);
   if (!problems.length && timeout < now() + p.min_terra_left_sec + 60) problems.push('the TON lock ends too soon to answer safely');
-  const tax = BigInt(p.tax_bps);
+  let taxBps = Number(p.tax_bps);
+  try { taxBps = await taxBpsFor(p); } catch (e) { problems.push(e.message); }
+  const tax = BigInt(taxBps);
   const gross = ceilDiv(BigInt(t.lunc) * 10000n, 10000n - tax);
   return { offer: offer, n: n, problems: problems, timeout: timeout, gross: gross };
 }
@@ -798,10 +981,11 @@ $('#gx-takes').addEventListener('click', async function(e){
     r.disabled = true;
     const step = { contract: NET.htlc, msg: { refund: { id: Number(r.dataset.id) } }, funds: [] };
     try {
-      await consent('Refund your LUNC lock', [['Terra lock', '#' + r.dataset.id], ['Goes back to', addrOf()]],
+      const fee = await feeFor([step]);
+      await consent('Refund your LUNC lock', [['Terra lock', '#' + r.dataset.id], ['Goes back to', addrOf()], feeLine(fee)],
         JSON.stringify(step.msg), async function (m, st) {
           st(0);
-          const s2 = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
+          const s2 = await sendSwap(addrOf(), [step], m, NET, '', fee);
           st(1);
           const res = await s2.wait();
           if (!res) throw new Error('the refund was sent but is not confirmed yet (tx ' + s2.hash.slice(0, 10) + '\u2026). Refresh in a minute.');
@@ -883,15 +1067,17 @@ async function answerTake(t, b){
       ['Buyer', t.taker_terra],
       ['Claim until', 'about ' + new Date(c.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (set when you sign)'],
       ['If unclaimed', 'the LUNC comes back to you after that'],
-      ['Network', NET.chain + ' + TON testnet']
+      ['Network', NET.chain + ' + TON ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet')]
     ];
+    const fee = await feeFor([step]);
+    lines.push(feeLine(fee));
     const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you.';
     await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m, st){
       // the PIN may have taken a while: the timeout is set again now and checked
       st(0);
       step.msg.lock.timeout = terraTimeout(c.n);
       if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now. Nothing was locked.');
-      const sent = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
+      const sent = await sendSwap(addrOf(), [step], m, NET, '', fee);
       remember(t.ton_lock, { tx: sent.hash, at: now(), timeout: step.msg.lock.timeout });
       st(1);
       const res = await sent.wait();
@@ -1016,7 +1202,7 @@ setTimeout(watchTakes, 3000);
 let BOOK = [];
 let TC = null, TC_LOADING = null;
 const CLAIM_MARGIN = NET.name === 'testnet' ? 300 : 3600;     // what the relayer needs left on the Terra lock
-const buysKey = () => 'fw:gram:buys:' + addrOf();
+const buysKey = () => gk('buys');
 function buys(){ try { return JSON.parse(localStorage.getItem(buysKey()) || '{}'); } catch (e) { return {}; } }
 function saveBuy(id, v){ const b = buys(); b[id] = Object.assign(b[id] || {}, v); try { localStorage.setItem(buysKey(), JSON.stringify(b)); } catch (e) {} return b[id]; }
 // The relayer receives the buyer's secret. Only on testnet may a URL saved on
@@ -1168,6 +1354,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (acc.chain !== NET.tonChain) { say('#gx-bb-msg', 'Your TON wallet is on the wrong network: switch it to ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet') + '.', true); return; }
     const policy = POLICY || setPolicy((await api('/offers')).policy);
     if (!policy) { say('#gx-bb-msg', POLICY_ERR || 'The swap rules could not be loaded. Try again in a minute.', true); return; }
+    if (policy.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
     // the offer as it stands now, not as the book showed it (audit round 3, D2)
     let fresh;
     try { fresh = await api('/offers/' + encodeURIComponent(q.o.id)); }
@@ -1176,6 +1363,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       else say('#gx-bb-msg', 'The offer could not be checked just now. Try again in a moment.', true);
       return;
     }
+    if (fresh.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
     if (!fresh.live) { say('#gx-bb-msg', 'This offer was cancelled or is no longer shown to buyers. Pick another one.', true); load(); return; }
     if (fresh.price !== q.o.price || fresh.maker_ton !== q.o.maker_ton) { say('#gx-bb-msg', 'The seller changed this offer. Check it again before paying.', true); load(); return; }
     if (BigInt(fresh.remaining_lunc) < q.lunc || BigInt(fresh.min_lunc) > q.lunc || Number(fresh.expires) < now() + policy.answer_window_sec) {
@@ -1201,6 +1389,31 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (!kept || kept.secret !== toHex(secret) || kept.address !== lock.address) {
       say('#gx-bb-msg', 'This browser did not keep the swap\u2019s data, so nothing was paid. Allow this site to store data (not a private window) and try again.', true);
       return;
+    }
+    // R4-B1: register the take before paying, so the Worker announces it when
+    // the lock shows up on TON, even if this page is never opened again. A full
+    // cap or the rate limit (intents_full, rate_limited), a Worker
+    // without intents, or a session that cannot sign falls back to the old
+    // flow: pay, then announce on return. Any other refusal stops here, before
+    // any GRAM moves (Pablo, #67).
+    if (policy.intent_ttl_sec && S.MNEMONIC) {
+      say('#gx-bb-msg', 'Registering your buy');
+      try {
+        const intent = JSON.stringify({ type: 'htlc-take-intent', v: 1, network: NET.name, offer_id: q.o.id,
+          ton_lock: id, taker_terra: me, lunc: String(q.lunc), ts: now() });
+        await api('/intents', await signArbitrary(S.MNEMONIC, me, intent));
+        saveBuy(id, { intent: true });
+      } catch (e) {
+        // only these two: any other refusal, a 429 among them (the buyer's
+        // pending-takes limit), would also refuse the take after paying
+        if (!(e && (e.code === 'intents_full' || e.code === 'rate_limited'))) {
+          saveBuy(id, { stage: 'cancelled' });
+          say('#gx-bb-msg', (e && e.message ? e.message : String(e)) + ' Nothing was paid.', true);
+          load();
+          return;
+        }
+        // the old flow: nothing to do now, the take is announced on return
+      }
     }
     say('#gx-bb-msg', 'Confirm the payment in your TON wallet');
     // after validUntil the payment can no longer land, so the chain gives a
@@ -1243,7 +1456,9 @@ const LIVE = ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswere
 function buyLine(b){
   const late = now() >= b.timeout;
   if (b.stage === 'paying') return (b.validUntil && now() > b.validUntil) ? 'Checking on TON whether your payment went through.' : 'Confirm the payment in your TON wallet. If you already did, this wallet finds it on TON by itself.';
-  if (b.stage === 'sent') return 'Your GRAM is on its way into the lock on TON. Usually under a minute.';
+  if (b.stage === 'sent') return b.intent
+    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands, even if you close this page.'
+    : 'Your GRAM is on its way into the lock on TON. Usually under a minute. Keep this page open, or come back within 30 minutes, so the seller is told.';
   if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + ').';
   if (b.stage === 'claiming') return 'The seller locked your LUNC and this wallet checked it \u2713. The relayer is claiming it for you now.';
   if (b.stage === 'unanswered') return 'The seller did not answer. Your GRAM can come back ' + (late ? 'now.' : 'in ' + left(b.timeout - now()) + '.');
@@ -1270,16 +1485,31 @@ function selfClaimBtn(id, b){
   return '<button class="btn solid gx-selfclaim" type="button" data-id="' + esc(id) + '">Claim the LUNC myself</button>' +
     '<p class="gx-hint">The relayer has not claimed yet. Claiming yourself costs a little LUNC for gas' + (BAL !== null && BAL < 5000000n ? ' - you have none on ' + NET.chain + ' yet' : '') + '.</p>';
 }
+// a claim uses well under 400k gas; at the network's 28.325 uluna a gas
+const CLAIM_FEE_MAX = Math.ceil(400000 * 28.325);
 async function selfClaim(id){
   const b = buys()[id];
   if (!b || !b.terraLockId) return;
   const step = { contract: NET.htlc, msg: { claim: { id: b.terraLockId, secret: b.secret } }, funds: [] };
   try {
-    await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC']],
+    // No simulation before the consent: the claim carries the secret, and a
+    // simulation would send it to the LCD before the buyer agreed (Pablo,
+    // round 4). The consent shows a ceiling; sendSwap simulates when sending,
+    // after the lock is read again, and refuses a fee above it.
+    // sendSwap lets a fee through up to 1.25x the reviewed one: the reviewed
+    // fee is the ceiling / 1.25, so the ceiling shown is the one that holds
+    const fee = Math.floor(CLAIM_FEE_MAX / 1.25);
+    await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC'],
+      ['Network fee', 'at most ' + human(BigInt(CLAIM_FEE_MAX), 6) + ' LUNC']],
       JSON.stringify({ claim: { id: b.terraLockId, secret: '(hidden: the secret kept on this device)' } }),
       async function (m, st) {
         st(0);
-        const r = await sendSwap(addrOf(), [step], m, NET, '', NO_FEE_REVIEW);
+        // the sheet may have stayed open a while: the lock is read again now,
+        // right before signing (audit round 4, B2)
+        const l = await terraLockRead(b.terraLockId);
+        if (!l || l.status !== 'open') throw new Error('the seller\u2019s lock is no longer open. Nothing was signed.');
+        if (Number(l.timeout) - now() < CLAIM_MARGIN / 2) throw new Error('too close to the end of the seller\u2019s lock to claim safely now. Nothing was signed.');
+        const r = await sendSwap(addrOf(), [step], m, NET, '', fee);
         st(1);
         if (!(await r.wait())) throw new Error('the claim was sent but is not confirmed yet (tx ' + r.hash.slice(0, 10) + '\u2026). It usually lands within a minute.');
       },
@@ -1369,11 +1599,21 @@ $('#gx-hero').addEventListener('click', onRefund);
 // check the seller's Terra lock before the secret leaves the device
 async function sellerLockOk(b, take){
   const q = btoa(JSON.stringify({ lock: { id: Number(take.terra_lock_id) } }));
-  const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 2)).data || {};
+  const path = '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q;
+  // From two independent nodes where the network has them (audit round 4,
+  // B3): one node could show a lock that is not there. Both must answer and
+  // agree, or the secret stays on the device.
+  const reads = await Promise.all([NET.lcd].concat(NET.lcd2 ? [NET.lcd2] : [])
+    .map(u => getJSON(u + path, 8000, 2).then(r => (r && r.data) || null, () => null)));
+  if (reads.some(r => !r)) return ['the seller\u2019s lock could not be read' + (reads.length > 1 ? ' from both nodes' : '') + ' right now'];
+  if (reads.length > 1 && JSON.stringify(reads[0]) !== JSON.stringify(reads[1])) return ['two nodes disagree about the seller\u2019s lock'];
+  const l = reads[0];
   if (!POLICY) setPolicy((await api('/offers')).policy);
   if (!POLICY) return [POLICY_ERR || 'the swap rules could not be loaded'];
   const p = POLICY;
-  const keep = 10000n - BigInt(p.tax_bps);
+  let taxBps;
+  try { taxBps = await taxBpsFor(p); } catch (e) { return [e.message]; }
+  const keep = 10000n - BigInt(taxBps);
   const problems = [];
   if (l.status !== 'open') problems.push('the seller\u2019s lock is ' + l.status);
   if (String(l.hash).toLowerCase() !== b.hash) problems.push('another hash');

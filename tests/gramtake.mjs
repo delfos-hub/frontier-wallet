@@ -35,6 +35,8 @@ function make({ signed = OFFER, lock = {} } = {}){
     signedOffer: () => signed, addrOf: () => ME, now: () => NOW,
     tonRaw: a => a, takeRefOf: async () => 'ref', gramFor: gramFor,
     ceilDiv: (a, b) => (a + b - 1n) / b,
+    // the published rate (R4-E2 takes the higher of it and the chain's)
+    taxBpsFor: async p => Number(p.tax_bps),
     terraTimeout: () => NOW + 1200,
     readLock: async () => Object.assign({ state: 'active', status: 'open', hash: 'h', recipient: MY_TON, takerRef: 'ref',
       amount: gramFor(500000000n, 33000000000n), tip: 5000000n, balance: 10n ** 12n, timeout: NOW + 30 * 3600 }, lock),

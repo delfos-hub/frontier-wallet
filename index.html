@@ -119,7 +119,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   #fw-splash.gone{opacity:0}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=5d689f3a">
+<link rel="stylesheet" href="assets/css/app.css?v=c56fd182">
 </head>
 <body>
 <div id="rt"></div>
@@ -144,7 +144,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   </div>
   <div class="fw-load"><i></i></div>
 </div>
-<script src="assets/js/splash.js?v=5d689f3a"></script>
+<script src="assets/js/splash.js?v=c56fd182"></script>
 
 <div class="orb"></div>
 
@@ -380,7 +380,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   <div class="txq" id="txq" hidden></div>
 
   <button class="xc" id="xc-gram" type="button" hidden>
-    <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-n" id="xc-gram-n" hidden></span><span class="xc-badge">Testnet</span></span>
+    <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-n" id="xc-gram-n" hidden></span><span class="xc-badge gx-testnet">Testnet</span></span>
     <span class="xc-main"><span class="xc-ico" id="xc-gram-ico"></span>
       <span class="xc-txt"><b>GRAM &#8644; LUNC</b><span>GRAM (formerly TON) &middot; atomic swap, no bridge</span></span>
       <svg class="xc-go" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span>
@@ -723,9 +723,9 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
 <section class="step wpad" id="st-gram">
   <div class="p2p-top">
     <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
-    <h2>GRAM &#8644; LUNC</h2><span class="xc-badge">Testnet</span>
+    <h2>GRAM &#8644; LUNC</h2><span class="xc-badge gx-testnet">Testnet</span>
   </div>
-  <p class="gx-intro">Swap GRAM (formerly TON) and LUNC in an atomic swap: no bridge, no custodian. The buyer locks GRAM on TON first; the seller locks LUNC only after checking that lock, and either both sides are paid or both get their coins back. Testnet: rebel-2 and TON testnet, test coins only.</p>
+  <p class="gx-intro">Swap GRAM (formerly TON) and LUNC in an atomic swap: no bridge, no custodian. The buyer locks GRAM on TON first; the seller locks LUNC only after checking that lock, and either both sides are paid or both get their coins back.<span class="gx-testnet"> Testnet: rebel-2 and TON testnet, test coins only.</span></p>
   <div class="gx-bar"><span>Your LUNC on rebel-2 <b id="gx-bal">&ndash;</b><i id="gx-me"></i></span><button class="dust" id="gx-refresh" type="button">refresh</button></div>
   <div class="gx-msg" id="gx-status"></div>
 
@@ -748,6 +748,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
       </div>
       <div class="gx-sum" id="gx-bb-sum"></div>
       <button class="btn solid" id="gx-bb-pay" type="button">Pay with TON wallet</button>
+      <p class="gx-hint" id="gx-bb-trust">After you pay, your wallet hands this swap’s secret to the Delfos relayer, which claims your LUNC for you. If it has not after a few minutes, Frontier offers to claim it yourself, which needs a little LUNC for gas. Keep Frontier open until the purchase completes. Terms, section 6.</p>
       <div class="gx-msg" id="gx-bb-msg"></div>
     </div>
 
@@ -767,7 +768,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   <div class="gx-alerts" id="gx-tg-line" hidden>
     <div class="gx-alerts-l">
       <b id="gx-tg-label">Telegram alerts</b>
-      <span id="gx-tg-sub">Get a message from the wallet bot when a buyer locks GRAM, even with the wallet closed.</span>
+      <span id="gx-tg-sub">Get a message from the wallet bot when a buyer locks GRAM, or when your LUNC from a buy waits to be claimed, even with the wallet closed.</span>
     </div>
     <button class="gx-switch" id="gx-tg-btn" type="button" role="switch" aria-checked="false" aria-labelledby="gx-tg-label"><i></i></button>
   </div>
@@ -811,6 +812,8 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
 
     <div class="gx-sum" id="gx-sum" hidden></div>
     <button class="btn solid" id="gx-post" type="button" disabled>Sign and publish</button>
+    <p class="gx-duty" id="gx-duty"></p>
+    <p class="gx-duty" id="gx-duty2"></p>
     <div class="gx-msg" id="gx-msg"></div>
   </div>
   </div>
@@ -1033,23 +1036,23 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=5d689f3a"></script>
-<script src="assets/js/ads.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/swap.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/activity.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/nft.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/wallets.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/seed.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/home-tools.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/p2p.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/gram.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/incoming.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/token.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/defi.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/gov.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/stake.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/fav.js?v=5d689f3a"></script>
-<script type="module" src="assets/js/desktop.js?v=5d689f3a"></script>
+<script type="module" src="assets/js/app.js?v=c56fd182"></script>
+<script src="assets/js/ads.js?v=c56fd182"></script>
+<script type="module" src="assets/js/swap.js?v=c56fd182"></script>
+<script type="module" src="assets/js/activity.js?v=c56fd182"></script>
+<script type="module" src="assets/js/nft.js?v=c56fd182"></script>
+<script type="module" src="assets/js/wallets.js?v=c56fd182"></script>
+<script type="module" src="assets/js/seed.js?v=c56fd182"></script>
+<script type="module" src="assets/js/home-tools.js?v=c56fd182"></script>
+<script type="module" src="assets/js/p2p.js?v=c56fd182"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=c56fd182"></script>
+<script type="module" src="assets/js/gram.js?v=c56fd182"></script>
+<script type="module" src="assets/js/incoming.js?v=c56fd182"></script>
+<script type="module" src="assets/js/token.js?v=c56fd182"></script>
+<script type="module" src="assets/js/defi.js?v=c56fd182"></script>
+<script type="module" src="assets/js/gov.js?v=c56fd182"></script>
+<script type="module" src="assets/js/stake.js?v=c56fd182"></script>
+<script type="module" src="assets/js/fav.js?v=c56fd182"></script>
+<script type="module" src="assets/js/desktop.js?v=c56fd182"></script>
 </body>
 </html>

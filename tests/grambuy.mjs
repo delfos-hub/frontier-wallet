@@ -119,4 +119,20 @@ p = await pay(true);
 ok('storage working: the payment is asked for as before', p.sent.length === 1, p.msgs.join(' | '));
 ok('with the secret kept before it', p.saved[ID] && /^[0-9a-f]{64}$/.test(p.saved[ID].secret) && p.saved[ID].stage === 'sent');
 
+
+// ---- R4-B1: the take is registered before paying, with the old flow as fallback ----
+const b1At = src.indexOf("$('#gx-bb-pay').addEventListener('click'");
+const b1 = src.slice(b1At, src.indexOf('/* ---------- my buys', b1At));
+ok('R4-B1: the intent is signed and sent after the secret is kept and before the TON wallet opens',
+  b1.indexOf("api('/intents'") > b1.indexOf('kept.secret !== toHex(secret)') && b1.indexOf("api('/intents'") < b1.indexOf('tc.sendTransaction('));
+ok('R4-B1: only intents_full and rate_limited fall back to the old flow; any other 429 stops before paying',
+  /if \(!\(e && \(e\.code === 'intents_full' \|\| e\.code === 'rate_limited'\)\)\) \{[^]*?saveBuy\(id, \{ stage: 'cancelled' \}\);[^]*?return;/.test(b1) &&
+  !/e\.status === 429/.test(b1));
+ok('R4-B1: any other refusal stops before any GRAM moves', /stage: 'cancelled'[^]*?Nothing was paid\.[^]*?return;/.test(b1));
+ok('R4-B1: without intents on the Worker or a key to sign, the old flow', /if \(policy\.intent_ttl_sec && S\.MNEMONIC\)/.test(b1));
+ok('R4-B1: the error code reaches the wallet', /if \(d\.code\) e\.code = String\(d\.code\)/.test(src));
+
+ok('R4 (5): the self-claim sends nothing to the LCD before the consent (no feeFor with the secret)',
+  /const fee = Math\.floor\(CLAIM_FEE_MAX \/ 1\.25\);/.test(src) && !/const fee = await feeFor\(\[step\]\);\n    await consent\('Claim your LUNC'/.test(src));
+
 report();
