@@ -92,3 +92,49 @@ function apply(){
 }
 WIDE.addEventListener('change', apply);
 apply();
+
+/* Stake and Vote on a wide screen, like Home: two columns. The left one
+   holds what is mine (the stake ring, its tiles and actions; my voting power
+   and what is being voted now) and stays in view; the right one holds the
+   lists (validators, unstaking; recent proposals). Each screen draws its body
+   again on every refresh, so the columns are made again after each drawing.
+   Narrower than 1100 px, the body is put back as it was drawn. */
+const SPLITS = {
+  'stk-body': { left: el => el.matches('.stk-hero, .stk-bigacts, .stk-steps') },
+  // everything before the "Recent" heading is the left column
+  'gov-body': { rightFrom: el => el.classList.contains('head') && !!el.nextElementSibling && el.nextElementSibling.classList.contains('gv-recent') },
+};
+function unsplit(box){
+  const cur = box.querySelector(':scope > .dk-split');
+  if (!cur) return;
+  [...cur.querySelector('.dk-l').children, ...cur.querySelector('.dk-r').children].forEach(c => box.insertBefore(c, cur));
+  cur.remove();
+}
+function resplit(id){
+  const box = document.getElementById(id);
+  if (!box) return;
+  if (!WIDE.matches) { unsplit(box); return; }
+  const kids = [...box.children];
+  if (kids.length === 1 && kids[0].classList.contains('dk-split')) return;     // already in columns
+  unsplit(box);
+  const all = [...box.children];
+  if (all.length < 2) return;                                                   // "Loading", an error: as drawn
+  const rule = SPLITS[id];
+  const wrap = document.createElement('div'); wrap.className = 'dk-split';
+  const l = document.createElement('div'); l.className = 'dk-l';
+  const r = document.createElement('div'); r.className = 'dk-r';
+  let right = false;
+  for (const k of all) {
+    if (rule.rightFrom) { if (!right && rule.rightFrom(k)) right = true; (right ? r : l).append(k); }
+    else (rule.left(k) ? l : r).append(k);
+  }
+  if (!l.children.length || !r.children.length) { [...l.children, ...r.children].forEach(c => box.append(c)); return; }
+  wrap.append(l, r);
+  box.append(wrap);
+}
+Object.keys(SPLITS).forEach(id => {
+  const box = document.getElementById(id);
+  if (box) new MutationObserver(() => resplit(id)).observe(box, { childList: true });
+});
+WIDE.addEventListener('change', () => Object.keys(SPLITS).forEach(resplit));
+Object.keys(SPLITS).forEach(resplit);

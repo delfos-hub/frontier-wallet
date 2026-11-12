@@ -1,7 +1,7 @@
-import { $, base, bip32, bip39, ripe, sha } from './shell.js?v=bd148621';
-import { S } from './state.js?v=bd148621';
-import { saveWallet } from './storage.js?v=bd148621';
-import { openWallet } from './tokens.js?v=bd148621';
+import { $, base, bip32, bip39, ripe, sha } from './shell.js?v=95136c49';
+import { S } from './state.js?v=95136c49';
+import { saveWallet } from './storage.js?v=95136c49';
+import { openWallet } from './tokens.js?v=95136c49';
 
 /* ---------------- crypto ---------------- */
 const ITER = 600000;
