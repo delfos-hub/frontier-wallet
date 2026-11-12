@@ -109,7 +109,7 @@ ok('the same audited lock code as testnet', NETS.mainnet.tonCodeHash === NET.ton
 
 ok('R4-C2: the seller is told the answer window before publishing, and how to hear of a take',
   /function dutyPaint\(\)/.test(src) && /answer_window_sec/.test(src.slice(src.indexOf('function dutyPaint'))) &&
-  /open Frontier at least once a day while your offer is live/.test(src) && /dutyPaint\(\);\n\}/.test(src));
+  /Turn on Telegram alerts below to hear of a take in time/.test(src) && !/at least once a day/.test(src) && /dutyPaint\(\);\n\}/.test(src));
 ok('R4-C2: its own line for the seller\u2019s GRAM after a buyer claims, from terra_gap_sec',
   /#gx-duty2/.test(src) && /terra_gap_sec\) \|\| 86400\) \/ 3600/.test(src) && /claim it yourself/.test(src));
 

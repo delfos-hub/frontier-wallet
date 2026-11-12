@@ -133,6 +133,6 @@ ok('R4-B1: without intents on the Worker or a key to sign, the old flow', /if \(
 ok('R4-B1: the error code reaches the wallet', /if \(d\.code\) e\.code = String\(d\.code\)/.test(src));
 
 ok('R4 (5): the self-claim sends nothing to the LCD before the consent (no feeFor with the secret)',
-  /const fee = CLAIM_FEE_MAX;/.test(src) && !/const fee = await feeFor\(\[step\]\);\n    await consent\('Claim your LUNC'/.test(src));
+  /const fee = Math\.floor\(CLAIM_FEE_MAX \/ 1\.25\);/.test(src) && !/const fee = await feeFor\(\[step\]\);\n    await consent\('Claim your LUNC'/.test(src));
 
 report();

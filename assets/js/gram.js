@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=5ba1e658';
-import { GRAM_NET, TERMS } from './gram-net.js?v=5ba1e658';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=5ba1e658';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=5ba1e658';
-import { S } from './state.js?v=5ba1e658';
-import { decryptSeed } from './storage.js?v=5ba1e658';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=5ba1e658';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=5ba1e658';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=5ba1e658';
-import { chime, notify } from './notify.js?v=5ba1e658';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=68e386e5';
+import { GRAM_NET, TERMS } from './gram-net.js?v=68e386e5';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=68e386e5';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=68e386e5';
+import { S } from './state.js?v=68e386e5';
+import { decryptSeed } from './storage.js?v=68e386e5';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=68e386e5';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=68e386e5';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=68e386e5';
+import { chime, notify } from './notify.js?v=68e386e5';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -726,7 +726,8 @@ function dutyPaint(){
   const mins = Math.round(((POLICY && POLICY.answer_window_sec) || 1800) / 60);
   el.textContent = TG_LINKED
     ? 'Each buyer waits for you to lock their LUNC within ' + mins + ' min. The wallet bot tells you when a buyer takes your offer.'
-    : 'Each buyer waits for you to lock their LUNC within ' + mins + ' min, or the take counts against your offer. Turn on Telegram alerts below, or open Frontier at least once a day while your offer is live.';
+    // no daily-visit advice here: a visit a day cannot meet a 30-minute window (Pablo)
+    : 'Each buyer waits for you to lock their LUNC within ' + mins + ' min, or the take counts against your offer. Turn on Telegram alerts below to hear of a take in time.';
   // after the buyer claims the LUNC, the GRAM is the seller's to collect on TON
   // (audit round 4, C2): the relayer does it; if it is down, the seller's own
   // wallet does, within the gap between the two locks
@@ -1495,7 +1496,9 @@ async function selfClaim(id){
     // simulation would send it to the LCD before the buyer agreed (Pablo,
     // round 4). The consent shows a ceiling; sendSwap simulates when sending,
     // after the lock is read again, and refuses a fee above it.
-    const fee = CLAIM_FEE_MAX;
+    // sendSwap lets a fee through up to 1.25x the reviewed one: the reviewed
+    // fee is the ceiling / 1.25, so the ceiling shown is the one that holds
+    const fee = Math.floor(CLAIM_FEE_MAX / 1.25);
     await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC'],
       ['Network fee', 'at most ' + human(BigInt(CLAIM_FEE_MAX), 6) + ' LUNC']],
       JSON.stringify({ claim: { id: b.terraLockId, secret: '(hidden: the secret kept on this device)' } }),
