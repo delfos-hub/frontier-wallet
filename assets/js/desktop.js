@@ -92,3 +92,54 @@ function apply(){
 }
 WIDE.addEventListener('change', apply);
 apply();
+
+/* Stake and Vote on a wide screen, like Home: two columns. The left one
+   holds what is mine (the stake ring, its tiles and actions; my voting power
+   and what is being voted now) and stays in view; the right one holds the
+   lists (validators, unstaking; recent proposals). Each screen draws its body
+   again on every refresh, so the columns are made again after each drawing.
+   Narrower than 1100 px, the body is put back as it was drawn. */
+const SPLITS = {
+  'stk-body': { left: el => el.matches('.stk-hero, .stk-bigacts, .stk-steps') },
+  // everything before the "Recent" heading is the left column
+  'gov-body': { rightFrom: el => el.classList.contains('head') && !!el.nextElementSibling && el.nextElementSibling.classList.contains('gv-recent') },
+};
+function unsplit(box){
+  const cur = box.querySelector(':scope > .dk-split');
+  if (!cur) return;
+  [...cur.querySelector('.dk-l').children, ...cur.querySelector('.dk-r').children].forEach(c => box.insertBefore(c, cur));
+  cur.remove();
+}
+function resplit(id){
+  const box = document.getElementById(id);
+  if (!box) return;
+  if (!WIDE.matches) { unsplit(box); return; }
+  const kids = [...box.children];
+  if (kids.length === 1 && kids[0].classList.contains('dk-split')) return;     // already in columns
+  // Decide both columns before anything moves (Pablo, #53): when one of them
+  // would be empty (no "Recent" heading, a failed request), nothing is
+  // touched, so the observer sees no change and does not run again.
+  const cur = box.querySelector(':scope > .dk-split');
+  const all = cur ? [...cur.querySelector('.dk-l').children, ...cur.querySelector('.dk-r').children, ...kids.filter(k => k !== cur)] : kids;
+  const rule = SPLITS[id];
+  const left = [], right = [];
+  let toRight = false;
+  for (const k of all) {
+    if (rule.rightFrom) { if (!toRight && rule.rightFrom(k)) toRight = true; (toRight ? right : left).push(k); }
+    else (rule.left(k) ? left : right).push(k);
+  }
+  if (!left.length || !right.length) { if (cur) unsplit(box); return; }        // as drawn
+  const wrap = document.createElement('div'); wrap.className = 'dk-split';
+  const l = document.createElement('div'); l.className = 'dk-l';
+  const r = document.createElement('div'); r.className = 'dk-r';
+  l.append(...left); r.append(...right);
+  wrap.append(l, r);
+  box.append(wrap);
+  if (cur) cur.remove();
+}
+Object.keys(SPLITS).forEach(id => {
+  const box = document.getElementById(id);
+  if (box) new MutationObserver(() => resplit(id)).observe(box, { childList: true });
+});
+WIDE.addEventListener('change', () => Object.keys(SPLITS).forEach(resplit));
+Object.keys(SPLITS).forEach(resplit);
