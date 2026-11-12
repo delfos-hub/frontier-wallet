@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=68e386e5';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=68e386e5';
-import { $, go } from './shell.js?v=68e386e5';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=1072f2a7';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=1072f2a7';
+import { $, go } from './shell.js?v=1072f2a7';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -437,7 +437,7 @@ function syncList(list, shown, emptyMsg){
    holding $0.21 next to $286 in DeFi read as an empty wallet. The line under
    the number splits the two. TOTAL_SHOWN stays the wallet alone - shares of
    "your wallet" on the token page are shares of what is spendable. */
-let EXTRA = 0, SHOWN_SUM = null;
+let EXTRA = 0, EXTRA_EST = false, SHOWN_SUM = null;   // EXTRA_EST: the DeFi part holds an estimate
 function showTotal(el){
   const sum = TOTAL_SHOWN + EXTRA;
   tweenTotal(el, SHOWN_SUM, sum);
@@ -451,10 +451,11 @@ function drawSplit(){
   if (!el) return;
   if (!(EXTRA > 0) || TOTAL_SHOWN === null) { el.hidden = true; return; }
   el.hidden = false;
-  el.innerHTML = '<span>Wallet <b>' + usd(TOTAL_SHOWN) + '</b></span><i></i><span>DeFi <b>' + usd(EXTRA) + '</b></span>';
+  el.innerHTML = '<span>Wallet <b>' + usd(TOTAL_SHOWN) + '</b></span><i></i><span>DeFi <b>' + (EXTRA_EST ? '\u2248 ' : '') + usd(EXTRA) + '</b></span>';
 }
-function setExtraUsd(v){
+function setExtraUsd(v, est){
   EXTRA = v > 0 ? v : 0;
+  EXTRA_EST = !!est && EXTRA > 0;
   const el = $('#bal-total');
   if (el && TOTAL_SHOWN !== null) showTotal(el); else drawSplit();
 }
@@ -464,7 +465,9 @@ function setExtraUsd(v){
    refresh that found the same money draws nothing at all. */
 let TWEEN = 0;
 function tweenTotal(el, from, to){
-  const done = usd(to);
+  // "about" in front while the DeFi part holds an estimate (Pablo, #49)
+  const usdT = v => (EXTRA_EST ? '\u2248 ' : '') + usd(v);
+  const done = usdT(to);
   if (from === null || from === undefined || !isFinite(from) || el.textContent === done ||
       Math.abs(to - from) < 0.005 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
     TWEEN++;
@@ -476,7 +479,7 @@ function tweenTotal(el, from, to){
     if (id !== TWEEN) return;
     const k = Math.min(1, (now - t0) / ms);
     const e = 1 - Math.pow(1 - k, 3);
-    setText(el, k < 1 ? usd(from + (to - from) * e) : done);
+    setText(el, k < 1 ? usdT(from + (to - from) * e) : done);
     if (k < 1) requestAnimationFrame(step);
   })(t0);
 }

@@ -2238,3 +2238,29 @@ html.dk .tabs .dk-bal:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px
 /* the seller's answer duty under Sign and publish (R4-C2) */
 .gx-duty{margin:10px 4px 0;font-size:12px;line-height:1.5;color:var(--muted)}
 .gx-duty:empty{display:none}
+
+
+/* Frontier Web on a wide screen, phase 2: Stake and Vote in two columns,
+   the transaction's details beside History, other sheets in the middle */
+html.dk :is(#st-stake,#st-gov){max-width:min(1240px,calc(100vw - var(--rail) - 80px))!important}
+html.dk .dk-split{display:grid;grid-template-columns:minmax(320px,400px) minmax(0,1fr);gap:24px;align-items:start}
+html.dk .dk-l{position:sticky;top:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+html.dk .dk-r{min-width:0}
+html.dk .dk-l>*{margin-top:0!important;margin-bottom:0!important}
+html.dk .dk-r>.head:first-child{margin-top:0!important}
+/* Stake: the three actions keep their row in the narrow column */
+html.dk .dk-l .stk-bigacts{gap:8px}
+html.dk .dk-l .stk-tiles{grid-template-columns:1fr 1fr 1fr}
+/* Vote: recent proposals scroll inside their column */
+html.dk .dk-r .gv-recent{max-height:calc(100vh - 150px);overflow-y:auto;padding-right:4px}
+/* History: the transaction opens as a panel beside the list, not over it */
+html.dk #tx-sheet{inset:0 0 0 auto!important;width:440px;padding:16px 16px 16px 0!important;background:none;backdrop-filter:none;align-items:stretch}
+html.dk #tx-sheet .sw-sheet-in{max-height:none;height:100%;border-radius:22px;border:1px solid rgba(0,212,255,.25);
+  box-shadow:-24px 0 60px -30px rgba(0,0,0,.9);animation:none}
+html.dk body:has(#tx-sheet:not([hidden])) #st-activity{margin-right:456px!important;margin-left:24px!important}
+/* other sheets (pickers, confirmations) open in the middle, as windows */
+html.dk .sw-sheet:not(#tx-sheet){align-items:center}
+html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px solid rgba(0,212,255,.22);max-height:84vh}
+
+/* read by screen readers, not shown: the rail balance's button name (Pablo, #48) */
+.dk-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}

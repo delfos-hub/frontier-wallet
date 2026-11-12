@@ -12,11 +12,11 @@
        of a dash that reads like an error.
    It only adds elements next to the ones tokens.js owns and never writes into
    those, so the two cannot fight over the same text. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=68e386e5';
-import { $ } from './shell.js?v=68e386e5';
-import { S } from './state.js?v=68e386e5';
-import { stakingApr } from './stake.js?v=68e386e5';
-import { refreshBalances } from './tokens.js?v=68e386e5';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=1072f2a7';
+import { $ } from './shell.js?v=1072f2a7';
+import { S } from './state.js?v=1072f2a7';
+import { stakingApr } from './stake.js?v=1072f2a7';
+import { refreshBalances } from './tokens.js?v=1072f2a7';
 
 const MARKETS = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=terra-luna,terrausd' +
   '&sparkline=true&price_change_percentage=24h';
