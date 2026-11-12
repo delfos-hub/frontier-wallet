@@ -2252,5 +2252,4 @@ html.dk #tx-sheet .sw-sheet-in{max-height:none;height:100%;border-radius:22px;bo
 html.dk body:has(#tx-sheet:not([hidden])) #st-activity{margin-right:456px!important;margin-left:24px!important}
 /* other sheets (pickers, confirmations) open in the middle, as windows */
 html.dk .sw-sheet:not(#tx-sheet){align-items:center}
-html.dk body:has(#tabs.on) .sw-sheet:not(#tx-sheet){padding-left:var(--rail)}
 html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px solid rgba(0,212,255,.22);max-height:84vh}

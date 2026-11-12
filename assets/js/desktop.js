@@ -116,21 +116,26 @@ function resplit(id){
   if (!WIDE.matches) { unsplit(box); return; }
   const kids = [...box.children];
   if (kids.length === 1 && kids[0].classList.contains('dk-split')) return;     // already in columns
-  unsplit(box);
-  const all = [...box.children];
-  if (all.length < 2) return;                                                   // "Loading", an error: as drawn
+  // Decide both columns before anything moves (Pablo, #53): when one of them
+  // would be empty (no "Recent" heading, a failed request), nothing is
+  // touched, so the observer sees no change and does not run again.
+  const cur = box.querySelector(':scope > .dk-split');
+  const all = cur ? [...cur.querySelector('.dk-l').children, ...cur.querySelector('.dk-r').children, ...kids.filter(k => k !== cur)] : kids;
   const rule = SPLITS[id];
+  const left = [], right = [];
+  let toRight = false;
+  for (const k of all) {
+    if (rule.rightFrom) { if (!toRight && rule.rightFrom(k)) toRight = true; (toRight ? right : left).push(k); }
+    else (rule.left(k) ? left : right).push(k);
+  }
+  if (!left.length || !right.length) { if (cur) unsplit(box); return; }        // as drawn
   const wrap = document.createElement('div'); wrap.className = 'dk-split';
   const l = document.createElement('div'); l.className = 'dk-l';
   const r = document.createElement('div'); r.className = 'dk-r';
-  let right = false;
-  for (const k of all) {
-    if (rule.rightFrom) { if (!right && rule.rightFrom(k)) right = true; (right ? r : l).append(k); }
-    else (rule.left(k) ? l : r).append(k);
-  }
-  if (!l.children.length || !r.children.length) { [...l.children, ...r.children].forEach(c => box.append(c)); return; }
+  l.append(...left); r.append(...right);
   wrap.append(l, r);
   box.append(wrap);
+  if (cur) cur.remove();
 }
 Object.keys(SPLITS).forEach(id => {
   const box = document.getElementById(id);
