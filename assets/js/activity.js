@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=326144af';
-import { DEC, knownAsset as marketAsset } from './market.js?v=326144af';
-import { $, go } from './shell.js?v=326144af';
-import { fiatOf, heldTokens } from './tokens.js?v=326144af';
-import { S } from './state.js?v=326144af';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=5d689f3a';
+import { DEC, knownAsset as marketAsset } from './market.js?v=5d689f3a';
+import { $, go } from './shell.js?v=5d689f3a';
+import { fiatOf, heldTokens } from './tokens.js?v=5d689f3a';
+import { S } from './state.js?v=5d689f3a';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -28,7 +28,7 @@ function clock(ts){
   if (s < 3600) return Math.round(s / 60) + 'm ago';
   // the wallet speaks English; the phone's own locale (a Russian month name
   // under an English heading) is not asked
-  return t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return t.toLocaleTimeString((document.documentElement.lang && document.documentElement.lang !== 'en' ? document.documentElement.lang : 'en-GB'), { hour: '2-digit', minute: '2-digit' });
 }
 
 // midnight to midnight, in the reader's own timezone rather than the chain's
@@ -44,7 +44,8 @@ function dayName(ts){
   if (same) return 'Today';
   if (dayKey(ts) === dayKey(y)) return 'Yesterday';
   const within = (now - d) / 86400000 < 300;
-  return d.toLocaleDateString('en-GB', within
+  // in the interface language (the translator sets the page's lang)
+  return d.toLocaleDateString((document.documentElement.lang && document.documentElement.lang !== 'en' ? document.documentElement.lang : 'en-GB'), within
     ? { day: 'numeric', month: 'long' }
     : { day: 'numeric', month: 'long', year: 'numeric' });
 }
