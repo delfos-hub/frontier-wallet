@@ -92,7 +92,8 @@ ok('the mainnet swap is offered on Frontier Web only, never on the Mini App\u201
   /NET\.origins\.indexOf\(location\.origin\)/.test(src));
 ok('consents name the network in use, never a fixed "TON testnet" (R4-C1)', !/TON testnet'/.test(src));
 ok('a second node for the seller\u2019s lock on mainnet (R4-B3)', !!NETS.mainnet.lcd2 && NETS.mainnet.lcd2 !== NETS.mainnet.lcd && /NET\.lcd2/.test(lift(src, 'async function sellerLockOk(b, take){')));
-ok('every GRAM Terra signing shows its fee in the consent first (R4-D1)', (src.match(/await feeFor\(\[step\]\)/g) || []).length === 3 && !/NO_FEE_REVIEW/.test(src));
+ok('every GRAM Terra signing shows its fee in the consent first (R4-D1): an estimate, or a ceiling for the self-claim',
+  (src.match(/await feeFor\(\[step\]\)/g) || []).length === 2 && /'at most ' \+ human\(BigInt\(CLAIM_FEE_MAX\), 6\)/.test(src) && !/NO_FEE_REVIEW/.test(src));
 ok('a paused book keeps its rules, flagged paused, so swaps under way go on (R4-E1, review of 1379f8a)', (() => { try { const r = pinMain(Object.assign({}, WORKER_MAIN, { paused: 'tax changed' })); return r.paused === 'tax changed' && r.tax_bps === 150; } catch (e) { return false; } })());
 ok('a refusal on a cached pause reads the book again, so it ends without a reload (R4-F1)',
   /POLICY\.paused\) \{ say\('#gx-msg', PAUSED_MSG, true\); load\(\); return; \}/.test(src) &&
@@ -109,5 +110,10 @@ ok('the same audited lock code as testnet', NETS.mainnet.tonCodeHash === NET.ton
 ok('R4-C2: the seller is told the answer window before publishing, and how to hear of a take',
   /function dutyPaint\(\)/.test(src) && /answer_window_sec/.test(src.slice(src.indexOf('function dutyPaint'))) &&
   /open Frontier at least once a day while your offer is live/.test(src) && /dutyPaint\(\);\n\}/.test(src));
+ok('R4-C2: its own line for the seller\u2019s GRAM after a buyer claims, from terra_gap_sec',
+  /#gx-duty2/.test(src) && /terra_gap_sec\) \|\| 86400\) \/ 3600/.test(src) && /claim it yourself/.test(src));
+
+ok('R4 (6): every GRAM record key carries the network', /'fw:gram:' \+ kind \+ ':' \+ NET\.name \+ ':' \+ addrOf\(\)/.test(src) &&
+  !/'fw:gram:(signed|ton|final|locks|buys):' \+ addrOf\(\)/.test(src.replace(/const old = [^\n]*/, '')));
 
 report();

@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=bb457758';
-import { GRAM_NET, TERMS } from './gram-net.js?v=bb457758';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=bb457758';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=bb457758';
-import { S } from './state.js?v=bb457758';
-import { decryptSeed } from './storage.js?v=bb457758';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=bb457758';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=bb457758';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=bb457758';
-import { chime, notify } from './notify.js?v=bb457758';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=5ba1e658';
+import { GRAM_NET, TERMS } from './gram-net.js?v=5ba1e658';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=5ba1e658';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=5ba1e658';
+import { S } from './state.js?v=5ba1e658';
+import { decryptSeed } from './storage.js?v=5ba1e658';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=5ba1e658';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=5ba1e658';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=5ba1e658';
+import { chime, notify } from './notify.js?v=5ba1e658';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -149,7 +149,20 @@ function setPolicy(p){
 /* Offers this wallet signed, kept on the device (audit round 3, B1). When a
    buyer takes one, the lock is checked against what the seller signed, never
    against the Worker's copy of it. */
-const signedKey = () => 'fw:gram:signed:' + addrOf();
+// The network is in every key (Pablo, round 4): testnet and mainnet records
+// never mix. Records from before it was (all made on testnet) move to the
+// testnet keys the first time they are read there.
+function gk(kind){
+  const k = 'fw:gram:' + kind + ':' + NET.name + ':' + addrOf();
+  if (NET.name === 'testnet') {
+    try {
+      const old = 'fw:gram:' + kind + ':' + addrOf(), v = localStorage.getItem(old);
+      if (v !== null && localStorage.getItem(k) === null) { localStorage.setItem(k, v); localStorage.removeItem(old); }
+    } catch (e) {}
+  }
+  return k;
+}
+const signedKey = () => gk('signed');
 function signedAll(){ try { return JSON.parse(localStorage.getItem(signedKey()) || '{}'); } catch (e) { return {}; } }
 function signedOffer(id){ const s = signedAll()[id]; try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 function keepSigned(id, payload){
@@ -162,7 +175,7 @@ function keepSigned(id, payload){
 let BAL = null;            // maker's uluna on NET.chain
 let LOADING = false;
 let TAKES = [];            // my takes as last loaded
-const tonKey = () => 'fw:gram:ton:' + addrOf();
+const tonKey = () => gk('ton');
 
 /* ---------------- home card ---------------- */
 function paintPills(){
@@ -272,7 +285,7 @@ function drawOffers(list){
    refunded on Terra, read from the chain) leaves the list for good, with a
    short note when it finishes while the screen is open; a take nobody
    answered in time leaves too. My record stays as one line. */
-const finalKey = () => 'fw:gram:final:' + addrOf();
+const finalKey = () => gk('final');
 function finals(){ try { return JSON.parse(localStorage.getItem(finalKey()) || '{}'); } catch (e) { return {}; } }
 function setFinal(ton, v){ const f = finals(); f[ton] = v; try { localStorage.setItem(finalKey(), JSON.stringify(f)); } catch (e) {} }
 const OPEN_SEEN = new Set();          // locked deals seen still open in this session
@@ -714,6 +727,15 @@ function dutyPaint(){
   el.textContent = TG_LINKED
     ? 'Each buyer waits for you to lock their LUNC within ' + mins + ' min. The wallet bot tells you when a buyer takes your offer.'
     : 'Each buyer waits for you to lock their LUNC within ' + mins + ' min, or the take counts against your offer. Turn on Telegram alerts below, or open Frontier at least once a day while your offer is live.';
+  // after the buyer claims the LUNC, the GRAM is the seller's to collect on TON
+  // (audit round 4, C2): the relayer does it; if it is down, the seller's own
+  // wallet does, within the gap between the two locks
+  const el2 = $('#gx-duty2');
+  if (el2) {
+    const hrs = Math.round(((POLICY && POLICY.terra_gap_sec) || 86400) / 3600);
+    el2.textContent = 'After a buyer claims the LUNC, the relayer claims your GRAM on TON for you. If it is down, open Frontier within about ' + hrs +
+      ' hours to claim it yourself' + (TG_LINKED ? '; the wallet bot tells you when a claim is due.' : '. Telegram alerts tell you when a claim is due.');
+  }
 }
 // Outside Telegram there is no initData: the account is proven by pressing
 // Start on a one-time link to the bot (the Worker's web path, widgets #68).
@@ -878,7 +900,7 @@ $('#gx-tg-btn').addEventListener('click', () => (TG_LINKED || TG_WAIT ? tgTurnOf
       this device, so a lock is never made twice for one take and never
       reused for another (audit #34, A2). */
 const MARGIN = 600;                      // spec: the Terra lock ends this much before the gap
-const lockKey = () => 'fw:gram:locks:' + addrOf();
+const lockKey = () => gk('locks');
 function mineAll(){ try { return JSON.parse(localStorage.getItem(lockKey()) || '{}'); } catch (e) { return {}; } }
 function mineFor(ton){ return mineAll()[ton] || {}; }
 function remember(ton, v){
@@ -1179,7 +1201,7 @@ setTimeout(watchTakes, 3000);
 let BOOK = [];
 let TC = null, TC_LOADING = null;
 const CLAIM_MARGIN = NET.name === 'testnet' ? 300 : 3600;     // what the relayer needs left on the Terra lock
-const buysKey = () => 'fw:gram:buys:' + addrOf();
+const buysKey = () => gk('buys');
 function buys(){ try { return JSON.parse(localStorage.getItem(buysKey()) || '{}'); } catch (e) { return {}; } }
 function saveBuy(id, v){ const b = buys(); b[id] = Object.assign(b[id] || {}, v); try { localStorage.setItem(buysKey(), JSON.stringify(b)); } catch (e) {} return b[id]; }
 // The relayer receives the buyer's secret. Only on testnet may a URL saved on
@@ -1369,7 +1391,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     }
     // R4-B1: register the take before paying, so the Worker announces it when
     // the lock shows up on TON, even if this page is never opened again. A full
-    // cap or the rate limit (intents_full, rate_limited, any 429), a Worker
+    // cap or the rate limit (intents_full, rate_limited), a Worker
     // without intents, or a session that cannot sign falls back to the old
     // flow: pay, then announce on return. Any other refusal stops here, before
     // any GRAM moves (Pablo, #67).
@@ -1381,7 +1403,9 @@ $('#gx-bb-pay').addEventListener('click', async function(){
         await api('/intents', await signArbitrary(S.MNEMONIC, me, intent));
         saveBuy(id, { intent: true });
       } catch (e) {
-        if (!(e && (e.status === 429 || e.code === 'intents_full' || e.code === 'rate_limited'))) {
+        // only these two: any other refusal, a 429 among them (the buyer's
+        // pending-takes limit), would also refuse the take after paying
+        if (!(e && (e.code === 'intents_full' || e.code === 'rate_limited'))) {
           saveBuy(id, { stage: 'cancelled' });
           say('#gx-bb-msg', (e && e.message ? e.message : String(e)) + ' Nothing was paid.', true);
           load();
@@ -1460,13 +1484,20 @@ function selfClaimBtn(id, b){
   return '<button class="btn solid gx-selfclaim" type="button" data-id="' + esc(id) + '">Claim the LUNC myself</button>' +
     '<p class="gx-hint">The relayer has not claimed yet. Claiming yourself costs a little LUNC for gas' + (BAL !== null && BAL < 5000000n ? ' - you have none on ' + NET.chain + ' yet' : '') + '.</p>';
 }
+// a claim uses well under 400k gas; at the network's 28.325 uluna a gas
+const CLAIM_FEE_MAX = Math.ceil(400000 * 28.325);
 async function selfClaim(id){
   const b = buys()[id];
   if (!b || !b.terraLockId) return;
   const step = { contract: NET.htlc, msg: { claim: { id: b.terraLockId, secret: b.secret } }, funds: [] };
   try {
-    const fee = await feeFor([step]);
-    await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC'], feeLine(fee)],
+    // No simulation before the consent: the claim carries the secret, and a
+    // simulation would send it to the LCD before the buyer agreed (Pablo,
+    // round 4). The consent shows a ceiling; sendSwap simulates when sending,
+    // after the lock is read again, and refuses a fee above it.
+    const fee = CLAIM_FEE_MAX;
+    await consent('Claim your LUNC', [['Terra lock', '#' + b.terraLockId], ['You receive', human(b.lunc, 6) + ' LUNC'],
+      ['Network fee', 'at most ' + human(BigInt(CLAIM_FEE_MAX), 6) + ' LUNC']],
       JSON.stringify({ claim: { id: b.terraLockId, secret: '(hidden: the secret kept on this device)' } }),
       async function (m, st) {
         st(0);
