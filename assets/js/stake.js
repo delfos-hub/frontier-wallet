@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=0d24441b';
-import { $, buzz } from './shell.js?v=0d24441b';
-import { S } from './state.js?v=0d24441b';
-import { luncRaw, refreshBalances } from './tokens.js?v=0d24441b';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=0d24441b';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=ef1415da';
+import { $, buzz } from './shell.js?v=ef1415da';
+import { S } from './state.js?v=ef1415da';
+import { luncRaw, refreshBalances } from './tokens.js?v=ef1415da';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=ef1415da';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -334,7 +334,7 @@ function draw(){
       const days = Math.ceil(leftMs / 86400000);
       const done = Math.min(UNBOND_DAYS, Math.max(0, UNBOND_DAYS - leftMs / 86400000));
       return '<div class="stk-unb"><div class="stk-unb-top"><b>' + L(u.amount) + ' LUNC</b><small>back on ' +
-        u.at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' \u00b7 ' + (days ? days + ' day' + (days > 1 ? 's' : '') : 'today') + '</small></div>' +
+        u.at.toLocaleDateString((document.documentElement.lang && document.documentElement.lang !== 'en' ? document.documentElement.lang : 'en-GB'), { day: 'numeric', month: 'short' }) + ' \u00b7 ' + (days ? days + ' day' + (days > 1 ? 's' : '') : 'today') + '</small></div>' +
         '<div class="stk-bar c"><i style="width:' + (done * 100 / UNBOND_DAYS).toFixed(1) + '%"></i></div>' +
         '<small>from ' + esc(v.name) + ' \u00b7 ' + Math.floor(done) + ' of ' + UNBOND_DAYS + ' days</small></div>';
     }).join('');
@@ -557,7 +557,7 @@ function reviewLines(f){
   if (f.kind === 'delegate') return [['Action', 'Stake ' + a], ['Validator', nameOf(f.validator)],
     ['Commission', ((DATA.byAddr[f.validator] || {}).rate * 100 || 0).toFixed(1) + '% of rewards']];
   if (f.kind === 'undelegate') return [['Action', 'Unstake ' + a], ['Validator', nameOf(f.validator)],
-    ['Back on', new Date(Date.now() + UNBOND_DAYS * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })]];
+    ['Back on', new Date(Date.now() + UNBOND_DAYS * 86400000).toLocaleDateString((document.documentElement.lang && document.documentElement.lang !== 'en' ? document.documentElement.lang : 'en-GB'), { day: 'numeric', month: 'short', year: 'numeric' })]];
   return [['Action', 'Move ' + a], ['From', nameOf(f.from)], ['To', nameOf(f.to)]];
 }
 
