@@ -20,16 +20,16 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=3875134b';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=3875134b';
-import { $, go, tap } from './shell.js?v=3875134b';
-import { S } from './state.js?v=3875134b';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=3875134b';
-import * as P from './defi-parse.js?v=3875134b';
-import { dryRunSwap, sendSwap } from './tx.js?v=3875134b';
-import { notify } from './notify.js?v=3875134b';
-import { buzz } from './shell.js?v=3875134b';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=3875134b';
+import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=bcd7a552';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=bcd7a552';
+import { $, go, tap } from './shell.js?v=bcd7a552';
+import { S } from './state.js?v=bcd7a552';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=bcd7a552';
+import * as P from './defi-parse.js?v=bcd7a552';
+import { dryRunSwap, sendSwap } from './tx.js?v=bcd7a552';
+import { notify } from './notify.js?v=bcd7a552';
+import { buzz } from './shell.js?v=bcd7a552';
+import { refreshBalances, setExtraUsd } from './tokens.js?v=bcd7a552';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -832,7 +832,7 @@ function homeLine(n, total, rewards, rows, est){
   if (sub) sub.textContent = n ? n + (n === 1 ? ' position' : ' positions') + ' \u00b7 Garuda, Terraport, Juris'
                                : 'Staking, farms and pools on DEXes';
   if (r) r.textContent = n && total > 0 ? (est ? '\u2248 ' : '') + usd(total) : '';
-  setExtraUsd(n ? total : 0);
+  setExtraUsd(n ? total : 0, !!est);
   if (rw) rw.textContent = n && rewards >= 0.01 ? '+' + usd(rewards) + ' rewards' : '';
   // up to three logos of what your positions hold, overlapping like a hand of
   // cards; with nothing known yet, the plain mark stays
