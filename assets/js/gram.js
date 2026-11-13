@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=35df6156';
-import { GRAM_NET, TERMS } from './gram-net.js?v=35df6156';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=35df6156';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=35df6156';
-import { S } from './state.js?v=35df6156';
-import { decryptSeed } from './storage.js?v=35df6156';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=35df6156';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=35df6156';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=35df6156';
-import { chime, notify } from './notify.js?v=35df6156';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=11ece189';
+import { GRAM_NET, TERMS } from './gram-net.js?v=11ece189';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=11ece189';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=11ece189';
+import { S } from './state.js?v=11ece189';
+import { decryptSeed } from './storage.js?v=11ece189';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=11ece189';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=11ece189';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=11ece189';
+import { chime, notify } from './notify.js?v=11ece189';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1378,6 +1378,12 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       return;
     }
     if (fresh.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
+    // the lock's timeout is worked out from this device's clock: one far off
+    // would pay a lock the offers service refuses (audit C4)
+    if (fresh.server_time && Math.abs(now() - Number(fresh.server_time)) > 600) {
+      say('#gx-bb-msg', 'This device\u2019s clock is ' + Math.round(Math.abs(now() - Number(fresh.server_time)) / 60) + ' min off. Set the time to automatic and try again.', true);
+      return;
+    }
     if (!fresh.live) { say('#gx-bb-msg', 'This offer was cancelled or is no longer shown to buyers. Pick another one.', true); load(); return; }
     if (fresh.price !== q.o.price || fresh.maker_ton !== q.o.maker_ton) { say('#gx-bb-msg', 'The seller changed this offer. Check it again before paying.', true); load(); return; }
     if (BigInt(fresh.remaining_lunc) < q.lunc || BigInt(fresh.min_lunc) > q.lunc || Number(fresh.expires) < now() + policy.answer_window_sec) {
@@ -1694,8 +1700,13 @@ async function watchBuys(){
               notify({ key: 'gram:refused:' + id, kind: 'warn', icon: 'GRAM', label: 'Buy \u00b7 GRAM', title: 'Purchase not accepted',
                 text: 'Your GRAM is locked until ' + new Date(b.timeout * 1000).toLocaleString() + ', then you can take it back.' });
             } else saveBuyOf(me, id, { stage: 'announced', problem: null, refusedAt: null });
-          } else if (n.state === 'active' && n.status !== 'open') {
+          } else if (n.state === 'active' && (n.status === 'claimed' || n.status === 'refunded')) {
             saveBuyOf(me, id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
+          } else if (n.state === 'active' && n.status !== 'open') {
+            // any other answer (unfunded, foreign code) is shown and read again,
+            // never taken as a finished purchase (audit C5)
+            const why = 'TON reads this lock as ' + (n.foreignCode ? 'running other code' : (n.status || 'unknown')) + '; reading it again.';
+            if (b.problem !== why) saveBuyOf(me, id, { problem: why });
           } else if (now() > (b.validUntil || b.created + 360) + 300) {
             saveBuyOf(me, id, { stage: 'cancelled' });   // the payment can no longer land: nothing was locked
           }                                          // else: it may still land, read again next round
@@ -1739,9 +1750,16 @@ async function watchBuys(){
             // the relayer finishes it; a repeated /claim with the same pair is answered, not doubled
             let problem = null;
             try {
+              // 15 s at most: a relayer that never answers must not hold the round (audit B13)
               const r = await fetch(relayerUrl() + '/claim', { method: 'POST', headers: { 'content-type': 'application/json' },
+                signal: AbortSignal.timeout(15000),
                 body: JSON.stringify({ terraLockId: b.terraLockId, tonLock: id, secret: b.secret, offerId: b.offerId, lunc: b.lunc }) });
               if (!r.ok) { let m = ''; try { m = (await r.json()).error || ''; } catch (e) {} if (r.status >= 500 || r.status === 429) problem = 'The relayer is busy (' + r.status + '), trying again.'; else problem = 'The relayer refused: ' + (m || r.status); }
+              else {
+                // the relayer kept the secret back: say so (audit B10)
+                let j = null; try { j = await r.json(); } catch (e) {}
+                if (j && j.withheld) problem = 'The relayer kept the secret back: a lock is too close to its end to claim safely. If time is left, claim the LUNC yourself; otherwise both sides go back at their timeouts.';
+              }
             } catch (e) { problem = 'The relayer is not reachable at ' + relayerUrl() + '. Check its address (change relayer).'; }
             if (problem !== (b.problem || null) || b.terraTimeout !== all[id].terraTimeout) saveBuyOf(me, id, { problem: problem, terraTimeout: b.terraTimeout });
           }

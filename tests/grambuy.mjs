@@ -24,7 +24,7 @@ function lift(s, header){
 const NOW = 1_800_000_000, ID = '0:' + 'cc'.repeat(32), ME = 'terra1me';
 const httpError = (status, msg) => Object.assign(new Error(msg), { status });
 
-async function run(buy, { lock, takes, takeRecord, clock = NOW, switchTo }){
+async function run(buy, { lock, takes, takeRecord, clock = NOW, switchTo, lcd, relay }){
   const store = { [ID]: Object.assign({ offerId: 'o1', lunc: '100000000', gram: '1', timeout: NOW + 30 * 3600, created: NOW - 60 }, buy) };
   const notes = [], savedBy = []; let addrCalls = 0;
   const env = {
@@ -38,8 +38,8 @@ async function run(buy, { lock, takes, takeRecord, clock = NOW, switchTo }){
       return takeRecord;
     },
     notify: n => notes.push(n), drawBuys: () => {}, sellerLockOk: async () => [], chime: () => {}, buzz: () => {}, load: () => {},
-    getJSON: async () => ({}), relayerUrl: () => '', human: x => String(x),
-    NET: { tonApi: '', tonCodeHash: '', lcd: '', htlc: '' }, btoa: x => x, fetch: async () => ({ ok: true })
+    getJSON: async () => (lcd ? { data: lcd } : {}), relayerUrl: () => '', human: x => String(x), CLAIM_MARGIN: 600,
+    NET: { tonApi: '', tonCodeHash: '', lcd: '', htlc: '' }, btoa: x => x, fetch: relay || (async () => ({ ok: true }))
   };
   const names = Object.keys(env);
   const f = new Function(...names, lift(src, 'async function watchBuys(){') + '\nreturn watchBuys;')(...names.map(k => env[k]));
@@ -88,7 +88,7 @@ ok('nothing landed: stays cancelled', r.b.stage === 'cancelled', r.b.stage);
 group('the secret is read back before any GRAM is asked for');
 // the Pay handler itself, lifted from gram.js; storage either keeps writes or
 // refuses them like a private window or a full disk does
-async function pay(storageWorks){
+async function pay(storageWorks, serverTime){
   let saved = {}; const sent = [], msgs = [];
   const LOCK = { raw: ID, address: 'EQlock', value: '1', stateInit: '', payload: '', codeHash: 'AB' };
   const env = {
@@ -98,7 +98,7 @@ async function pay(storageWorks){
     tonAccount: () => ({ chain: '-3', address: 'EQme' }),
     NET: { tonChain: '-3', tonCode: '', tonCodeHash: 'ab', name: 'testnet' },
     POLICY: { answer_window_sec: 60, min_ton_left_sec: 60, tip_address: 'EQtip', min_tip: '7' }, POLICY_ERR: '', setPolicy: x => x,
-    api: async () => ({ live: true, price: '1', maker_ton: 'EQmaker', remaining_lunc: '1000000000', min_lunc: '1', expires: NOW + 99999 }),
+    api: async () => ({ live: true, price: '1', maker_ton: 'EQmaker', remaining_lunc: '1000000000', min_lunc: '1', expires: NOW + 99999, server_time: serverTime }),
     load: () => {}, human: x => String(x), now: () => NOW, sha256hex: async () => 'hash', takeRefOf: async () => 'ref',
     tonRaw: x => x, buildLock: async () => LOCK, toHex: u => Buffer.from(u).toString('hex'),
     buys: () => JSON.parse(JSON.stringify(saved)), buysOf: () => JSON.parse(JSON.stringify(saved)),
@@ -163,5 +163,17 @@ ok('the fee comes from the rules loaded right before paying', p.saved[ID] && p.s
     { getItem: k => store[k] || null, setItem: (k, v) => { store[k] = v; } }, (kind, a) => kind + ':' + a);
   ok('a record holding only a stage is never created', saveBuyOf('terra1me', 'x', { stage: 'claiming' }) === null && !store['buys:terra1me']);
 }
+
+
+group('smaller items: odd TON answers, a withheld secret, the clock (audit C5, B10, C4)');
+r = await run({ stage: 'paying', validUntil: NOW + 300 }, { lock: { state: 'active', status: 'unfunded' } });
+ok('an unfunded answer is shown, not taken as a finished purchase', r.b.stage === 'paying' && /unfunded/.test(r.b.problem || ''), r.b.stage);
+r = await run({ stage: 'claiming', terraLockId: 7, secret: 'ab' }, { lock: OPEN, lcd: { status: 'open', timeout: NOW + 3600 },
+  relay: async () => ({ ok: true, json: async () => ({ withheld: true }) }) });
+ok('a pair the relayer kept back is said on the buy', /kept the secret back/.test(r.b.problem || ''), r.b.problem);
+p = await pay(true, NOW - 3600);
+ok('a device clock an hour off stops the buy before paying', p.sent.length === 0 && p.msgs.some(m => /clock is 60 min off/.test(m)), p.msgs.join(' | '));
+p = await pay(true, NOW - 30);
+ok('a clock within 10 min pays as before', p.sent.length === 1, p.msgs.join(' | '));
 
 report();
