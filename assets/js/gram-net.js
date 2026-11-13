@@ -107,11 +107,18 @@ NETS.mainnet = {
 // Mainnet once its entry is open. A tester can still use the test networks on
 // their own device: open the wallet once with ?gramnet=testnet in its address
 // (?gramnet=mainnet goes back). Outside a browser (tests) this is mainnet.
+// The choice from a link lasts for that tab only (audit C2): a link must not
+// move a wallet off mainnet for good, leaving its mainnet buys unwatched.
+// On the test origins it is kept, as before, for testers.
+const KEEP_NET_HOSTS = ['frontier-gram-test-e3v.pages.dev', 'localhost', '127.0.0.1'];
 function pickNet(){
   try {
+    const keep = KEEP_NET_HOSTS.includes(location.hostname);
+    const where = keep ? localStorage : sessionStorage;
     const q = new URLSearchParams(location.search).get('gramnet');
-    if (q === 'testnet' || q === 'mainnet') localStorage.setItem('fw:gram:net', q);
-    if (localStorage.getItem('fw:gram:net') === 'testnet') return NETS.testnet;
+    if (q === 'testnet' || q === 'mainnet') where.setItem('fw:gram:net', q);
+    if (!keep) localStorage.removeItem('fw:gram:net');      // a choice kept from an older link
+    if (where.getItem('fw:gram:net') === 'testnet') return NETS.testnet;
   } catch (e) { /* no browser here */ }
   return NETS.mainnet.ready ? NETS.mainnet : NETS.testnet;
 }

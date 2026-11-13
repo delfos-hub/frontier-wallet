@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d522290f';
-import { GRAM_NET, TERMS } from './gram-net.js?v=d522290f';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d522290f';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=d522290f';
-import { S } from './state.js?v=d522290f';
-import { decryptSeed } from './storage.js?v=d522290f';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=d522290f';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d522290f';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d522290f';
-import { chime, notify } from './notify.js?v=d522290f';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=35df6156';
+import { GRAM_NET, TERMS } from './gram-net.js?v=35df6156';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=35df6156';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=35df6156';
+import { S } from './state.js?v=35df6156';
+import { decryptSeed } from './storage.js?v=35df6156';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=35df6156';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=35df6156';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=35df6156';
+import { chime, notify } from './notify.js?v=35df6156';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -152,11 +152,12 @@ function setPolicy(p){
 // The network is in every key (Pablo, round 4): testnet and mainnet records
 // never mix. Records from before it was (all made on testnet) move to the
 // testnet keys the first time they are read there.
-function gk(kind){
-  const k = 'fw:gram:' + kind + ':' + NET.name + ':' + addrOf();
+function gk(kind){ return gkOf(kind, addrOf()); }
+function gkOf(kind, addr){
+  const k = 'fw:gram:' + kind + ':' + NET.name + ':' + addr;
   if (NET.name === 'testnet') {
     try {
-      const old = 'fw:gram:' + kind + ':' + addrOf(), v = localStorage.getItem(old);
+      const old = 'fw:gram:' + kind + ':' + addr, v = localStorage.getItem(old);
       if (v !== null && localStorage.getItem(k) === null) { localStorage.setItem(k, v); localStorage.removeItem(old); }
     } catch (e) {}
   }
@@ -1202,9 +1203,19 @@ setTimeout(watchTakes, 3000);
 let BOOK = [];
 let TC = null, TC_LOADING = null;
 const CLAIM_MARGIN = NET.name === 'testnet' ? 300 : 3600;     // what the relayer needs left on the Terra lock
-const buysKey = () => gk('buys');
-function buys(){ try { return JSON.parse(localStorage.getItem(buysKey()) || '{}'); } catch (e) { return {}; } }
-function saveBuy(id, v){ const b = buys(); b[id] = Object.assign(b[id] || {}, v); try { localStorage.setItem(buysKey(), JSON.stringify(b)); } catch (e) {} return b[id]; }
+// A wallet's buys, by its address (audit C8): an answer that comes after the
+// wallet was switched is written to the buys of the wallet that made the buy,
+// and a record that would hold only a stage is never created.
+function buysOf(a){ try { return JSON.parse(localStorage.getItem(gkOf('buys', a)) || '{}'); } catch (e) { return {}; } }
+function saveBuyOf(a, id, v){
+  const b = buysOf(a);
+  if (!b[id] && !v.created) return null;
+  b[id] = Object.assign(b[id] || {}, v);
+  try { localStorage.setItem(gkOf('buys', a), JSON.stringify(b)); } catch (e) {}
+  return b[id];
+}
+function buys(){ return buysOf(addrOf()); }
+function saveBuy(id, v){ return saveBuyOf(addrOf(), id, v); }
 // The relayer receives the buyer's secret. Only on testnet may a URL saved on
 // this device replace the one pinned in gram-net.js; anywhere else the pinned
 // one is used even if an old value is still in storage.
@@ -1213,7 +1224,8 @@ const relayerUrl = () => {
   if (NET.name !== 'testnet') return pinned;
   try { return (localStorage.getItem('fw:gram:relayer') || pinned).replace(/\/+$/, ''); } catch (e) { return pinned; }
 };
-const tipOf = gram => { const p = POLICY || {}; const fee = gram * BigInt(p.fee_bps || 0) / 10000n; const min = BigInt(p.min_tip || 5000000); return fee > min ? fee : min; };
+// the rules as loaded, else the network's pinned ones, never zero (audit C6)
+const tipOf = (gram, p = POLICY || NET.policy || {}) => { const fee = gram * BigInt(p.fee_bps || 0) / 10000n; const min = BigInt(p.min_tip || 5000000); return fee > min ? fee : min; };
 const RESERVE_NANO = 50000000n;
 
 /* ---------- tabs ---------- */
@@ -1355,6 +1367,8 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     const policy = POLICY || setPolicy((await api('/offers')).policy);
     if (!policy) { say('#gx-bb-msg', POLICY_ERR || 'The swap rules could not be loaded. Try again in a minute.', true); return; }
     if (policy.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
+    // the fee from the rules just loaded, not from the quote drawn before them (audit C6)
+    const tip = tipOf(q.gram, policy);
     // the offer as it stands now, not as the book showed it (audit round 3, D2)
     let fresh;
     try { fresh = await api('/offers/' + encodeURIComponent(q.o.id)); }
@@ -1372,7 +1386,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const hash = await sha256hex(secret);
     const terms = {
-      hash: hash, amount: q.gram, tip: q.tip,
+      hash: hash, amount: q.gram, tip: tip,
       timeout: now() + policy.min_ton_left_sec + 35 * 60,
       takerRef: await takeRefOf(me, q.o.id, q.lunc),
       recipient: tonRaw(q.o.maker_ton), refundTo: tonRaw(acc.address), relayer: tonRaw(policy.tip_address)
@@ -1381,11 +1395,11 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (lock.codeHash !== String(NET.tonCodeHash).toUpperCase()) throw new Error('the lock code in this wallet does not match the audited one');
     id = lock.raw;
     // the secret is kept BEFORE any GRAM moves: without it the LUNC could not be claimed
-    saveBuy(id, { offerId: q.o.id, lunc: String(q.lunc), gram: String(q.gram), tip: String(q.tip), secret: toHex(secret), hash: hash,
+    saveBuyOf(me, id, { offerId: q.o.id, lunc: String(q.lunc), gram: String(q.gram), tip: String(tip), secret: toHex(secret), hash: hash,
                   timeout: terms.timeout, address: lock.address, stage: 'paying', created: now() });
     // read it back: a browser that refuses to store (private window, storage
     // full or blocked) would otherwise lose the secret when the page closes
-    const kept = buys()[id];
+    const kept = buysOf(me)[id];
     if (!kept || kept.secret !== toHex(secret) || kept.address !== lock.address) {
       say('#gx-bb-msg', 'This browser did not keep the swap\u2019s data, so nothing was paid. Allow this site to store data (not a private window) and try again.', true);
       return;
@@ -1402,12 +1416,12 @@ $('#gx-bb-pay').addEventListener('click', async function(){
         const intent = JSON.stringify({ type: 'htlc-take-intent', v: 1, network: NET.name, offer_id: q.o.id,
           ton_lock: id, taker_terra: me, lunc: String(q.lunc), ts: now() });
         await api('/intents', await signArbitrary(S.MNEMONIC, me, intent));
-        saveBuy(id, { intent: true });
+        saveBuyOf(me, id, { intent: true });
       } catch (e) {
         // only these two: any other refusal, a 429 among them (the buyer's
         // pending-takes limit), would also refuse the take after paying
         if (!(e && (e.code === 'intents_full' || e.code === 'rate_limited'))) {
-          saveBuy(id, { stage: 'cancelled' });
+          saveBuyOf(me, id, { stage: 'cancelled' });
           say('#gx-bb-msg', (e && e.message ? e.message : String(e)) + ' Nothing was paid.', true);
           load();
           return;
@@ -1419,10 +1433,10 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     // after validUntil the payment can no longer land, so the chain gives a
     // sure answer then even if the wallet's answer is lost (audit round 3, D1)
     const validUntil = now() + 360;
-    saveBuy(id, { validUntil: validUntil });
+    saveBuyOf(me, id, { validUntil: validUntil });
     await tc.sendTransaction({ validUntil: validUntil, network: NET.tonChain,
       messages: [{ address: lock.address, amount: String(lock.value), stateInit: lock.stateInit, payload: lock.payload }] });
-    saveBuy(id, { stage: 'sent' });
+    saveBuyOf(me, id, { stage: 'sent' });
     $('#gx-buybox').hidden = true; BUYING = null;
     say('#gx-status', '');
     buzz('success');
@@ -1436,7 +1450,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       // refused in the TON wallet: nothing was signed. Any other failure (a
       // lost answer, the app closed meanwhile) is settled by reading the
       // chain: the buy stays 'paying' and watchBuys looks the lock up.
-      if (rejected) saveBuy(id, { stage: 'cancelled' });
+      if (rejected) saveBuyOf(me, id, { stage: 'cancelled' });
       else { drawBuys(); watchBuys(); }
     }
     say('#gx-bb-msg', rejected ? 'Payment cancelled in the TON wallet. Nothing was sent.'
@@ -1525,12 +1539,15 @@ async function selfClaim(id){
 
 function refundBtn(id, b){
   const late = now() >= b.timeout;
-  return (late && (b.stage === 'unanswered' || b.stage === 'announced' || b.stage === 'sent'))
+  // refunding and claiming too: a refund that never landed, a claim stuck on an
+  // unreadable node, both past the TON timeout (audit C3)
+  return (late && ['unanswered', 'announced', 'sent', 'refunding', 'claiming'].includes(b.stage))
     ? '<button class="btn solid gx-refund" type="button" data-id="' + esc(id) + '">Get my GRAM back</button>' : '';
 }
 function drawBuys(){
   const box = $('#gx-buys'), hero = $('#gx-hero');
-  const all = Object.entries(buys());
+  // a record with no amounts is not a buy (audit C8)
+  const all = Object.entries(buys()).filter(([, b]) => b && b.lunc && b.gram);
   const live = all.filter(([, b]) => LIVE.includes(b.stage)).sort((a, b) => b[1].created - a[1].created);
   const doneNew = all.filter(([, b]) => b.stage === 'done' && !b.seen).sort((a, b) => b[1].created - a[1].created)[0];
   // the hero: a finished buy not yet closed, else the newest one in progress
@@ -1565,7 +1582,7 @@ function drawBuys(){
     '<div class="gx-item gx-deal">' +
       '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'GRAM' }) + iconHTML({ sym: 'LUNC' }) + '</span>' +
       '<div class="gx-l"><b>' + human(b.lunc, 6) + ' LUNC</b> for ' + human(b.gram, 9) + ' GRAM<span>' + buyLine(b) + '</span>' +
-        stepsHtml(BUY_STEP[b.stage] ?? 1) + problemHtml(b) + '</div>' + refundBtn(id, b) +
+        stepsHtml(BUY_STEP[b.stage] ?? 1) + problemHtml(b) + selfClaimBtn(id, b) + '</div>' + refundBtn(id, b) +
     '</div>').join('');
   paintIcons(box);
 }
@@ -1629,7 +1646,10 @@ let WATCHING_BUYS = false;
 const REFUSAL_FINAL_SEC = 120;          // a take the Worker keeps refusing this long is refused
 async function watchBuys(){
   if (WATCHING_BUYS || document.hidden) return;
-  const all = buys();
+  // the wallet this round is about, taken once (audit C8)
+  const me = addrOf();
+  if (!me) return;
+  const all = buysOf(me);
   // a buy called off by the phone's clock stays watched for an hour: the TON
   // wallet checks validUntil against chain time, which may be behind (review of #21)
   const live = Object.entries(all).filter(([, b]) => ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'].includes(b.stage)
@@ -1641,7 +1661,7 @@ async function watchBuys(){
       try {
         if (b.stage === 'cancelled') {
           const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
-          if (n.state === 'active' && n.status === 'open') saveBuy(id, { stage: 'sent', problem: null });   // it landed after all
+          if (n.state === 'active' && n.status === 'open') saveBuyOf(me, id, { stage: 'sent', problem: null });   // it landed after all
           continue;
         }
         if (b.stage === 'paying' || b.stage === 'sent') {
@@ -1650,12 +1670,12 @@ async function watchBuys(){
             // paid: announce the take, and say so plainly if the Worker refuses it
             let refused = null;
             try {
-              await api('/takes', { offerId: b.offerId, tonLock: id, takerTerra: addrOf(), lunc: b.lunc });
+              await api('/takes', { offerId: b.offerId, tonLock: id, takerTerra: me, lunc: b.lunc });
             } catch (e) {
               // announced already (by us earlier, or by anyone on our behalf): fine if the record is ours
               let t = null;
               try { t = await api('/takes/' + encodeURIComponent(id)); } catch (e2) {}
-              if (!t || t.taker_terra !== addrOf() || t.lunc !== b.lunc) {
+              if (!t || t.taker_terra !== me || t.lunc !== b.lunc) {
                 if (!e.status || e.status >= 500 || e.status === 429) throw e;     // not an answer yet: next round
                 refused = e.message;
               }
@@ -1664,20 +1684,20 @@ async function watchBuys(){
             // ("TON lock is uninit"): a refusal counts only once it has
             // lasted REFUSAL_FINAL_SEC (review of #21).
             if (refused && (!b.refusedAt || now() - b.refusedAt < REFUSAL_FINAL_SEC)) {
-              if (!b.refusedAt) saveBuy(id, { refusedAt: now() });
+              if (!b.refusedAt) saveBuyOf(me, id, { refusedAt: now() });
               refused = null;
               continue;
             }
             if (refused) {
-              saveBuy(id, { stage: 'unanswered', problem: 'The offers service refused this purchase: ' + refused +
+              saveBuyOf(me, id, { stage: 'unanswered', problem: 'The offers service refused this purchase: ' + refused +
                 '. Nothing reached the seller. Your GRAM comes back with "Get my GRAM back" from ' + new Date(b.timeout * 1000).toLocaleString() + '.' });
               notify({ key: 'gram:refused:' + id, kind: 'warn', icon: 'GRAM', label: 'Buy \u00b7 GRAM', title: 'Purchase not accepted',
                 text: 'Your GRAM is locked until ' + new Date(b.timeout * 1000).toLocaleString() + ', then you can take it back.' });
-            } else saveBuy(id, { stage: 'announced', problem: null, refusedAt: null });
+            } else saveBuyOf(me, id, { stage: 'announced', problem: null, refusedAt: null });
           } else if (n.state === 'active' && n.status !== 'open') {
-            saveBuy(id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
+            saveBuyOf(me, id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
           } else if (now() > (b.validUntil || b.created + 360) + 300) {
-            saveBuy(id, { stage: 'cancelled' });   // the payment can no longer land: nothing was locked
+            saveBuyOf(me, id, { stage: 'cancelled' });   // the payment can no longer land: nothing was locked
           }                                          // else: it may still land, read again next round
         } else if (b.stage === 'announced' || (b.stage === 'unanswered' && now() < b.timeout)) {
           // An unanswered buy is still read, once a minute, while its TON lock
@@ -1685,32 +1705,32 @@ async function watchBuys(){
           // announcement can still be promoted from its intent (audit C1).
           if (b.stage === 'unanswered') {
             if (b.lookedAt && now() - b.lookedAt < 60) continue;
-            saveBuy(id, { lookedAt: now() });
+            saveBuyOf(me, id, { lookedAt: now() });
           }
           const t = await api('/takes/' + encodeURIComponent(id));
-          if (b.stage === 'unanswered' && t.taker_terra && t.taker_terra !== addrOf()) continue;
+          if (b.stage === 'unanswered' && t.taker_terra && t.taker_terra !== me) continue;
           // the Terra lock that already expired for this buy is not taken again
           const newLock = t.terra_lock_id && !(b.stage === 'unanswered' && Number(t.terra_lock_id) === Number(b.terraLockId));
           if (t.status === 'locked' && newLock) {
             const problems = await sellerLockOk(b, t);
-            if (problems.length) { saveBuy(id, { problem: 'The seller\u2019s lock did not pass the check: ' + problems.join('; ') + '. The secret stays on this device; your GRAM comes back after the timeout.' }); continue; }
-            saveBuy(id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null, since: now() });
+            if (problems.length) { saveBuyOf(me, id, { problem: 'The seller\u2019s lock did not pass the check: ' + problems.join('; ') + '. The secret stays on this device; your GRAM comes back after the timeout.' }); continue; }
+            saveBuyOf(me, id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null, since: now() });
             chime(); buzz('success');
             b.stage = 'claiming'; b.terraLockId = Number(t.terra_lock_id);
-          } else if (t.status === 'unanswered' && b.stage === 'announced') saveBuy(id, { stage: 'unanswered' });
-          else if (t.status === 'pending' && b.stage === 'unanswered') saveBuy(id, { stage: 'announced', problem: null, refusedAt: null });
+          } else if (t.status === 'unanswered' && b.stage === 'announced') saveBuyOf(me, id, { stage: 'unanswered' });
+          else if (t.status === 'pending' && b.stage === 'unanswered') saveBuyOf(me, id, { stage: 'announced', problem: null, refusedAt: null });
         }
         if (b.stage === 'claiming') {
           const q = btoa(JSON.stringify({ lock: { id: b.terraLockId } }));
           const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 1)).data || {};
           if (l.status === 'refunded' || (l.status === 'open' && now() >= Number(l.timeout))) {
             // the LUNC was not claimed in time: the GRAM comes back after the TON timeout
-            saveBuy(id, { stage: 'unanswered', problem: 'The LUNC was not claimed before the seller\u2019s lock expired. Your GRAM comes back after the TON lock\u2019s timeout.' });
+            saveBuyOf(me, id, { stage: 'unanswered', problem: 'The LUNC was not claimed before the seller\u2019s lock expired. Your GRAM comes back after the TON lock\u2019s timeout.' });
             continue;
           }
           if (l.status === 'open') b.terraTimeout = Number(l.timeout);
           if (l.status === 'claimed') {
-            saveBuy(id, { stage: 'done', problem: null });
+            saveBuyOf(me, id, { stage: 'done', problem: null });
             notify({ key: 'gram:bought:' + id, kind: 'success', icon: 'LUNC', label: 'Buy done \u00b7 GRAM',
               title: 'Received ' + human(b.lunc, 6) + ' LUNC',
               text: 'It is on your Frontier address. The seller got the GRAM.' });
@@ -1723,11 +1743,11 @@ async function watchBuys(){
                 body: JSON.stringify({ terraLockId: b.terraLockId, tonLock: id, secret: b.secret, offerId: b.offerId, lunc: b.lunc }) });
               if (!r.ok) { let m = ''; try { m = (await r.json()).error || ''; } catch (e) {} if (r.status >= 500 || r.status === 429) problem = 'The relayer is busy (' + r.status + '), trying again.'; else problem = 'The relayer refused: ' + (m || r.status); }
             } catch (e) { problem = 'The relayer is not reachable at ' + relayerUrl() + '. Check its address (change relayer).'; }
-            if (problem !== (b.problem || null) || b.terraTimeout !== all[id].terraTimeout) saveBuy(id, { problem: problem, terraTimeout: b.terraTimeout });
+            if (problem !== (b.problem || null) || b.terraTimeout !== all[id].terraTimeout) saveBuyOf(me, id, { problem: problem, terraTimeout: b.terraTimeout });
           }
         } else if (b.stage === 'refunding') {
           const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
-          if (n.status === 'refunded' || n.status === 'claimed') saveBuy(id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
+          if (n.status === 'refunded' || n.status === 'claimed') saveBuyOf(me, id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
         }
       } catch (e) { /* the next round tries again */ }
     }

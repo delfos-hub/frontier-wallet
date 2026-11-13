@@ -113,7 +113,13 @@ ok('R4-C2: the seller is told the answer window before publishing, and how to he
 ok('R4-C2: its own line for the seller\u2019s GRAM after a buyer claims, from terra_gap_sec',
   /#gx-duty2/.test(src) && /terra_gap_sec\) \|\| 86400\) \/ 3600/.test(src) && /claim it yourself/.test(src));
 
-ok('R4 (6): every GRAM record key carries the network', /'fw:gram:' \+ kind \+ ':' \+ NET\.name \+ ':' \+ addrOf\(\)/.test(src) &&
+ok('R4 (6): every GRAM record key carries the network', /'fw:gram:' \+ kind \+ ':' \+ NET\.name \+ ':' \+ (addrOf\(\)|addr)/.test(src) &&
   !/'fw:gram:(signed|ton|final|locks|buys):' \+ addrOf\(\)/.test(src.replace(/const old = [^\n]*/, '')));
+
+{
+  const net = fs.readFileSync(path.join(path.dirname(path.resolve(process.argv[2] || 'assets/js/gram.js')), 'gram-net.js'), 'utf8');
+  ok('audit C2: a link\u2019s network lasts for the tab, and an older kept choice is cleared off the test origins',
+    /const where = keep \? localStorage : sessionStorage;/.test(net) && /if \(!keep\) localStorage\.removeItem\('fw:gram:net'\)/.test(net));
+}
 
 report();
