@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=c56fd182';
-import { GRAM_NET, TERMS } from './gram-net.js?v=c56fd182';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=c56fd182';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=c56fd182';
-import { S } from './state.js?v=c56fd182';
-import { decryptSeed } from './storage.js?v=c56fd182';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=c56fd182';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=c56fd182';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=c56fd182';
-import { chime, notify } from './notify.js?v=c56fd182';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d522290f';
+import { GRAM_NET, TERMS } from './gram-net.js?v=d522290f';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=d522290f';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=d522290f';
+import { S } from './state.js?v=d522290f';
+import { decryptSeed } from './storage.js?v=d522290f';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=d522290f';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=d522290f';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=d522290f';
+import { chime, notify } from './notify.js?v=d522290f';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1679,15 +1679,26 @@ async function watchBuys(){
           } else if (now() > (b.validUntil || b.created + 360) + 300) {
             saveBuy(id, { stage: 'cancelled' });   // the payment can no longer land: nothing was locked
           }                                          // else: it may still land, read again next round
-        } else if (b.stage === 'announced') {
+        } else if (b.stage === 'announced' || (b.stage === 'unanswered' && now() < b.timeout)) {
+          // An unanswered buy is still read, once a minute, while its TON lock
+          // runs: the Worker accepts a seller's late answer, and a refused
+          // announcement can still be promoted from its intent (audit C1).
+          if (b.stage === 'unanswered') {
+            if (b.lookedAt && now() - b.lookedAt < 60) continue;
+            saveBuy(id, { lookedAt: now() });
+          }
           const t = await api('/takes/' + encodeURIComponent(id));
-          if (t.status === 'locked' && t.terra_lock_id) {
+          if (b.stage === 'unanswered' && t.taker_terra && t.taker_terra !== addrOf()) continue;
+          // the Terra lock that already expired for this buy is not taken again
+          const newLock = t.terra_lock_id && !(b.stage === 'unanswered' && Number(t.terra_lock_id) === Number(b.terraLockId));
+          if (t.status === 'locked' && newLock) {
             const problems = await sellerLockOk(b, t);
             if (problems.length) { saveBuy(id, { problem: 'The seller\u2019s lock did not pass the check: ' + problems.join('; ') + '. The secret stays on this device; your GRAM comes back after the timeout.' }); continue; }
             saveBuy(id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null, since: now() });
             chime(); buzz('success');
             b.stage = 'claiming'; b.terraLockId = Number(t.terra_lock_id);
-          } else if (t.status === 'unanswered') saveBuy(id, { stage: 'unanswered' });
+          } else if (t.status === 'unanswered' && b.stage === 'announced') saveBuy(id, { stage: 'unanswered' });
+          else if (t.status === 'pending' && b.stage === 'unanswered') saveBuy(id, { stage: 'announced', problem: null, refusedAt: null });
         }
         if (b.stage === 'claiming') {
           const q = btoa(JSON.stringify({ lock: { id: b.terraLockId } }));

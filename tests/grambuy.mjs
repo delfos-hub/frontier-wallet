@@ -135,4 +135,17 @@ ok('R4-B1: the error code reaches the wallet', /if \(d\.code\) e\.code = String\
 ok('R4 (5): the self-claim sends nothing to the LCD before the consent (no feeFor with the secret)',
   /const fee = Math\.floor\(CLAIM_FEE_MAX \/ 1\.25\);/.test(src) && !/const fee = await feeFor\(\[step\]\);\n    await consent\('Claim your LUNC'/.test(src));
 
+
+group('an unanswered buy is still read while its TON lock runs (audit C1)');
+r = await run({ stage: 'unanswered' }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME, lunc: '100000000' } });
+ok('the seller answered late: the buy goes on to claiming', r.b.stage === 'claiming' && r.b.terraLockId === 7, r.b.stage);
+r = await run({ stage: 'unanswered', terraLockId: 7 }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME } });
+ok('the Terra lock that already expired for this buy is not taken again', r.b.stage === 'unanswered', r.b.stage);
+r = await run({ stage: 'unanswered', problem: 'refused' }, { lock: OPEN, takeRecord: { status: 'pending', taker_terra: ME } });
+ok('a refused announcement promoted later goes back to announced', r.b.stage === 'announced' && !r.b.problem, r.b.stage);
+r = await run({ stage: 'unanswered', timeout: NOW - 1 }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME } });
+ok('past the TON timeout it is not read: the refund is the way out', r.b.stage === 'unanswered', r.b.stage);
+r = await run({ stage: 'unanswered', lookedAt: NOW - 30 }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME } });
+ok('read at most once a minute', r.b.stage === 'unanswered', r.b.stage);
+
 report();
