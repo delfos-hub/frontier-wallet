@@ -24,26 +24,27 @@ function lift(s, header){
 const NOW = 1_800_000_000, ID = '0:' + 'cc'.repeat(32), ME = 'terra1me';
 const httpError = (status, msg) => Object.assign(new Error(msg), { status });
 
-async function run(buy, { lock, takes, takeRecord, clock = NOW }){
+async function run(buy, { lock, takes, takeRecord, clock = NOW, switchTo, lcd, relay }){
   const store = { [ID]: Object.assign({ offerId: 'o1', lunc: '100000000', gram: '1', timeout: NOW + 30 * 3600, created: NOW - 60 }, buy) };
-  const notes = [];
+  const notes = [], savedBy = []; let addrCalls = 0;
   const env = {
     WATCHING_BUYS: false, document: { hidden: false }, REFUSAL_FINAL_SEC: 120,
     buys: () => store, saveBuy: (id, v) => { store[id] = Object.assign({}, store[id], v); },
-    readLock: async () => lock, now: () => clock, addrOf: () => ME,
+    readLock: async () => lock, now: () => clock, addrOf: () => (switchTo && addrCalls++ ? switchTo : ME),
+    buysOf: a => (a === ME ? store : {}), saveBuyOf: (a, id, v) => { savedBy.push(a); if (a === ME) store[id] = Object.assign({}, store[id], v); },
     api: async (p) => {
       if (p === '/takes') { if (takes instanceof Error) throw takes; return {}; }   // takes undefined = accepted
       if (takeRecord instanceof Error) throw takeRecord;
       return takeRecord;
     },
     notify: n => notes.push(n), drawBuys: () => {}, sellerLockOk: async () => [], chime: () => {}, buzz: () => {}, load: () => {},
-    getJSON: async () => ({}), relayerUrl: () => '', human: x => String(x),
-    NET: { tonApi: '', tonCodeHash: '', lcd: '', htlc: '' }, btoa: x => x, fetch: async () => ({ ok: true })
+    getJSON: async () => (lcd ? { data: lcd } : {}), relayerUrl: () => '', human: x => String(x), CLAIM_MARGIN: 600,
+    NET: { tonApi: '', tonCodeHash: '', lcd: '', htlc: '' }, btoa: x => x, fetch: relay || (async () => ({ ok: true }))
   };
   const names = Object.keys(env);
   const f = new Function(...names, lift(src, 'async function watchBuys(){') + '\nreturn watchBuys;')(...names.map(k => env[k]));
   await f();
-  return { b: store[ID], notes };
+  return { b: store[ID], notes, savedBy };
 }
 const OPEN = { state: 'active', status: 'open' }, NONE = { state: 'uninit' };
 
@@ -87,7 +88,7 @@ ok('nothing landed: stays cancelled', r.b.stage === 'cancelled', r.b.stage);
 group('the secret is read back before any GRAM is asked for');
 // the Pay handler itself, lifted from gram.js; storage either keeps writes or
 // refuses them like a private window or a full disk does
-async function pay(storageWorks){
+async function pay(storageWorks, serverTime){
   let saved = {}; const sent = [], msgs = [];
   const LOCK = { raw: ID, address: 'EQlock', value: '1', stateInit: '', payload: '', codeHash: 'AB' };
   const env = {
@@ -96,11 +97,13 @@ async function pay(storageWorks){
     loadTonConnect: async () => ({ wallet: {}, sendTransaction: async t => { sent.push(t); } }),
     tonAccount: () => ({ chain: '-3', address: 'EQme' }),
     NET: { tonChain: '-3', tonCode: '', tonCodeHash: 'ab', name: 'testnet' },
-    POLICY: { answer_window_sec: 60, min_ton_left_sec: 60, tip_address: 'EQtip' }, POLICY_ERR: '', setPolicy: x => x,
-    api: async () => ({ live: true, price: '1', maker_ton: 'EQmaker', remaining_lunc: '1000000000', min_lunc: '1', expires: NOW + 99999 }),
+    POLICY: { answer_window_sec: 60, min_ton_left_sec: 60, tip_address: 'EQtip', min_tip: '7' }, POLICY_ERR: '', setPolicy: x => x,
+    api: async () => ({ live: true, price: '1', maker_ton: 'EQmaker', remaining_lunc: '1000000000', min_lunc: '1', expires: NOW + 99999, server_time: serverTime }),
     load: () => {}, human: x => String(x), now: () => NOW, sha256hex: async () => 'hash', takeRefOf: async () => 'ref',
     tonRaw: x => x, buildLock: async () => LOCK, toHex: u => Buffer.from(u).toString('hex'),
-    buys: () => JSON.parse(JSON.stringify(saved)),
+    buys: () => JSON.parse(JSON.stringify(saved)), buysOf: () => JSON.parse(JSON.stringify(saved)),
+    saveBuyOf: (a, id, v) => { const b = JSON.parse(JSON.stringify(saved)); b[id] = Object.assign(b[id] || {}, v); if (storageWorks) saved = b; return b[id]; },
+    tipOf: (g, p) => (p && p.min_tip ? BigInt(p.min_tip) : 1n),
     saveBuy: (id, v) => { const b = JSON.parse(JSON.stringify(saved)); b[id] = Object.assign(b[id] || {}, v); if (storageWorks) saved = b; return b[id]; },
     drawBuys: () => {}, watchBuys: () => {}, buzz: () => {}, BUYING: null,
     $: () => ({ hidden: false })
@@ -126,7 +129,7 @@ const b1 = src.slice(b1At, src.indexOf('/* ---------- my buys', b1At));
 ok('R4-B1: the intent is signed and sent after the secret is kept and before the TON wallet opens',
   b1.indexOf("api('/intents'") > b1.indexOf('kept.secret !== toHex(secret)') && b1.indexOf("api('/intents'") < b1.indexOf('tc.sendTransaction('));
 ok('R4-B1: only intents_full and rate_limited fall back to the old flow; any other 429 stops before paying',
-  /if \(!\(e && \(e\.code === 'intents_full' \|\| e\.code === 'rate_limited'\)\)\) \{[^]*?saveBuy\(id, \{ stage: 'cancelled' \}\);[^]*?return;/.test(b1) &&
+  /if \(!\(e && \(e\.code === 'intents_full' \|\| e\.code === 'rate_limited'\)\)\) \{[^]*?saveBuy(?:Of\(me, |\()id, \{ stage: 'cancelled' \}\);[^]*?return;/.test(b1) &&
   !/e\.status === 429/.test(b1));
 ok('R4-B1: any other refusal stops before any GRAM moves', /stage: 'cancelled'[^]*?Nothing was paid\.[^]*?return;/.test(b1));
 ok('R4-B1: without intents on the Worker or a key to sign, the old flow', /if \(policy\.intent_ttl_sec && S\.MNEMONIC\)/.test(b1));
@@ -134,5 +137,43 @@ ok('R4-B1: the error code reaches the wallet', /if \(d\.code\) e\.code = String\
 
 ok('R4 (5): the self-claim sends nothing to the LCD before the consent (no feeFor with the secret)',
   /const fee = Math\.floor\(CLAIM_FEE_MAX \/ 1\.25\);/.test(src) && !/const fee = await feeFor\(\[step\]\);\n    await consent\('Claim your LUNC'/.test(src));
+
+
+group('an unanswered buy is still read while its TON lock runs (audit C1)');
+r = await run({ stage: 'unanswered' }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME, lunc: '100000000' } });
+ok('the seller answered late: the buy goes on to claiming', r.b.stage === 'claiming' && r.b.terraLockId === 7, r.b.stage);
+r = await run({ stage: 'unanswered', terraLockId: 7 }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME } });
+ok('the Terra lock that already expired for this buy is not taken again', r.b.stage === 'unanswered', r.b.stage);
+r = await run({ stage: 'unanswered', problem: 'refused' }, { lock: OPEN, takeRecord: { status: 'pending', taker_terra: ME } });
+ok('a refused announcement promoted later goes back to announced', r.b.stage === 'announced' && !r.b.problem, r.b.stage);
+r = await run({ stage: 'unanswered', timeout: NOW - 1 }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME } });
+ok('past the TON timeout it is not read: the refund is the way out', r.b.stage === 'unanswered', r.b.stage);
+r = await run({ stage: 'unanswered', lookedAt: NOW - 30 }, { lock: OPEN, takeRecord: { status: 'locked', terra_lock_id: '7', taker_terra: ME } });
+ok('read at most once a minute', r.b.stage === 'unanswered', r.b.stage);
+
+
+group('a switched wallet, the fee, stage-only records (audit C8, C6)');
+r = await run({ stage: 'paying', validUntil: NOW + 300 }, { lock: OPEN, switchTo: 'terra1other' });
+ok('a round that sees the wallet switched still writes to the wallet that made the buy', r.savedBy.length && r.savedBy.every(a => a === ME), r.savedBy.join(','));
+p = await pay(true);
+ok('the fee comes from the rules loaded right before paying', p.saved[ID] && p.saved[ID].tip === '7', p.saved[ID] && p.saved[ID].tip);
+{
+  const store = {}, key = id => id;
+  const saveBuyOf = new Function('localStorage', 'gkOf', lift(src, 'function buysOf(a){') + '\n' + lift(src, 'function saveBuyOf(a, id, v){') + '\nreturn saveBuyOf;')(
+    { getItem: k => store[k] || null, setItem: (k, v) => { store[k] = v; } }, (kind, a) => kind + ':' + a);
+  ok('a record holding only a stage is never created', saveBuyOf('terra1me', 'x', { stage: 'claiming' }) === null && !store['buys:terra1me']);
+}
+
+
+group('smaller items: odd TON answers, a withheld secret, the clock (audit C5, B10, C4)');
+r = await run({ stage: 'paying', validUntil: NOW + 300 }, { lock: { state: 'active', status: 'unfunded' } });
+ok('an unfunded answer is shown, not taken as a finished purchase', r.b.stage === 'paying' && /unfunded/.test(r.b.problem || ''), r.b.stage);
+r = await run({ stage: 'claiming', terraLockId: 7, secret: 'ab' }, { lock: OPEN, lcd: { status: 'open', timeout: NOW + 3600 },
+  relay: async () => ({ ok: true, json: async () => ({ withheld: true }) }) });
+ok('a pair the relayer kept back is said on the buy', /kept the secret back/.test(r.b.problem || ''), r.b.problem);
+p = await pay(true, NOW - 3600);
+ok('a device clock an hour off stops the buy before paying', p.sent.length === 0 && p.msgs.some(m => /clock is 60 min off/.test(m)), p.msgs.join(' | '));
+p = await pay(true, NOW - 30);
+ok('a clock within 10 min pays as before', p.sent.length === 1, p.msgs.join(' | '));
 
 report();

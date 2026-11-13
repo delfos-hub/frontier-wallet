@@ -181,7 +181,7 @@ group('the fee signed is the fee reviewed (audit F04)');
   try { checkFee(368225000, 'no fee review'); } catch (e) { optOut = false; }
   const gramCalls = fs.readFileSync(path.join(SRC, 'gram.js'), 'utf8').match(/await sendSwap\([^;]*;/g) || [];
   ok('an opt-out works only by saying so, and the GRAM swap no longer uses it', optOut &&
-    gramCalls.length === 3 && gramCalls.every(c => /, fee\);$/.test(c)));
+    gramCalls.length === 3 && gramCalls.every(c => /, fee(, rec)?\);$/.test(c)));
   ok('every signing function checks it before it signs',
     ['sendNative', 'sendSwap', 'sendStake', 'sendVote'].every(n => /checkFee\(/.test(tx.slice(tx.indexOf('async function ' + n + '('), tx.indexOf('sign(', tx.indexOf('async function ' + n + '('))))));
   const callers = { 'tx.js': 2, 'swap.js': 1, 'p2p.js': 1, 'defi.js': 1, 'stake.js': 1, 'gov.js': 1 };

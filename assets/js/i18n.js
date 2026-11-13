@@ -12,8 +12,8 @@
 
    The first choice follows Telegram's language when Frontier has it; after
    that the user's pick is kept on this device (fw:lang). */
-import { $, tap, tg } from './shell.js?v=c56fd182';
-import { LANGS, DICT } from './i18n-dict.js?v=c56fd182';
+import { $, tap, tg } from './shell.js?v=caced94f';
+import { LANGS, DICT } from './i18n-dict.js?v=caced94f';
 
 const KEY = 'fw:lang';
 const SKIP = 'script,style,code,textarea,input,select,[data-no-i18n],.sd-words,.tx-hash';
