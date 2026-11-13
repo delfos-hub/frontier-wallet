@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=11ece189';
-import { $, buzz, go, tap } from './shell.js?v=11ece189';
-import { S } from './state.js?v=11ece189';
-import { iconHTML, paintIcons } from './chain.js?v=11ece189';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=11ece189';
-import { notify } from './notify.js?v=11ece189';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=caced94f';
+import { $, buzz, go, tap } from './shell.js?v=caced94f';
+import { S } from './state.js?v=caced94f';
+import { iconHTML, paintIcons } from './chain.js?v=caced94f';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=caced94f';
+import { notify } from './notify.js?v=caced94f';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -805,14 +805,19 @@ async function dryRunSwap(from, steps, mnemonic, net = MAINNET, memo = ''){
 
 // Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
 // moves whenever anything else touches this account.
-async function sendSwap(from, steps, mnemonic, net = MAINNET, memo = '', maxFee){
+async function sendSwap(from, steps, mnemonic, net = MAINNET, memo = '', maxFee, onSigned){
   const p = await execPlan(from, steps, mnemonic, net, memo);
   checkFee(p.gasFee, maxFee);
   const real = execTx(p.url, from, steps, p.key.pub, p.acc.seq,
     [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas, memo);
   const doc = signDoc(real.body, real.auth, net.chain, p.acc.num);
   const sig = p.key.node.sign(p.key.sha256(doc));
-  const hash = await broadcast(txRaw(real.body, real.auth, [sig]), net);
+  const raw = txRaw(real.body, real.auth, [sig]);
+  // The tx hash is the sha256 of the signed bytes: known before broadcasting,
+  // so a caller can record it first, and a reply lost after the node took the
+  // tx cannot hide a tx that lands (audit round 5, D3).
+  if (onSigned) await onSigned(Array.from(p.key.sha256(raw), x => x.toString(16).padStart(2, '0')).join('').toUpperCase());
+  const hash = await broadcast(raw, net);
   return { hash: hash, gas: p.gas, gasFee: p.gasFee, wait: function(){ return waitFor(hash, 30, net); } };
 }
 export { dryRunSwap, sendSwap };
