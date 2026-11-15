@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=39f0ac1d';
-import { GRAM_NET, TERMS } from './gram-net.js?v=39f0ac1d';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=39f0ac1d';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=39f0ac1d';
-import { S } from './state.js?v=39f0ac1d';
-import { decryptSeed } from './storage.js?v=39f0ac1d';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=39f0ac1d';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=39f0ac1d';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=39f0ac1d';
-import { chime, notify } from './notify.js?v=39f0ac1d';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89333e69';
+import { GRAM_NET, TERMS } from './gram-net.js?v=89333e69';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89333e69';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=89333e69';
+import { S } from './state.js?v=89333e69';
+import { decryptSeed } from './storage.js?v=89333e69';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=89333e69';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89333e69';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89333e69';
+import { chime, notify } from './notify.js?v=89333e69';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -368,6 +368,19 @@ function ownDeals(takes){
   }
   return out;
 }
+// A lock sent for a take whose id never came back: its tx is looked up on
+// every sweep, so the lock joins the deals this device follows (review of D).
+async function resolveIds(){
+  for (const [ton, m] of Object.entries(mineAll())) {
+    if (m.id || !m.tx) continue;
+    try {
+      const r = await fetch(NET.lcd + '/cosmos/tx/v1beta1/txs/' + m.tx, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) continue;
+      const res = (await r.json()).tx_response;
+      if (res && Number(res.code) === 0 && lockIdOf(res)) remember(ton, { id: lockIdOf(res) });
+    } catch (e) {}
+  }
+}
 const REFUND_DUE = {};                 // ton_lock -> own Terra lock id, open past its timeout
 const LOST_SEEN = {};                  // ton_lock -> reads of a TON lock open past its timeout
 
@@ -383,7 +396,9 @@ function drawTakes(list, stats){
     (t.status === 'pending' && windowLeftOf(t) > 0) ||
     t.status === 'locked' ||
     (t.status === 'unanswered' && mineFor(t.ton_lock).id) ||
-    (t.status === 'pending' && mineFor(t.ton_lock).id)))
+    (t.status === 'pending' && mineFor(t.ton_lock).id) ||
+    // a lock of mine on its way (tx known, id not yet): stays in view
+    (mineFor(t.ton_lock).tx && !mineFor(t.ton_lock).id)))
     // and this device's own locks the Worker does not list (audit D1)
     .concat(ownDeals(list).filter(o => !list.some(t => t.ton_lock === o.ton_lock)));
   if (!active.length) {
@@ -424,7 +439,7 @@ function drawTakes(list, stats){
     '</div>';
   }).join('');
   paintIcons(box);
-  checkFinished(ownDeals(list));
+  resolveIds().then(() => checkFinished(ownDeals(list)));
 }
 
 // Answered deals, read from both chains. The Terra side tells whether the
@@ -468,14 +483,15 @@ async function checkFinished(list){
         if (OPEN_SEEN.has(t.ton_lock) || was) notify({ key: 'gram:done:' + t.ton_lock, kind: 'success', icon: 'GRAM', label: 'Deal done \u00b7 GRAM',
           title: 'Sold ' + human(t.lunc, 6) + ' LUNC',
           text: 'The buyer claimed the LUNC and ' + human(t.gram, 9) + ' GRAM was paid to your TON address.' });
-      } else if (n.status === 'open' && now() < n.timeout) {
+      } else if (n.status === 'open' && (n.chainTime || now()) < n.timeout) {
         const rel = RELEASE[t.ton_lock] = Object.assign({ sentAt: 0 }, was, { secret: tl.secret || (was && was.secret) });
         if (!was) changed = true;
         if (rel.secret && now() - rel.sentAt > 90) {
           try { await sendGramClaim(t, rel.secret); rel.sentAt = now(); if (rel.error) { rel.error = ''; changed = true; } }
           catch (e) { if (rel.error !== e.message) { rel.error = e.message; changed = true; } }
         }
-      } else if (n.status === 'refunded' || (n.status === 'open' && (LOST_SEEN[t.ton_lock] = (LOST_SEEN[t.ton_lock] || 0) + 1) >= 2)) {
+      } else if (n.status === 'refunded' || (n.status === 'open' && n.chainTime && n.chainTime >= n.timeout &&
+          (LOST_SEEN[t.ton_lock] = (LOST_SEEN[t.ton_lock] || 0) + 1) >= 2)) {
         // refunded to the buyer, or open past its timeout on two reads: the GRAM
         // was not claimed in time. Any other answer (uninitialized, foreign
         // code, a node that lies once) is read again, never final (audit D5).
@@ -544,7 +560,7 @@ const dec = (n, d) => n.toFixed(d).replace(/\.?0+$/, '');
 // what can still be offered: the balance after the burn tax, less my other live offers
 // LUNC kept out of Max for the gas of answering takes (review of #15):
 // a maker who offers everything could not pay for the answer and would get a strike
-const GAS_RESERVE = 50000000n;      // 50 LUNC
+const GAS_RESERVE = 100000000n;     // 100 LUNC: an answer costs ~8.5 LUNC of gas (review of D10)
 function available(){
   if (BAL === null) return null;
   const tax = BigInt(POLICY ? POLICY.tax_bps || 0 : 0);
@@ -1226,7 +1242,7 @@ async function watchTakes(){
   try { d = await api('/takes?maker=' + encodeURIComponent(me)); }
   catch (e) {
     // the Worker unreachable: this device's own locks are still followed (audit D1)
-    if (now() - LAST_SWEEP >= 60) { LAST_SWEEP = now(); checkFinished(ownDeals([])); }
+    if (now() - LAST_SWEEP >= 60) { LAST_SWEEP = now(); resolveIds().then(() => checkFinished(ownDeals([]))); }
     return;
   }
   if (!POLICY) { try { setPolicy((await api('/offers')).policy); } catch (e) {} }
@@ -1239,8 +1255,11 @@ async function watchTakes(){
     // off the GRAM screen, answered deals are still seen through: a GRAM
     // left to release is claimed from here (audit round 3, A)
     const fin = finals();
-    const answered = ownDeals(d.takes || []);
-    if (answered.length && now() - LAST_SWEEP >= 60) { LAST_SWEEP = now(); checkFinished(answered); }
+    if (now() - LAST_SWEEP >= 60) {
+      LAST_SWEEP = now();
+      const takes = d.takes || [];
+      resolveIds().then(() => { const own = ownDeals(takes); if (own.length) checkFinished(own); });
+    }
   }
   fresh.forEach(alertTake);
 }

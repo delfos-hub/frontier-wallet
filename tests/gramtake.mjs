@@ -115,4 +115,28 @@ ok('a held_since far before the take is not believed', r.problems.some(p => /has
 r = await make({ signed: ENDED })({ created: NOW - 30 });
 ok('no held_since: checked against now, as before', r.problems.some(p => /has ended/.test(p)));
 
+
+group('review of the part D fixes: the chain\u2019s time, a lock on its way');
+async function finishTwice({ terra, ton, clock = NOW }){
+  const sent = [], finalsSet = {};
+  const env = {
+    CHECKING: false, OPEN_SEEN: new Set(), RELEASE: {}, REFUND_DUE: {}, LOST_SEEN: {}, DRAWN: [],
+    mineFor: () => ({ watched: true }), watchDeal: async () => {}, terraLockRead: async () => terra,
+    readLock: async () => ton, NET: { tonApi: '', tonCodeHash: '' }, now: () => clock, human: x => String(x),
+    setFinal: (k, v) => { finalsSet[k] = v; }, notify: () => {}, sendGramClaim: async (t, s) => sent.push(s), drawTakes: () => {}
+  };
+  const names = Object.keys(env);
+  const f = new Function(...names, lift(src, 'async function checkFinished(list){') + '\nreturn checkFinished;')(...names.map(k => env[k]));
+  const deal = [{ ton_lock: LOCK, terra_lock_id: 9, lunc: '1', gram: '1', own: true }];
+  await f(deal); await f(deal);
+  return { sent, finalsSet };
+}
+let g = await finishTwice({ terra: { status: 'claimed', secret: 'ab' }, ton: { status: 'open', timeout: NOW - 60, chainTime: NOW - 600 } });
+ok('a device clock ahead of the chain does not end the claim: the chain says open, the GRAM is claimed', !g.finalsSet[LOCK] && g.sent[0] === 'ab');
+g = await finishTwice({ terra: { status: 'claimed', secret: 'ab' }, ton: { status: 'open', timeout: NOW - 60 } });
+ok('no chain time: never "lost" on the device clock alone', !g.finalsSet[LOCK]);
+g = await finishTwice({ terra: { status: 'claimed', secret: 'ab' }, ton: { status: 'open', timeout: NOW - 60, chainTime: NOW } });
+ok('the chain past the timeout on two reads: lost', g.finalsSet[LOCK] === 'lost');
+ok('a lock on its way stays in view, and its id is looked up', /\(mineFor\(t\.ton_lock\)\.tx && !mineFor\(t\.ton_lock\)\.id\)/.test(src) && /resolveIds\(\)\.then/.test(src));
+
 report();
