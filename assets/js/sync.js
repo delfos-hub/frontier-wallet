@@ -1,0 +1,214 @@
+/* sync.js - the same small settings on every device that holds this wallet.
+
+   Favorites picked on the web wallet used to stay there: the Mini App and the
+   web wallet are different sites, and each keeps its own storage. Now a
+   module can register a "section" (fav.js does), and its value follows the
+   wallet: it is encrypted here and kept by the frontier-sync Worker
+   (sync-worker/ in this repo), and read back by any other Frontier client
+   that has the same recovery phrase.
+
+   What leaves the device: ciphertext, under a name that is itself derived
+   from the phrase. Three values come out of the account key through
+   HKDF-SHA256 (one way, the key cannot be worked back from them):
+     id     where the record is kept (a name, not the address)
+     token  what the Worker asks for before it lets the record be replaced
+     key    AES-GCM, never sent anywhere
+   The Worker sees neither the address nor which tokens are in the list; the
+   text is padded to whole kilobytes so its length says little either.
+
+   A watched address has no phrase, so nothing of it is synced. The whole
+   thing can be turned off in Settings (fw:sync = 0), and the local copy is
+   always the one the screen is drawn from: no network, no difference.
+
+   Merging is per section, the newer change wins (fw:sync:t:<name>:<addr> is
+   when this device last changed it). A device that has a list from before
+   this module existed has no such time: its list is joined with the kept
+   one once, instead of one silently replacing the other. */
+import { S } from './state.js?v=6913c9e3';
+
+const HOST = 'https://frontier-sync.delfoshub-team.workers.dev';
+const SALT = 'frontier-sync-v1';
+const PAD = 1024;
+const SECTIONS = {};
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+function base(){
+  try { return (localStorage.getItem('fw:sync:url') || HOST).replace(/\/+$/, ''); } catch (e) { return HOST; }
+}
+function enabled(){
+  try { return localStorage.getItem('fw:sync') !== '0'; } catch (e) { return true; }
+}
+const current = () => (S.SAVED && S.SAVED.addr) || '';
+const tKey = (name, addr) => 'fw:sync:t:' + name + ':' + addr;
+function tGet(name, addr){
+  try { const v = Number(localStorage.getItem(tKey(name, addr))); return isFinite(v) && v > 0 ? v : 0; } catch (e) { return 0; }
+}
+function tSet(name, addr, t){ try { localStorage.setItem(tKey(name, addr), String(t)); } catch (e) {} }
+
+/* ---------------- keys and the envelope ---------------- */
+const hex = u8 => Array.from(u8).map(b => (b < 16 ? '0' : '') + b.toString(16)).join('');
+function b64(u8){
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function unb64(s){
+  const bin = atob(s), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// the three values, from the account's private key (32 bytes)
+async function deriveKeys(priv){
+  const ikm = await crypto.subtle.importKey('raw', priv, 'HKDF', false, ['deriveBits']);
+  const bits = async info => new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: enc.encode(SALT), info: enc.encode(info) }, ikm, 256));
+  const [id, token, raw] = await Promise.all([bits('id'), bits('write'), bits('enc')]);
+  const key = await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  return { id: hex(id), token: hex(token), key: key };
+}
+
+async function seal(key, obj){
+  let text = JSON.stringify(obj);
+  text += ' '.repeat((PAD - (enc.encode(text).length % PAD)) % PAD);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, enc.encode(text)));
+  const out = new Uint8Array(12 + ct.length);
+  out.set(iv, 0); out.set(ct, 12);
+  return b64(out);
+}
+async function unseal(key, s){
+  const raw = unb64(s);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12) }, key, raw.subarray(12));
+  return JSON.parse(dec.decode(pt));
+}
+
+// Kept only while the wallet is unlocked, and only for the wallet it was
+// made from: a lock or a switch drops it (frontier:locked below).
+let K = null;
+async function keysFor(addr){
+  if (K && K.addr === addr) return K;
+  const w = S.SAVED;
+  if (!w || w.watch || w.addr !== addr || !S.MNEMONIC) return null;
+  const phrase = S.MNEMONIC;
+  const m = await import('../../vendor/crypto.js');
+  const seed = await m.bip39.mnemonicToSeed(phrase);
+  const node = m.bip32.HDKey.fromMasterSeed(seed).derive("m/44'/330'/0'/0/0");
+  const k = await deriveKeys(node.privateKey);
+  // the wallet may have been locked or switched while this was being worked out
+  if (S.MNEMONIC !== phrase || current() !== addr) return null;
+  K = Object.assign({ addr: addr }, k);
+  return K;
+}
+
+/* ---------------- one pass: read, merge, write if this device is ahead ---------------- */
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+async function pass(addr){
+  if (!enabled() || !addr || !Object.keys(SECTIONS).length) return 'off';
+  const k = await keysFor(addr);
+  if (!k) return 'no key';
+  LAST = Date.now();
+
+  let kept = null, exists = false;
+  const r = await fetch(base() + '/v1/doc/' + k.id, { cache: 'no-store' });
+  if (r.status === 200) {
+    // a record that does not open is left alone: writing over it would lose
+    // what another device put there
+    kept = await unseal(k.key, (await r.json()).d);
+    exists = true;
+  } else if (r.status !== 404) throw new Error('sync read ' + r.status);
+  if (current() !== addr) return 'switched';
+
+  const theirs = (kept && kept.s && typeof kept.s === 'object') ? kept.s : {};
+  // sections this version does not know are carried over untouched
+  const out = Object.assign({}, theirs);
+  let push = false;
+  for (const name in SECTIONS) {
+    const h = SECTIONS[name];
+    const mine = h.read(addr), mineT = tGet(name, addr);
+    const rem = theirs[name] && typeof theirs[name].t === 'number' ? theirs[name] : null;
+    if (!rem) {
+      if (!h.empty(mine) || (exists && mineT)) {
+        const t = mineT || Date.now();
+        tSet(name, addr, t); out[name] = { t: t, v: mine }; push = true;
+      }
+      continue;
+    }
+    const remV = h.clean(rem.v);
+    if (!mineT) {
+      // a list from before sync existed (or none): joined once, not replaced
+      const both = h.merge(mine, remV);
+      if (same(both, remV)) {
+        if (!same(mine, remV)) h.write(addr, remV);
+        tSet(name, addr, rem.t);
+      } else {
+        const t = Math.max(Date.now(), rem.t + 1);
+        h.write(addr, both); tSet(name, addr, t);
+        out[name] = { t: t, v: both }; push = true;
+      }
+    } else if (rem.t > mineT) {
+      if (!same(mine, remV)) h.write(addr, remV);
+      tSet(name, addr, rem.t);
+    } else if (mineT > rem.t) {
+      out[name] = { t: mineT, v: mine }; push = true;
+    }
+  }
+  if (!push) return 'read';
+
+  const w = await fetch(base() + '/v1/doc/' + k.id, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + k.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ d: await seal(k.key, { v: 1, s: out }) })
+  });
+  if (!w.ok) throw new Error('sync write ' + w.status);
+  return 'written';
+}
+
+// one pass at a time; a failed one (no network, the Worker down) is silent:
+// the local list is what the screen shows either way
+let QUEUE = Promise.resolve(), TIMER = 0, LAST = 0;
+function syncNow(){
+  const addr = current();
+  QUEUE = QUEUE.then(() => pass(addr)).catch(e => {
+    try { if (localStorage.getItem('fw:debug') === '1') console.info('[sync]', e && e.message ? e.message : e); } catch (x) {}
+    return 'failed';
+  });
+  return QUEUE;
+}
+
+/* ---------------- what the other modules call ---------------- */
+// h: read(addr) -> value, write(addr, value), clean(value) -> value,
+//    empty(value) -> bool, merge(mine, theirs) -> value
+function section(name, h){ SECTIONS[name] = h; }
+
+// this device has just changed the section for the open wallet
+function changed(name){
+  const addr = current();
+  if (!addr) return;
+  tSet(name, addr, Math.max(Date.now(), tGet(name, addr) + 1));
+  clearTimeout(TIMER);
+  TIMER = setTimeout(syncNow, 1200);
+}
+
+/* ---------------- wiring ---------------- */
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('frontier:wallet', () => { syncNow(); });
+  document.addEventListener('frontier:locked', () => { K = null; });
+  // coming back to the page: what another device changed meanwhile
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && current() && Date.now() - LAST > 60 * 1000) syncNow();
+  });
+
+  // Settings > App > Sync favorites
+  const row = document.getElementById('set-sync'), cur = document.getElementById('sync-cur');
+  const paint = () => { if (cur) cur.textContent = enabled() ? 'On' : 'Off'; };
+  paint();
+  if (row) row.addEventListener('click', () => {
+    try { localStorage.setItem('fw:sync', enabled() ? '0' : '1'); } catch (e) {}
+    paint();
+    if (enabled()) syncNow();
+  });
+}
+
+export { changed, deriveKeys, seal, section, syncNow, unseal };

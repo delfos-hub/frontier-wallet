@@ -1,0 +1,17 @@
+{
+	// frontier-sync: encrypted settings sync for Frontier Wallet.
+	// Deployed to the Delfos Hub Cloudflare account:
+	//   source ~/.delfos-cf.env && npx wrangler deploy
+	"name": "frontier-sync",
+	"main": "worker.js",
+	"compatibility_date": "2026-11-01",
+	"workers_dev": true,
+	// no id on purpose: wrangler (4.45+) creates the namespace on the first
+	// deploy and keeps it linked on later ones
+	"kv_namespaces": [
+		{
+			"binding": "SYNC",
+			"id": "cfe11b00ddb842dc9e5d1165a0a14588"
+		}
+	]
+}
