@@ -24,7 +24,7 @@
    when this device last changed it). A device that has a list from before
    this module existed has no such time: its list is joined with the kept
    one once, instead of one silently replacing the other. */
-import { S } from './state.js?v=6913c9e3';
+import { S } from './state.js?v=c465368d';
 
 const HOST = 'https://frontier-sync.delfoshub-team.workers.dev';
 const SALT = 'frontier-sync-v1';
@@ -32,11 +32,19 @@ const PAD = 1024;
 const SECTIONS = {};
 const enc = new TextEncoder(), dec = new TextDecoder();
 
+// another server only when testing on this machine
 function base(){
-  try { return (localStorage.getItem('fw:sync:url') || HOST).replace(/\/+$/, ''); } catch (e) { return HOST; }
+  try {
+    const local = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    return ((local && localStorage.getItem('fw:sync:url')) || HOST).replace(/\/+$/, '');
+  } catch (e) { return HOST; }
 }
+// Off unless the user turned it on: nothing leaves the device by default
 function enabled(){
-  try { return localStorage.getItem('fw:sync') !== '0'; } catch (e) { return true; }
+  try { return localStorage.getItem('fw:sync') === '1'; } catch (e) { return false; }
+}
+function asked(){
+  try { return localStorage.getItem('fw:sync') !== null; } catch (e) { return true; }
 }
 const current = () => (S.SAVED && S.SAVED.addr) || '';
 const tKey = (name, addr) => 'fw:sync:t:' + name + ':' + addr;
@@ -104,18 +112,20 @@ async function keysFor(addr){
 /* ---------------- one pass: read, merge, write if this device is ahead ---------------- */
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-async function pass(addr){
+async function pass(addr, again){
   if (!enabled() || !addr || !Object.keys(SECTIONS).length) return 'off';
   const k = await keysFor(addr);
   if (!k) return 'no key';
   LAST = Date.now();
 
-  let kept = null, exists = false;
+  let kept = null, exists = false, rev = 0;
   const r = await fetch(base() + '/v1/doc/' + k.id, { cache: 'no-store' });
   if (r.status === 200) {
     // a record that does not open is left alone: writing over it would lose
     // what another device put there
-    kept = await unseal(k.key, (await r.json()).d);
+    const got = await r.json();
+    kept = await unseal(k.key, got.d);
+    rev = Number(got.t) || 0;
     exists = true;
   } else if (r.status !== 404) throw new Error('sync read ' + r.status);
   if (current() !== addr) return 'switched';
@@ -155,12 +165,17 @@ async function pass(addr){
     }
   }
   if (!push) return 'read';
+  // turned off, locked or switched while this pass was reading: no write
+  const body = JSON.stringify({ d: await seal(k.key, { v: 1, s: out }), p: rev });
+  if (!enabled() || current() !== addr || !K) return 'stopped';
 
   const w = await fetch(base() + '/v1/doc/' + k.id, {
     method: 'PUT',
     headers: { 'Authorization': 'Bearer ' + k.token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ d: await seal(k.key, { v: 1, s: out }) })
+    body: body
   });
+  // another device wrote since this pass read: read, merge and write again, once
+  if (w.status === 409 && !again) return pass(addr, true);
   if (!w.ok) throw new Error('sync write ' + w.status);
   return 'written';
 }
@@ -175,6 +190,39 @@ function syncNow(){
     return 'failed';
   });
   return QUEUE;
+}
+
+// Turning sync off deletes the server copy (needs the open wallet's key)
+async function forget(addr){
+  const k = await keysFor(addr);
+  if (!k) return 'no key';
+  const r = await fetch(base() + '/v1/doc/' + k.id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + k.token } });
+  return r.ok ? 'deleted' : 'failed';
+}
+
+/* ---------------- asking once ---------------- */
+// At the first favorite, once per browser: what sync sends and what the
+// server sees, with Turn on / Not now (Pablo, #56). Never for a watched address.
+function offer(){
+  if (asked() || !current() || (S.SAVED && S.SAVED.watch) || typeof document === 'undefined') return;
+  if (document.getElementById('sync-ask')) return;
+  const box = document.createElement('div');
+  box.id = 'sync-ask'; box.className = 'sync-ask';
+  box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'sync-ask-t');
+  box.innerHTML = '<div class="sync-ask-in"><b id="sync-ask-t">Sync favorites to your other devices?</b>' +
+    '<p>Your favorites list is encrypted on this device and kept on the Delfos sync server, so the other Frontier apps with this recovery phrase show it too.</p>' +
+    '<p>The server sees your IP address and an anonymous id, never your address, your keys or which tokens you picked. Turning sync off in Settings deletes the server copy.</p>' +
+    '<div class="sync-ask-act"><button class="btn" type="button" data-a="0">Not now</button><button class="btn solid" type="button" data-a="1">Turn on</button></div></div>';
+  box.addEventListener('click', e => {
+    const b = e.target.closest('[data-a]');
+    if (!b) return;
+    try { localStorage.setItem('fw:sync', b.dataset.a); } catch (x) {}
+    box.remove(); paint();
+    document.dispatchEvent(new CustomEvent('frontier:sync'));
+    if (enabled()) syncNow();
+  });
+  document.body.appendChild(box);
+  const yes = box.querySelector('[data-a="1"]'); if (yes) yes.focus();
 }
 
 /* ---------------- what the other modules call ---------------- */
@@ -201,14 +249,20 @@ if (typeof document !== 'undefined' && document.addEventListener) {
   });
 
   // Settings > App > Sync favorites
-  const row = document.getElementById('set-sync'), cur = document.getElementById('sync-cur');
-  const paint = () => { if (cur) cur.textContent = enabled() ? 'On' : 'Off'; };
+  const row = document.getElementById('set-sync');
   paint();
   if (row) row.addEventListener('click', () => {
-    try { localStorage.setItem('fw:sync', enabled() ? '0' : '1'); } catch (e) {}
+    const was = enabled();
+    try { localStorage.setItem('fw:sync', was ? '0' : '1'); } catch (e) {}
     paint();
-    if (enabled()) syncNow();
+    document.dispatchEvent(new CustomEvent('frontier:sync'));
+    if (was) { const a = current(); QUEUE = QUEUE.then(() => forget(a)).catch(() => 'failed'); }
+    else syncNow();
   });
 }
+function paint(){
+  const cur = typeof document !== 'undefined' && document.getElementById && document.getElementById('sync-cur');
+  if (cur) cur.textContent = enabled() ? 'On' : 'Off';
+}
 
-export { changed, deriveKeys, seal, section, syncNow, unseal };
+export { changed, deriveKeys, enabled as syncOn, forget, offer, seal, section, syncNow, unseal };

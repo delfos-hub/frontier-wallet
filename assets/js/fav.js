@@ -12,11 +12,11 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=6913c9e3';
-import { S } from './state.js?v=6913c9e3';
-import { esc, iconHTML, paintIcons } from './chain.js?v=6913c9e3';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=6913c9e3';
-import { changed as synced, section as syncSection } from './sync.js?v=6913c9e3';
+import { $ } from './shell.js?v=c465368d';
+import { S } from './state.js?v=c465368d';
+import { esc, iconHTML, paintIcons } from './chain.js?v=c465368d';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=c465368d';
+import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=c465368d';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
@@ -127,8 +127,8 @@ function render(){
     (favs.length ? '<span class="fav-n">' + favs.length + '/' + MAX + '<span class="fav-drag"> \u00b7 <span>drag to reorder</span></span></span>' : '') + '</div>';
   if (!favs.length) {
     sec.innerHTML = head + '<div class="fav-empty">' + STAR + '<div><b>Pin the tokens you watch</b><br>' +
-      '<span>' + (TOUCH ? 'Long-press a token in the list to keep it here, under LUNC and USTC. Up to 6.'
-        : 'Tap the star on a token to keep it here, under LUNC and USTC. Up to 6.') + '</span></div></div>';
+      '<span>' + (TOUCH ? 'Long-press a token in the list to keep it here, under LUNC and USTC.' : 'Tap the star on a token to keep it here, under LUNC and USTC.') +
+      ' ' + (syncOn() ? 'Up to 6, synced between your devices (encrypted).' : 'Up to 6, kept on this device.') + '</span></div></div>';
     return;
   }
   let html = '<div class="fav-grid">';
@@ -160,6 +160,7 @@ function toggle(k, meta){
   save(favs); synced('fav');
   try { const h = window.Telegram && Telegram.WebApp && Telegram.WebApp.HapticFeedback; if (h) h.impactOccurred('light'); } catch (e) {}
   stars(); render(); if (PAGE) paintPage();
+  if (i < 0) offerSync();                 // the first favorite asks about sync, once
   return true;
 }
 function flash(msg){
@@ -301,6 +302,7 @@ function paintPage(){
 document.addEventListener('frontier:token', e => { PAGE = (e.detail && e.detail.key) || ''; paintPage(); });
 
 document.addEventListener('frontier:wallet', () => { stars(); render(); paintPage(); });
+document.addEventListener('frontier:sync', () => render());
 
 /* The list as the other devices of this wallet get it (sync.js). What is
    sent: the keys with symbol and logo address, never an embedded image. A

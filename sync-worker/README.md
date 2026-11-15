@@ -18,7 +18,11 @@ The Worker cannot read the list and does not know whose it is.
 ## API
 
     GET /v1/doc/<id>   -> { "d": "<base64>", "t": <ms> }   or 404
-    PUT /v1/doc/<id>   Authorization: Bearer <token>, body { "d": "<base64>" }
+    PUT /v1/doc/<id>   Authorization: Bearer <token>, body { "d": "<base64>", "p": <t read, 0 for none> }
+    DELETE /v1/doc/<id> Authorization: Bearer <token>
+
+A PUT whose `p` is not the record's current `t` gets 409: the client reads,
+merges and writes again.
 
 `<id>` and `<token>` are 64 hex characters. Records are capped at 8 KB and
 expire after 400 days without a write. Writes are accepted only from the
@@ -38,10 +42,27 @@ its id into `wrangler.jsonc`; commit that change. The client expects the
 Worker at `https://frontier-sync.delfoshub-team.workers.dev` (`HOST` in
 `assets/js/sync.js`).
 
+## Your data
+
+Sync is off until the user turns it on (Frontier asks once, at the first
+favorite, and it can be changed in Settings). When it is on:
+
+- What is kept: one record per wallet, the favorites list encrypted in the
+  browser (AES-GCM, padded to whole kilobytes), under a name derived from the
+  recovery phrase, with the SHA-256 of a write token.
+- What the server sees: the request's IP address (as any web server does) and
+  that name. Never the wallet address, the keys, or which tokens are listed.
+- How long: until the user turns sync off (Frontier deletes the record), or
+  400 days after the last write.
+- Watched addresses are never synced.
+
 ## Limits
 
-Workers KV on the free plan allows 1,000 writes a day. A write happens only
-when a favorites list actually changes; opening the wallet is a read.
+Workers KV on the free plan allows 1,000 writes a day for the whole account,
+shared with the other Workers there (relayer-watchdog keeps its state in KV
+too). Writes are rate limited per client (10 a minute, IPv6 by /64), reads too
+(60 a minute), and a write happens only when a list actually changes; opening
+the wallet is a read.
 
 ## Tests
 

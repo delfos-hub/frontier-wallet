@@ -26,13 +26,13 @@ function fakeKV(){
   const data = {}; let puts = 0;
   return { data, get puts(){ return puts; },
     get: async (k, type) => (k in data ? (type === 'json' ? JSON.parse(data[k]) : data[k]) : null),
-    put: async (k, v) => { puts += 1; data[k] = v; } };
+    put: async (k, v) => { puts += 1; data[k] = v; }, delete: async k => { puts += 1; delete data[k]; } };
 }
-let KV = fakeKV(), DOWN = false, CALLS = 0;
+let KV = fakeKV(), DOWN = false, CALLS = 0, LIMIT = null, LASTURL = '';
 const call = (url, init = {}, origin = ORIGIN) => worker.fetch(
-  new Request(url, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, origin ? { Origin: origin } : {}) })), { SYNC: KV });
+  new Request(url, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, origin ? { Origin: origin } : {}) })), { SYNC: KV, WRITES: LIMIT, READS: LIMIT });
 globalThis.fetch = async (url, init) => {
-  CALLS += 1;
+  CALLS += 1; LASTURL = String(url);
   if (DOWN) throw new TypeError('network down');
   return call(String(url), init);
 };
@@ -46,7 +46,8 @@ async function device(phrase, addr, opts = {}){
   fs.writeFileSync(path.join(dir, 'assets', 'js', 'state.js'), 'export const S = { MNEMONIC: null, SAVED: null };');
   fs.writeFileSync(path.join(dir, 'assets', 'js', 'sync.js'),
     fs.readFileSync(path.join(SRC, 'sync.js'), 'utf8').replace(/\?v=[0-9a-f]+/g, ''));
-  const ls = Object.assign({}, opts.local || {});
+  // on unless the case says otherwise: sync is off by default (tested below)
+  const ls = Object.assign(opts.fresh ? {} : { 'fw:sync': '1' }, opts.local || {});
   const storage = { getItem: k => (k in ls ? ls[k] : null), setItem: (k, v) => { ls[k] = String(v); }, removeItem: k => { delete ls[k]; } };
   globalThis.localStorage = storage;
   const m = await import(pathToFileURL(path.join(dir, 'assets', 'js', 'sync.js')).href + '?n=' + (seq++));
@@ -179,13 +180,13 @@ group('the Worker');
 {
   KV = fakeKV();
   const id = 'ab'.repeat(32), token = 'cd'.repeat(32), u = 'https://sync.test/v1/doc/' + id;
-  const put = (d, t = token, origin = ORIGIN, url = u) => call(url, { method: 'PUT', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ d }) }, origin);
+  const put = (d, t = token, origin = ORIGIN, url = u, p) => call(url, { method: 'PUT', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ d, p: p === undefined ? (KV.data['doc:' + id] ? JSON.parse(KV.data['doc:' + id]).t : 0) : p }) }, origin);
   ok('nothing kept yet: 404', (await call(u)).status === 404);
   ok('the first write is taken', (await put('AAAA')).status === 200);
   const got = await call(u);
   ok('and read back, for our origin', got.status === 200 && (await got.json()).d === 'AAAA' && got.headers.get('Access-Control-Allow-Origin') === ORIGIN);
   ok('another token cannot replace it', (await put('BBBB', 'ef'.repeat(32))).status === 403 && JSON.parse(KV.data['doc:' + id]).d === 'AAAA');
-  ok('the same token can', (await put('BBBB')).status === 200 && JSON.parse(KV.data['doc:' + id]).d === 'BBBB');
+  ok('the same token can, naming the revision it read', (await put('BBBB', token, ORIGIN, u, JSON.parse(KV.data['doc:' + id]).t)).status === 200 && JSON.parse(KV.data['doc:' + id]).d === 'BBBB');
   const n = KV.puts;
   ok('writing the same text again spends no KV write', (await put('BBBB')).status === 200 && KV.puts === n);
   ok('only the token’s hash is kept', !KV.data['doc:' + id].includes(token));
@@ -197,7 +198,7 @@ group('the Worker');
   ok('a bad id is refused', (await call('https://sync.test/v1/doc/nothex')).status === 400);
   ok('any other path is 404', (await call('https://sync.test/v1/other')).status === 404);
   ok('the preflight answers for our origin', await (async () => { const r = await call(u, { method: 'OPTIONS' }); return r.status === 204 && /PUT/.test(r.headers.get('Access-Control-Allow-Methods')) && /Authorization/.test(r.headers.get('Access-Control-Allow-Headers')); })());
-  ok('nothing else is allowed', (await call(u, { method: 'DELETE' })).status === 405);
+  ok('nothing else is allowed', (await call(u, { method: 'POST' })).status === 405);
 }
 
 group('the wiring');
@@ -213,6 +214,39 @@ group('the wiring');
   ok('the keys are dropped when the wallet locks', /frontier:locked', \(\) => \{ K = null; \}/.test(sync));
   const hosts = fs.readFileSync(path.join(ROOT, 'sync-worker', 'worker.js'), 'utf8');
   ok('the Worker lets the web wallet and the Mini App in', hosts.includes("'https://wallet.delfos-hub.net'") && hosts.includes("'https://delfos-hub.github.io'"));
+}
+
+
+group('off by default, asked once, a deleted copy, a refused stale write, limits (Pablo, #56)');
+{
+  KV = fakeKV(); CALLS = 0;
+  const fresh = await device(PHRASE_A, ADDR_A, { fresh: true });
+  fresh.set([tok('JURIS')]);
+  ok('a wallet that was never asked sends nothing', (await fresh.sync()) === 'off' && CALLS === 0);
+  {
+    const u = 'https://sync.test/v1/doc/' + 'ef'.repeat(32), tk = '12'.repeat(32);
+    const w = (d, p) => call(u, { method: 'PUT', headers: { Authorization: 'Bearer ' + tk }, body: JSON.stringify({ d, p }) });
+    ok('the first write names no revision', (await w('AAAA', 0)).status === 200);
+    const t1 = JSON.parse(KV.data['doc:' + 'ef'.repeat(32)]).t;
+    ok('a write made from an older read is refused with 409', (await w('BBBB', 0)).status === 409 && JSON.parse(KV.data['doc:' + 'ef'.repeat(32)]).d === 'AAAA');
+    ok('the same write from the current revision is taken', (await w('BBBB', t1)).status === 200);
+  }
+  const a = await device(PHRASE_A, ADDR_A);
+  a.set([tok('JURIS')]); await a.sync();
+  const key = Object.keys(KV.data).find(k => k !== 'doc:' + 'ef'.repeat(32));
+  a.ls['fw:sync'] = '0'; globalThis.localStorage = { getItem: k => (k in a.ls ? a.ls[k] : null), setItem: (k, v) => { a.ls[k] = String(v); }, removeItem: k => { delete a.ls[k]; } };
+  ok('turning sync off deletes the server copy', (await a.m.forget(ADDR_A)) === 'deleted' && !KV.data[key]);
+  a.ls['fw:sync:url'] = 'https://evil.example';
+  a.ls['fw:sync'] = '1'; a.set([tok('LTK')]); await a.sync();
+  ok('the server address cannot be changed outside localhost', LASTURL.indexOf('https://frontier-sync.delfoshub-team.workers.dev') === 0);
+  LIMIT = { limit: async () => ({ success: false }) };
+  const r = await call('https://sync.test/v1/doc/' + 'ab'.repeat(32), { method: 'PUT', headers: { Authorization: 'Bearer ' + 'cd'.repeat(32) }, body: JSON.stringify({ d: 'AAAA', p: 0 }) });
+  ok('a client over the write limit gets 429 and spends no KV write', r.status === 429);
+  ok('reads are limited too', (await call('https://sync.test/v1/doc/' + 'ab'.repeat(32))).status === 429);
+  LIMIT = null;
+  const fav = fs.readFileSync(path.join(SRC, 'fav.js'), 'utf8');
+  ok('the first favorite asks once', /if \(i < 0\) offerSync\(\);/.test(fav));
+  ok('while off, the wallet says the list stays on this device', /syncOn\(\) \? 'Up to 6, synced between your devices \(encrypted\)\.' : 'Up to 6, kept on this device\.'/.test(fav));
 }
 
 report();

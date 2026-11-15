@@ -13,5 +13,12 @@
 			"binding": "SYNC",
 			"id": "cfe11b00ddb842dc9e5d1165a0a14588"
 		}
+	],
+	// per client (IPv4, or IPv6 /64): writes spend the account's KV write
+	// quota, shared with relayer-watchdog. The namespace ids must differ
+	// from the other Workers' on the account (offers-worker uses its own).
+	"ratelimits": [
+		{ "name": "WRITES", "namespace_id": "2611", "simple": { "limit": 10, "period": 60 } },
+		{ "name": "READS", "namespace_id": "2612", "simple": { "limit": 60, "period": 60 } }
 	]
 }

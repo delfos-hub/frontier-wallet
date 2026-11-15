@@ -14,8 +14,16 @@
    later PUTs with another token are refused, so knowing an id is not enough
    to overwrite it. Reading needs only the id and returns ciphertext.
 
+     DELETE /v1/doc/<id> Authorization: Bearer <token>   (sync turned off)
+
+   A PUT names the revision it read (p: the record's t, 0 for none); if the
+   record changed since, it is refused with 409 and the client reads, merges
+   and writes again, so two devices never overwrite each other unseen.
+
    Storage is Workers KV (binding SYNC). The free plan allows 1,000 writes a
-   day, so a PUT that would change nothing is answered without writing. */
+   day for the whole account, so writes are rate limited per client (WRITES,
+   reads by READS) and a PUT that would change nothing is answered without
+   writing. */
 
 const ORIGINS = [
   'https://wallet.delfos-hub.net',
@@ -31,7 +39,7 @@ function cors(origin){
   const h = { 'Vary': 'Origin', 'Cache-Control': 'no-store' };
   if (origin && ORIGINS.indexOf(origin) >= 0) {
     h['Access-Control-Allow-Origin'] = origin;
-    h['Access-Control-Allow-Methods'] = 'GET, PUT, OPTIONS';
+    h['Access-Control-Allow-Methods'] = 'GET, PUT, DELETE, OPTIONS';
     h['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
     h['Access-Control-Max-Age'] = '86400';
   }
@@ -50,6 +58,22 @@ async function sha256hex(s){
   return out;
 }
 
+// one key per client: the IPv4 address, an IPv4 written as IPv6, or the /64
+function clientKey(request){
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  if (ip.indexOf(':') < 0) return ip;
+  const v4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (v4) return v4[1];
+  const parts = ip.split('::'), h = parts[0] ? parts[0].split(':') : [];
+  const t = parts.length > 1 && parts[1] ? parts[1].split(':') : [];
+  const full = parts.length > 1 ? h.concat(Array(Math.max(0, 8 - h.length - t.length)).fill('0'), t) : h;
+  return full.slice(0, 4).map(x => (x || '0').toLowerCase().replace(/^0+(?=.)/, '')).join(':') + '::/64';
+}
+async function limited(binding, request){
+  if (!binding) return false;
+  try { const r = await binding.limit({ key: clientKey(request) }); return !r.success; } catch (e) { return false; }
+}
+
 export default {
   async fetch(request, env){
     const origin = request.headers.get('Origin') || '';
@@ -63,6 +87,7 @@ export default {
     const key = 'doc:' + id;
 
     if (request.method === 'GET') {
+      if (await limited(env.READS, request)) return json({ error: 'too many requests' }, 429, origin);
       const rec = await env.SYNC.get(key, 'json');
       if (!rec || typeof rec.d !== 'string') return json({ error: 'no record' }, 404, origin);
       return json({ d: rec.d, t: rec.t || 0 }, 200, origin);
@@ -73,6 +98,7 @@ export default {
       if (ORIGINS.indexOf(origin) < 0) return json({ error: 'origin not allowed' }, 403, origin);
       const auth = /^Bearer ([0-9a-f]{64})$/.exec(request.headers.get('Authorization') || '');
       if (!auth) return json({ error: 'no token' }, 401, origin);
+      if (await limited(env.WRITES, request)) return json({ error: 'too many requests' }, 429, origin);
       const raw = await request.text();
       if (raw.length > MAX_DOC + 64) return json({ error: 'too large' }, 413, origin);
       let body = null;
@@ -83,10 +109,24 @@ export default {
       const a = await sha256hex(auth[1]);
       const rec = await env.SYNC.get(key, 'json');
       if (rec && rec.a !== a) return json({ error: 'wrong token' }, 403, origin);
+      // the revision this write was made from: changed since, read again
+      if (rec && Number(body.p) !== Number(rec.t || 0)) return json({ error: 'changed', t: rec.t || 0 }, 409, origin);
       if (rec && rec.d === d) return json({ ok: true, t: rec.t || 0, same: true }, 200, origin);
       const t = Date.now();
       await env.SYNC.put(key, JSON.stringify({ a: a, d: d, t: t }), { expirationTtl: TTL });
       return json({ ok: true, t: t }, 200, origin);
+    }
+
+    if (request.method === 'DELETE') {
+      if (ORIGINS.indexOf(origin) < 0) return json({ error: 'origin not allowed' }, 403, origin);
+      const auth = /^Bearer ([0-9a-f]{64})$/.exec(request.headers.get('Authorization') || '');
+      if (!auth) return json({ error: 'no token' }, 401, origin);
+      if (await limited(env.WRITES, request)) return json({ error: 'too many requests' }, 429, origin);
+      const rec = await env.SYNC.get(key, 'json');
+      if (!rec) return json({ ok: true, gone: true }, 200, origin);
+      if (rec.a !== await sha256hex(auth[1])) return json({ error: 'wrong token' }, 403, origin);
+      await env.SYNC.delete(key);
+      return json({ ok: true }, 200, origin);
     }
 
     return json({ error: 'method not allowed' }, 405, origin);
