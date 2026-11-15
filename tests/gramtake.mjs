@@ -45,7 +45,7 @@ function make({ signed = OFFER, lock = {}, mine = {} } = {}){
     setPolicy: () => null, mineAll: () => mine
   };
   const names = Object.keys(env);
-  const f = new Function(...names, lift(src, 'async function checkTake(t){') + '\nreturn checkTake;')(...names.map(k => env[k]));
+  const f = new Function(...names, lift(src, 'function heldAt(t){') + '\n' + lift(src, 'async function checkTake(t){') + '\nreturn checkTake;')(...names.map(k => env[k]));
   return t => f(Object.assign({ offer_id: 'o1', ton_lock: LOCK, hash: 'h', taker_terra: 'terra1x', lunc: '500000000' }, t));
 }
 
@@ -104,5 +104,15 @@ f = await finish({ terra: { status: 'claimed', secret: 'ab' }, ton: { status: 'u
 ok('an odd TON answer does not end the claim as lost', !f.finalsSet[LOCK]);
 f = await finish({ terra: { status: 'open', timeout: NOW - 1 }, ton: {} });
 ok('a lock of mine open past its timeout gets a Refund', f.due[LOCK] === 9);
+
+
+group('a take from an intent: the offer\u2019s end against when it was registered');
+const ENDED = Object.assign({}, OFFER, { expires: NOW - 60 });
+r = await make({ signed: ENDED })({ created: NOW - 30, held_since: NOW - 600 });
+ok('registered before the offer ended: answered', !r.problems.some(p => /has ended/.test(p)), r.problems.join('; '));
+r = await make({ signed: ENDED })({ created: NOW - 30, held_since: NOW - 30 * 86400 });
+ok('a held_since far before the take is not believed', r.problems.some(p => /has ended/.test(p)));
+r = await make({ signed: ENDED })({ created: NOW - 30 });
+ok('no held_since: checked against now, as before', r.problems.some(p => /has ended/.test(p)));
 
 report();

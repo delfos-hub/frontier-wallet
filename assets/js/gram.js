@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=caced94f';
-import { GRAM_NET, TERMS } from './gram-net.js?v=caced94f';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=caced94f';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=caced94f';
-import { S } from './state.js?v=caced94f';
-import { decryptSeed } from './storage.js?v=caced94f';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=caced94f';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=caced94f';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=caced94f';
-import { chime, notify } from './notify.js?v=caced94f';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=39f0ac1d';
+import { GRAM_NET, TERMS } from './gram-net.js?v=39f0ac1d';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=39f0ac1d';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=39f0ac1d';
+import { S } from './state.js?v=39f0ac1d';
+import { decryptSeed } from './storage.js?v=39f0ac1d';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=39f0ac1d';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=39f0ac1d';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=39f0ac1d';
+import { chime, notify } from './notify.js?v=39f0ac1d';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -972,6 +972,11 @@ function terraTimeout(n){
   const p = POLICY;
   return Math.min(now() + p.t_terra_sec, (n.timeout || 0) - p.terra_gap_sec - MARGIN);
 }
+function heldAt(t){
+  const h = Number(t.held_since), c = Number(t.created);
+  const life = Number((POLICY && POLICY.intent_ttl_sec) || 1200) + 60;
+  return h > 0 && c > 0 && h <= c && h >= c - life ? h : now();
+}
 async function checkTake(t){
   if (!POLICY) setPolicy((await api('/offers')).policy);
   if (!POLICY) throw new Error((POLICY_ERR || 'the swap rules could not be loaded') + ' Not answering without them.');
@@ -986,7 +991,10 @@ async function checkTake(t){
     problems.push('the take is outside the amounts you offered');
   // the offer as signed: not past its end, not past its total counting the
   // locks this device already made for it (audit D11)
-  else if (Number(offer.expires) <= now()) problems.push('your offer has ended');
+  // a take from an intent is held to the offer as it was when the intent was
+  // registered (held_since); believed only within the intent's life before
+  // the take, so a Worker cannot revive an offer that ended long ago
+  else if (Number(offer.expires) <= heldAt(t)) problems.push('your offer has ended');
   else if (offer.total_lunc && Object.entries(mineAll()).filter(([k, x]) => k !== t.ton_lock && x.id && x.offer_id === t.offer_id)
       .reduce((s, [, x]) => s + BigInt(x.lunc || 0), 0n) + BigInt(t.lunc) > BigInt(offer.total_lunc))
     problems.push('this take would sell more than your offer\u2019s total');
