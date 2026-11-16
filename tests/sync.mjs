@@ -55,6 +55,11 @@ globalThis.fetch = async (url, init) => {
   return call(String(url), init);
 };
 
+// the debounced pass (1.2 s after a change) is not started here: every pass is
+// driven by the cases, and a late timer would run with another device's storage
+const REAL_TIMEOUT = globalThis.setTimeout;
+globalThis.setTimeout = (f, ms, ...a) => (ms === 1200 ? 0 : REAL_TIMEOUT(f, ms, ...a));
+
 let seq = 0;
 async function device(phrase, addr, opts = {}){
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-'));

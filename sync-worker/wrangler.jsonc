@@ -10,7 +10,7 @@
 	// quota (relayer-watchdog). Create it once, put its id here, then
 	//   npx wrangler d1 execute frontier-sync --remote --yes --file schema.sql
 	"d1_databases": [
-		{ "binding": "DB", "database_name": "frontier-sync", "database_id": "FILL-ME-FROM-wrangler-d1-create" }
+		{ "binding": "DB", "database_name": "frontier-sync", "database_id": "2071fc3b-d921-4dd9-9e46-a5a9792403df" }
 	],
 	// daily purge of records not written for 400 days
 	"triggers": { "crons": ["23 3 * * *"] },
