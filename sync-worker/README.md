@@ -37,8 +37,8 @@ On the Delfos Hub Cloudflare account:
     source ~/.delfos-cf.env
     npx wrangler deploy
 
-The first deploy creates the KV namespace for the `SYNC` binding and writes
-its id into `wrangler.jsonc`; commit that change. The client expects the
+Once: `npx wrangler d1 create frontier-sync`, put the `database_id` it prints into
+`wrangler.jsonc`, then `npx wrangler d1 execute frontier-sync --remote --yes --file schema.sql`. The client expects the
 Worker at `https://frontier-sync.delfoshub-team.workers.dev` (`HOST` in
 `assets/js/sync.js`).
 
@@ -52,15 +52,15 @@ favorite, and it can be changed in Settings). When it is on:
   recovery phrase, with the SHA-256 of a write token.
 - What the server sees: the request's IP address (as any web server does) and
   that name. Never the wallet address, the keys, or which tokens are listed.
-- How long: until the user turns sync off (Frontier deletes the record), or
-  400 days after the last write.
+- How long: until sync is turned off (Frontier deletes the record; it is
+  turned off on each device, or another one with sync on writes it back), or
+  400 days after the last write (a daily cron removes it).
 - Watched addresses are never synced.
 
 ## Limits
 
-Workers KV on the free plan allows 1,000 writes a day for the whole account,
-shared with the other Workers there (relayer-watchdog keeps its state in KV
-too). Writes are rate limited per client (10 a minute, IPv6 by /64), reads too
+Records live in D1 (100,000 writes a day on the free plan), not in KV, whose
+1,000 daily writes are shared with relayer-watchdog. Writes are rate limited per client (10 a minute, IPv6 by /64), reads too
 (60 a minute), and a write happens only when a list actually changes; opening
 the wallet is a read.
 

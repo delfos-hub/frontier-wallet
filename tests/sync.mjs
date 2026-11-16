@@ -22,15 +22,33 @@ const ADDR_A = 'terra1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ADDR_B = 'terra1b
 const ORIGIN = 'https://wallet.delfos-hub.net';
 
 // the Worker's storage
-function fakeKV(){
+function fakeD1(){
+  // a D1 that knows the Worker's statements; rows kept as data['doc:'+id] = JSON
   const data = {}; let puts = 0;
-  return { data, get puts(){ return puts; },
-    get: async (k, type) => (k in data ? (type === 'json' ? JSON.parse(data[k]) : data[k]) : null),
-    put: async (k, v) => { puts += 1; data[k] = v; }, delete: async k => { puts += 1; delete data[k]; } };
+  const row = id => (data['doc:' + id] ? JSON.parse(data['doc:' + id]) : null);
+  const prepare = sql => ({ bind: (...a) => ({
+    first: async () => {
+      const r = row(a[0]); if (!r) return null;
+      if (/^SELECT d, t /.test(sql)) return { d: r.d, t: r.t };
+      if (/^SELECT a, d, t /.test(sql)) return { a: r.a, d: r.d, t: r.t };
+      if (/^SELECT a /.test(sql)) return { a: r.a };
+      throw new Error('fake D1: ' + sql);
+    },
+    run: async () => {
+      let changes = 0;
+      if (/^UPDATE docs/.test(sql)) { const [d, t, id, aa, old] = a; const r = row(id); if (r && r.a === aa && r.t === old) { data['doc:' + id] = JSON.stringify({ a: r.a, d, t }); changes = 1; } }
+      else if (/^INSERT INTO docs/.test(sql)) { const [id, aa, d, t] = a; if (!row(id)) { data['doc:' + id] = JSON.stringify({ a: aa, d, t }); changes = 1; } }
+      else if (/^DELETE FROM docs WHERE id/.test(sql)) { const r = row(a[0]); if (r && r.a === a[1]) { delete data['doc:' + a[0]]; changes = 1; } }
+      else if (/^DELETE FROM docs WHERE t </.test(sql)) { for (const k of Object.keys(data)) if (JSON.parse(data[k]).t < a[0]) { delete data[k]; changes++; } }
+      else throw new Error('fake D1: ' + sql);
+      if (changes) puts += 1;
+      return { meta: { changes } };
+    } }) });
+  return { data, get puts(){ return puts; }, prepare };
 }
-let KV = fakeKV(), DOWN = false, CALLS = 0, LIMIT = null, LASTURL = '';
+let KV = fakeD1(), DOWN = false, CALLS = 0, LIMIT = null, LASTURL = '';
 const call = (url, init = {}, origin = ORIGIN) => worker.fetch(
-  new Request(url, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, origin ? { Origin: origin } : {}) })), { SYNC: KV, WRITES: LIMIT, READS: LIMIT });
+  new Request(url, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, origin ? { Origin: origin } : {}) })), { DB: KV, WRITES: LIMIT, READS: LIMIT });
 globalThis.fetch = async (url, init) => {
   CALLS += 1; LASTURL = String(url);
   if (DOWN) throw new TypeError('network down');
@@ -92,7 +110,7 @@ group('keys and the envelope');
 }
 
 group('one wallet on two devices');
-KV = fakeKV();
+KV = fakeD1();
 const web = await device(PHRASE_A, ADDR_A), tg = await device(PHRASE_A, ADDR_A);
 {
   ok('nothing kept and nothing picked: no record is made', (await web.sync()) === 'read' && KV.puts === 0);
@@ -123,7 +141,7 @@ const web = await device(PHRASE_A, ADDR_A), tg = await device(PHRASE_A, ADDR_A);
 
 group('lists from before sync existed');
 {
-  KV = fakeKV();
+  KV = fakeD1();
   const a = await device(PHRASE_A, ADDR_A, { local: { ['fw:fav:' + ADDR_A]: JSON.stringify([tok('JURIS'), tok('TCO')]) } });
   const b = await device(PHRASE_A, ADDR_A, { local: { ['fw:fav:' + ADDR_A]: JSON.stringify([tok('TCO'), tok('LTK')]) } });
   ok('the first device to open puts its old list up', (await a.sync()) === 'written');
@@ -138,7 +156,7 @@ group('lists from before sync existed');
 
 group('what stays on the device');
 {
-  KV = fakeKV(); CALLS = 0;
+  KV = fakeD1(); CALLS = 0;
   const w = await device(PHRASE_A, ADDR_A, { watch: true });
   w.set([tok('JURIS')]);
   ok('a watched address is never sent anywhere', (await w.sync()) === 'no key' && CALLS === 0 && KV.puts === 0);
@@ -159,7 +177,7 @@ group('what stays on the device');
 
 group('when something is wrong');
 {
-  KV = fakeKV();
+  KV = fakeD1();
   const a = await device(PHRASE_A, ADDR_A);
   a.set([tok('JURIS')]);
   DOWN = true;
@@ -178,7 +196,7 @@ group('when something is wrong');
 
 group('the Worker');
 {
-  KV = fakeKV();
+  KV = fakeD1();
   const id = 'ab'.repeat(32), token = 'cd'.repeat(32), u = 'https://sync.test/v1/doc/' + id;
   const put = (d, t = token, origin = ORIGIN, url = u, p) => call(url, { method: 'PUT', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ d, p: p === undefined ? (KV.data['doc:' + id] ? JSON.parse(KV.data['doc:' + id]).t : 0) : p }) }, origin);
   ok('nothing kept yet: 404', (await call(u)).status === 404);
@@ -219,7 +237,7 @@ group('the wiring');
 
 group('off by default, asked once, a deleted copy, a refused stale write, limits (Pablo, #56)');
 {
-  KV = fakeKV(); CALLS = 0;
+  KV = fakeD1(); CALLS = 0;
   const fresh = await device(PHRASE_A, ADDR_A, { fresh: true });
   fresh.set([tok('JURIS')]);
   ok('a wallet that was never asked sends nothing', (await fresh.sync()) === 'off' && CALLS === 0);
@@ -247,6 +265,39 @@ group('off by default, asked once, a deleted copy, a refused stale write, limits
   const fav = fs.readFileSync(path.join(SRC, 'fav.js'), 'utf8');
   ok('the first favorite asks once', /if \(i < 0\) offerSync\(\);/.test(fav));
   ok('while off, the wallet says the list stays on this device', /syncOn\(\) \? 'Up to 6, synced between your devices \(encrypted\)\.' : 'Up to 6, kept on this device\.'/.test(fav));
+}
+
+
+group('second review (Pablo, #56): picked while Off, a failed delete, the daily purge');
+{
+  KV = fakeD1();
+  const a = await device(PHRASE_A, ADDR_A);
+  a.set([tok('JURIS')]); await a.sync();
+  const b = await device(PHRASE_A, ADDR_A, { fresh: true });
+  b.set([tok('TCO'), tok('CLUB')]);
+  ok('picked while Off: nothing sent', (await b.sync()) === 'off');
+  b.ls['fw:sync'] = '1';
+  await b.sync(); await a.sync();
+  ok('turned on later: the lists are joined, not replaced', b.list() === 'JURIS,TCO,CLUB' && a.list() === 'JURIS,TCO,CLUB');
+  await tick();
+  b.set([tok('TCO')]); await b.sync(); await a.sync();
+  ok('after the first meeting a removal still goes everywhere', a.list() === 'TCO');
+  DOWN = true;
+  globalThis.localStorage = { getItem: k => (k in a.ls ? a.ls[k] : null), setItem: (k, v) => { a.ls[k] = String(v); }, removeItem: k => { delete a.ls[k]; } };
+  a.ls['fw:sync'] = '0';
+  ok('a delete that fails is remembered', (await a.m.forget(ADDR_A)) === 'failed' && a.m.pendingDelete(ADDR_A));
+  DOWN = false;
+  await a.m.retryDelete();
+  ok('and done at the next unlock', !a.m.pendingDelete(ADDR_A) && Object.keys(KV.data).length === 0);
+  KV = fakeD1();
+  const id = 'aa'.repeat(32);
+  KV.data['doc:' + id] = JSON.stringify({ a: 'x', d: 'AAAA', t: Date.now() - 401 * 86400 * 1000 });
+  KV.data['doc:' + 'bb'.repeat(32)] = JSON.stringify({ a: 'x', d: 'AAAA', t: Date.now() });
+  let waited = null;
+  await worker.scheduled({}, { DB: KV }, { waitUntil: p => { waited = p; } }); await waited;
+  ok('the daily cron removes a record not written for 400 days, and keeps the others', !KV.data['doc:' + id] && KV.data['doc:' + 'bb'.repeat(32)]);
+  const sync = fs.readFileSync(path.join(SRC, 'sync.js'), 'utf8');
+  ok('the dialog says sync is turned off on each device', /turn sync off in Settings on each device/.test(sync));
 }
 
 report();

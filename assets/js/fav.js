@@ -12,11 +12,11 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=c465368d';
-import { S } from './state.js?v=c465368d';
-import { esc, iconHTML, paintIcons } from './chain.js?v=c465368d';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=c465368d';
-import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=c465368d';
+import { $ } from './shell.js?v=0db71225';
+import { S } from './state.js?v=0db71225';
+import { esc, iconHTML, paintIcons } from './chain.js?v=0db71225';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=0db71225';
+import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=0db71225';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];

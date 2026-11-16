@@ -20,10 +20,12 @@
    record changed since, it is refused with 409 and the client reads, merges
    and writes again, so two devices never overwrite each other unseen.
 
-   Storage is Workers KV (binding SYNC). The free plan allows 1,000 writes a
-   day for the whole account, so writes are rate limited per client (WRITES,
-   reads by READS) and a PUT that would change nothing is answered without
-   writing. */
+   Storage is D1 (binding DB, schema.sql): 100,000 writes a day on the free
+   plan, apart from the account's KV write quota that relayer-watchdog relies
+   on. Writes are rate limited per client (WRITES, reads by READS), a PUT that
+   would change nothing is answered without writing, and the revision check is
+   part of the UPDATE, so two writes can never both pass it. A daily cron
+   removes records not written for 400 days. */
 
 const ORIGINS = [
   'https://wallet.delfos-hub.net',
@@ -33,7 +35,7 @@ const ORIGINS = [
 const HEX64 = /^[0-9a-f]{64}$/;
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_DOC = 8192;                    // base64 characters
-const TTL = 400 * 24 * 3600;             // a record nobody writes for 400 days goes
+const TTL_MS = 400 * 24 * 3600 * 1000;   // a record nobody writes for 400 days goes (daily cron)
 
 function cors(origin){
   const h = { 'Vary': 'Origin', 'Cache-Control': 'no-store' };
@@ -88,7 +90,7 @@ export default {
 
     if (request.method === 'GET') {
       if (await limited(env.READS, request)) return json({ error: 'too many requests' }, 429, origin);
-      const rec = await env.SYNC.get(key, 'json');
+      const rec = await env.DB.prepare('SELECT d, t FROM docs WHERE id = ?').bind(id).first();
       if (!rec || typeof rec.d !== 'string') return json({ error: 'no record' }, 404, origin);
       return json({ d: rec.d, t: rec.t || 0 }, 200, origin);
     }
@@ -107,13 +109,17 @@ export default {
       if (typeof d !== 'string' || !d.length || d.length > MAX_DOC || !B64.test(d)) return json({ error: 'bad body' }, 400, origin);
 
       const a = await sha256hex(auth[1]);
-      const rec = await env.SYNC.get(key, 'json');
+      const rec = await env.DB.prepare('SELECT a, d, t FROM docs WHERE id = ?').bind(id).first();
       if (rec && rec.a !== a) return json({ error: 'wrong token' }, 403, origin);
       // the revision this write was made from: changed since, read again
       if (rec && Number(body.p) !== Number(rec.t || 0)) return json({ error: 'changed', t: rec.t || 0 }, 409, origin);
       if (rec && rec.d === d) return json({ ok: true, t: rec.t || 0, same: true }, 200, origin);
-      const t = Date.now();
-      await env.SYNC.put(key, JSON.stringify({ a: a, d: d, t: t }), { expirationTtl: TTL });
+      const t = Math.max(Date.now(), rec ? Number(rec.t) + 1 : 0);
+      // the check is part of the write: of two writes from one revision, one passes
+      const r = rec
+        ? await env.DB.prepare('UPDATE docs SET d = ?, t = ? WHERE id = ? AND a = ? AND t = ?').bind(d, t, id, a, Number(rec.t)).run()
+        : await env.DB.prepare('INSERT INTO docs (id, a, d, t) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING').bind(id, a, d, t).run();
+      if (!(r && r.meta && r.meta.changes)) return json({ error: 'changed' }, 409, origin);
       return json({ ok: true, t: t }, 200, origin);
     }
 
@@ -122,13 +128,18 @@ export default {
       const auth = /^Bearer ([0-9a-f]{64})$/.exec(request.headers.get('Authorization') || '');
       if (!auth) return json({ error: 'no token' }, 401, origin);
       if (await limited(env.WRITES, request)) return json({ error: 'too many requests' }, 429, origin);
-      const rec = await env.SYNC.get(key, 'json');
+      const rec = await env.DB.prepare('SELECT a FROM docs WHERE id = ?').bind(id).first();
       if (!rec) return json({ ok: true, gone: true }, 200, origin);
       if (rec.a !== await sha256hex(auth[1])) return json({ error: 'wrong token' }, 403, origin);
-      await env.SYNC.delete(key);
+      await env.DB.prepare('DELETE FROM docs WHERE id = ? AND a = ?').bind(id, rec.a).run();
       return json({ ok: true }, 200, origin);
     }
 
     return json({ error: 'method not allowed' }, 405, origin);
+  },
+
+  // daily: records not written for 400 days go
+  async scheduled(event, env, ctx){
+    ctx.waitUntil(env.DB.prepare('DELETE FROM docs WHERE t < ?').bind(Date.now() - TTL_MS).run());
   }
 };

@@ -6,16 +6,15 @@
 	"main": "worker.js",
 	"compatibility_date": "2026-11-01",
 	"workers_dev": true,
-	// no id on purpose: wrangler (4.45+) creates the namespace on the first
-	// deploy and keeps it linked on later ones
-	"kv_namespaces": [
-		{
-			"binding": "SYNC",
-			"id": "cfe11b00ddb842dc9e5d1165a0a14588"
-		}
+	// D1, not KV: 100,000 writes a day, apart from the account's KV write
+	// quota (relayer-watchdog). Create it once, put its id here, then
+	//   npx wrangler d1 execute frontier-sync --remote --yes --file schema.sql
+	"d1_databases": [
+		{ "binding": "DB", "database_name": "frontier-sync", "database_id": "FILL-ME-FROM-wrangler-d1-create" }
 	],
-	// per client (IPv4, or IPv6 /64): writes spend the account's KV write
-	// quota, shared with relayer-watchdog. The namespace ids must differ
+	// daily purge of records not written for 400 days
+	"triggers": { "crons": ["23 3 * * *"] },
+	// per client (IPv4, or IPv6 /64). The namespace ids must differ
 	// from the other Workers' on the account (offers-worker uses its own).
 	"ratelimits": [
 		{ "name": "WRITES", "namespace_id": "2611", "simple": { "limit": 10, "period": 60 } },
