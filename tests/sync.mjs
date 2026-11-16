@@ -305,4 +305,26 @@ group('second review (Pablo, #56): picked while Off, a failed delete, the daily 
   ok('the dialog says sync is turned off on each device', /turn sync off in Settings on each device/.test(sync));
 }
 
+
+group('third review (Pablo, #56): off and on again, other wallets on this device');
+{
+  KV = fakeD1();
+  const a = await device(PHRASE_A, ADDR_A), b = await device(PHRASE_A, ADDR_A);
+  a.set([tok('JURIS')]); await a.sync(); await b.sync();
+  const useB = () => { globalThis.localStorage = { getItem: k => (k in b.ls ? b.ls[k] : null), setItem: (k, v) => { b.ls[k] = String(v); }, removeItem: k => { delete b.ls[k]; }, get length(){ return Object.keys(b.ls).length; }, key: i => Object.keys(b.ls)[i] }; };
+  useB(); b.ls['fw:sync'] = '0'; await b.m.offAll();
+  await tick();
+  b.set([tok('JURIS'), tok('TCO')]);
+  await a.sync();                                 // the record was deleted: A writes it again
+  await tick();
+  a.set([tok('JURIS'), tok('CLUB')]); await a.sync();
+  b.ls['fw:sync'] = '1'; await b.sync();
+  ok('turned off, picked while off, turned on after another device wrote: joined', b.list().split(',').sort().join(',') === 'CLUB,JURIS,TCO', b.list());
+
+  const other = 'terra1otherwallet00000000000000000000000000';
+  b.ls['fw:sync:j:fav:' + other] = '1';
+  useB(); b.ls['fw:sync'] = '0'; await b.m.offAll();
+  ok('Off covers the other wallets synced here: their copies are deleted at their next unlock', b.ls['fw:sync:del:' + other] === '1' && !b.ls['fw:sync:j:fav:' + other]);
+}
+
 report();

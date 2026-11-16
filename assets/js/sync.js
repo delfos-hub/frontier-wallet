@@ -24,7 +24,7 @@
    when this device last changed it). A device that has a list from before
    this module existed has no such time: its list is joined with the kept
    one once, instead of one silently replacing the other. */
-import { S } from './state.js?v=0db71225';
+import { S } from './state.js?v=d3a72c42';
 
 const HOST = 'https://frontier-sync.delfoshub-team.workers.dev';
 const SALT = 'frontier-sync-v1';
@@ -207,6 +207,8 @@ function syncNow(){
 const delKey = addr => 'fw:sync:del:' + addr;
 async function forget(addr){
   try { localStorage.setItem(delKey(addr), '1'); } catch (e) {}
+  // its next turn-on meets the kept list as a first meeting again: joined
+  unjoin(addr);
   const k = await keysFor(addr);
   if (!k) return 'no key';
   let r = null;
@@ -214,6 +216,26 @@ async function forget(addr){
   if (!r || !r.ok) return 'failed';
   try { localStorage.removeItem(delKey(addr)); } catch (e) {}
   return 'deleted';
+}
+function unjoin(addr){
+  for (const n in SECTIONS) { try { localStorage.removeItem(jKey(n, addr)); } catch (e) {} }
+}
+// Off on this device: every wallet synced here (it has a joined marker) gets
+// its markers cleared and its server copy deleted, the open one now, the
+// others at their next unlock, since their keys are needed (Pablo, #56).
+function offAll(){
+  const others = new Set();
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i), m = /^fw:sync:j:[^:]+:(.+)$/.exec(k || '');
+      if (m) others.add(m[1]);
+    }
+  } catch (e) {}
+  const a = current();
+  others.delete(a);
+  others.forEach(o => { try { localStorage.setItem(delKey(o), '1'); } catch (e) {} unjoin(o); });
+  if (a) QUEUE = QUEUE.then(() => forget(a)).catch(() => 'failed');
+  return QUEUE;
 }
 function pendingDelete(addr){
   try { return localStorage.getItem(delKey(addr)) === '1'; } catch (e) { return false; }
@@ -281,7 +303,7 @@ if (typeof document !== 'undefined' && document.addEventListener) {
     try { localStorage.setItem('fw:sync', was ? '0' : '1'); } catch (e) {}
     paint();
     document.dispatchEvent(new CustomEvent('frontier:sync'));
-    if (was) { const a = current(); QUEUE = QUEUE.then(() => forget(a)).catch(() => 'failed'); }
+    if (was) offAll();
     else { try { localStorage.removeItem(delKey(current())); } catch (e) {} syncNow(); }
   });
 }
@@ -290,4 +312,4 @@ function paint(){
   if (cur) cur.textContent = enabled() ? 'On' : 'Off';
 }
 
-export { changed, deriveKeys, enabled as syncOn, forget, offer, pendingDelete, retryDelete, seal, section, syncNow, unseal };
+export { changed, deriveKeys, enabled as syncOn, forget, offAll, offer, pendingDelete, retryDelete, seal, section, syncNow, unseal };

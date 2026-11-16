@@ -31,14 +31,19 @@ when it ships.
 
 ## Deploy
 
-On the Delfos Hub Cloudflare account:
+On the Delfos Hub Cloudflare account. Once, first: create the database, put
+the `database_id` it prints into `wrangler.jsonc`, and create the table:
 
     cd sync-worker
     source ~/.delfos-cf.env
+    npx wrangler d1 create frontier-sync
+    npx wrangler d1 execute frontier-sync --remote --yes --file schema.sql
+
+Then, and on every change:
+
     npx wrangler deploy
 
-Once: `npx wrangler d1 create frontier-sync`, put the `database_id` it prints into
-`wrangler.jsonc`, then `npx wrangler d1 execute frontier-sync --remote --yes --file schema.sql`. The client expects the
+The client expects the
 Worker at `https://frontier-sync.delfoshub-team.workers.dev` (`HOST` in
 `assets/js/sync.js`).
 
