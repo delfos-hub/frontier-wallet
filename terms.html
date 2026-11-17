@@ -253,11 +253,13 @@ service fee is charged.</p>
 <p>Delfos Hub operates a relayer that submits the transactions needed to
 complete swaps on behalf of both parties. During normal relayer
 operation, users do not need to hold the other network’s native coin
-to pay claim gas. The buyer’s wallet must remain open, in the foreground
-or in the background, from payment until the LUNC is claimed: it supplies
-the secret to the relayer only after verifying the seller’s lock. A
-seller’s wallet that remains open likewise claims the GRAM if the relayer
-has not. The fallback procedures and dependencies below continue to
+to pay claim gas. The buyer’s wallet must remain open from payment until
+the LUNC is claimed: it supplies the secret to the relayer only after
+verifying the seller’s lock. On a phone, including inside Telegram, the
+wallet must stay on screen, because a phone may stop a page that is in
+the background; on a computer, an open browser tab in the background is
+sufficient. A seller’s wallet that remains open likewise claims the GRAM
+if the relayer has not. The fallback procedures and dependencies below continue to
 apply.</p>
 <p><strong>Functions.</strong> The relayer uses the secret supplied by
 the buyer’s wallet to claim LUNC for the buyer, then releases GRAM to
@@ -316,9 +318,8 @@ transfers received from a smart contract.</p>
 <p><strong>Seller response.</strong> Maintain enough LUNC to fund the
 lock, burn tax and gas, and respond to valid acceptances within 30
 minutes.</p>
-<p><strong>Pending swaps.</strong> As a buyer, keep the wallet open, in
-the foreground or in the background, from payment until the LUNC
-arrives. As a seller, open the wallet when a swap requires action. While
+<p><strong>Pending swaps.</strong> As a buyer, keep the wallet open from
+payment until the LUNC arrives, on screen if you use a phone. As a seller, open the wallet when a swap requires action. While
 open, Frontier can perform the relevant claim if the relayer has not
 done so; a buyer’s claim from the wallet requires the PIN and LUNC for
 gas.</p>

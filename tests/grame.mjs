@@ -83,8 +83,11 @@ group('texts (E1, E2, 5, 9)');
   ok('"no gas needed" says when', src.includes('no gas needed when the relayer claims'));
   ok('the Sell form names the real reserve', !src.includes('50 LUNC kept for gas') && src.includes("human(GAS_RESERVE, 6) + ' LUNC kept for gas"));
   ok('watchBuys is not stopped by a hidden tab', !/WATCHING_BUYS \|\| document\.hidden/.test(src));
+  ok('a phone is told to keep it on screen', /on a phone, keep it on screen/.test(src) && !/a background tab is fine\)/.test(src.replace(/KEEP_OPEN = .*/, '')));
+  ok('the seller sees the refund\u2019s burn tax before publishing', /el\.textContent \+= ' If a buyer never claims, your LUNC comes back ' \+ backNote\(\)/.test(src));
   const terms = fs.readFileSync(path.resolve(SRC, '..', '..', 'terms.html'), 'utf8');
   ok('Terms: no "do not need to remain online"', !/do not need to remain\s+online/.test(terms));
+  ok('Terms: on a phone the wallet stays on screen', /On a phone, including inside Telegram, the\s+wallet must stay on screen/.test(terms));
   ok('Terms: the refund pays the burn tax again', /charges the burn tax again/.test(terms));
   ok('Terms: late responses are checked, not ignored', !/does not process that/.test(terms));
 }

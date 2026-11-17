@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=25dcec2d';
-import { GRAM_NET, TERMS } from './gram-net.js?v=25dcec2d';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=25dcec2d';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=25dcec2d';
-import { S } from './state.js?v=25dcec2d';
-import { decryptSeed } from './storage.js?v=25dcec2d';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=25dcec2d';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=25dcec2d';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=25dcec2d';
-import { chime, notify } from './notify.js?v=25dcec2d';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=bb2439a8';
+import { GRAM_NET, TERMS } from './gram-net.js?v=bb2439a8';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=bb2439a8';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=bb2439a8';
+import { S } from './state.js?v=bb2439a8';
+import { decryptSeed } from './storage.js?v=bb2439a8';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=bb2439a8';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=bb2439a8';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=bb2439a8';
+import { chime, notify } from './notify.js?v=bb2439a8';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -789,6 +789,8 @@ function dutyPaint(){
     ? 'Each buyer waits for you to lock their LUNC within ' + mins + ' min. The wallet bot tells you when a buyer takes your offer.'
     // no daily-visit advice here: a visit a day cannot meet a 30-minute window (Pablo)
     : 'Each buyer waits for you to lock their LUNC within ' + mins + ' min, or the take counts against your offer. Turn on Telegram alerts below to hear of a take in time.';
+  // said before the seller publishes, not only after a refund (Pablo, E1)
+  el.textContent += ' If a buyer never claims, your LUNC comes back ' + backNote() + '.';
   // after the buyer claims the LUNC, the GRAM is the seller's to collect on TON
   // (audit round 4, C2): the relayer does it; if it is down, the seller's own
   // wallet does, within the gap between the two locks
@@ -796,7 +798,7 @@ function dutyPaint(){
   if (el2) {
     const hrs = Math.round(((POLICY && POLICY.terra_gap_sec) || 86400) / 3600);
     el2.textContent = 'After a buyer claims the LUNC, the relayer claims your GRAM on TON for you. If it is down, open Frontier within about ' + hrs +
-      ' hours to claim it yourself: Frontier claims it while it is open, in a background tab too.';
+      ' hours to claim it yourself: Frontier claims it while it is open (on a computer, a background tab is enough).';
   }
 }
 // Outside Telegram there is no initData: the account is proven by pressing
@@ -1610,6 +1612,9 @@ $('#gx-bb-pay').addEventListener('click', async function(){
    until it is closed. Other buys in progress are listed below it. */
 const BUY_STEP = { paying: 0, sent: 0, announced: 1, unanswered: 1, claiming: 2, refunding: 1 };
 const STEP_NAMES = ['You lock GRAM', 'Seller locks LUNC', 'You receive LUNC'];
+// A phone (and Telegram minimized) may freeze a page in the background; a
+// desktop browser keeps a background tab running about once a minute (Pablo, E2)
+const KEEP_OPEN = ' (on a phone, keep it on screen; on a computer, a background tab is fine)';
 // the last moment the take can still be announced: the Worker wants the TON
 // lock to have min_ton_left left, and this device's clock may be 2 min off
 function announceBy(b){
@@ -1622,9 +1627,9 @@ function buyLine(b){
   const late = now() >= b.timeout;
   if (b.stage === 'paying') return (b.validUntil && now() > b.validUntil) ? 'Checking on TON whether your payment went through.' : 'Confirm the payment in your TON wallet. If you already did, this wallet finds it on TON by itself.';
   if (b.stage === 'sent') return b.intent
-    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands. Keep Frontier open until the LUNC arrives (a background tab is fine): it finishes the swap once the seller has locked.'
+    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands. Keep Frontier open until the LUNC arrives' + KEEP_OPEN + ': it finishes the swap once the seller has locked.'
     : 'Your GRAM is on its way into the lock on TON. Usually under a minute. Keep this page open' + announceBy(b) + ', so the seller is told, then until the LUNC arrives.';
-  if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + '). Keep Frontier open meanwhile (a background tab is fine): it hands the secret to the relayer once it has checked the seller\u2019s lock.';
+  if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + '). Keep Frontier open meanwhile' + KEEP_OPEN + ': it hands the secret to the relayer once it has checked the seller\u2019s lock.';
   if (b.stage === 'claiming') return 'The seller locked your LUNC and this wallet checked it \u2713. The relayer is claiming it for you now.';
   if (b.stage === 'unanswered') return 'The seller did not answer. Your GRAM can come back ' + (late ? 'now.' : 'in ' + left(b.timeout - now()) + '.');
   if (b.stage === 'refunding') return 'Refund sent. The GRAM comes back to your TON wallet in a minute.';
