@@ -13,11 +13,11 @@
 
    The newest height seen is kept per address, so what arrived while the
    wallet was closed is announced on the next open, and nothing twice. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=89333e69';
-import { nameOf, short, wasmCalls } from './activity.js?v=89333e69';
-import { notify } from './notify.js?v=89333e69';
-import { S } from './state.js?v=89333e69';
-import { heldTokens, refreshBalances } from './tokens.js?v=89333e69';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=25dcec2d';
+import { nameOf, short, wasmCalls } from './activity.js?v=25dcec2d';
+import { notify } from './notify.js?v=25dcec2d';
+import { S } from './state.js?v=25dcec2d';
+import { heldTokens, refreshBalances } from './tokens.js?v=25dcec2d';
 
 const EVERY = 30000;          // two light reads every half minute, while open
 const AT_ONCE = 3;            // more than this in one go becomes one summary card

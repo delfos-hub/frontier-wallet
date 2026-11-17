@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89333e69';
-import { GRAM_NET, TERMS } from './gram-net.js?v=89333e69';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89333e69';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=89333e69';
-import { S } from './state.js?v=89333e69';
-import { decryptSeed } from './storage.js?v=89333e69';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=89333e69';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89333e69';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89333e69';
-import { chime, notify } from './notify.js?v=89333e69';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=25dcec2d';
+import { GRAM_NET, TERMS } from './gram-net.js?v=25dcec2d';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=25dcec2d';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=25dcec2d';
+import { S } from './state.js?v=25dcec2d';
+import { decryptSeed } from './storage.js?v=25dcec2d';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=25dcec2d';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=25dcec2d';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=25dcec2d';
+import { chime, notify } from './notify.js?v=25dcec2d';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -74,7 +74,7 @@ function pinPolicy(p){
   let tip = '';
   try { tip = tonRaw(String(p.tip_address || '')); } catch (e) {}
   if (tip !== tonRaw(pin.tip_address)) bad.push('fee address');
-  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec', 'min_deal', 'max_deal', 'max_open_takes_per_taker']
+  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec', 'report_slack_sec', 'min_deal', 'max_deal', 'max_open_takes_per_taker']
     .forEach(k => { if (String(p[k] ?? null) !== String(pin[k] ?? null)) bad.push(k); });
   if (String(p.ton_code_hash || '').toUpperCase() !== String(NET.tonCodeHash).toUpperCase()) bad.push('lock code');
   const tax = Number(p.tax_bps);
@@ -343,6 +343,11 @@ async function sendGramClaim(t, secret){
   if (!j.ok) throw new Error('TON refused the claim: ' + (j.error || r.status));
 }
 
+// A refund leaves the swap contract like a claim does, so the network takes
+// the burn tax again on the way back (audit E1): the seller gets back about
+// what the buyer would have received, not what was locked.
+const backNote = () => 'less the ' + (POLICY ? Number(POLICY.tax_bps) / 100 : 1.5) + '% burn tax the network takes on the way out';
+
 function windowLeftOf(t){ return t.created + (POLICY ? POLICY.answer_window_sec : 900) - now(); }
 
 function stepper(done){
@@ -413,7 +418,7 @@ function drawTakes(list, stats){
     const dueId = REFUND_DUE[t.ton_lock] || (mine.id && !t.terra_lock_id && mine.timeout && now() >= mine.timeout ? mine.id : null);
     if (dueId) {
       return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
-        '<div class="gx-l">' + head + '<span>Your LUNC lock #' + dueId + ' was not claimed in time: it can come back to you now</span></div>' +
+        '<div class="gx-l">' + head + '<span>Your LUNC lock #' + dueId + ' was not claimed in time: it can come back to you now, ' + backNote() + '</span></div>' +
         '<button class="btn solid gx-answer gx-terra-refund" type="button" data-id="' + dueId + '" data-ton="' + esc(t.ton_lock) + '">Refund</button>' +
       '</div>';
     }
@@ -468,7 +473,7 @@ async function checkFinished(list){
         changed = true;
         if (OPEN_SEEN.has(t.ton_lock)) notify({ key: 'gram:back:' + t.ton_lock, kind: 'info', icon: 'LUNC', label: 'Deal ended \u00b7 GRAM',
           title: 'Your LUNC came back',
-          text: 'The buyer did not claim in time, so the ' + human(t.lunc, 6) + ' LUNC locked for them is back on your address.' });
+          text: 'The buyer did not claim in time, so the LUNC locked for them is back on your address: about ' + human(t.lunc, 6) + ' LUNC, ' + backNote() + '.' });
         continue;
       }
       if (st !== 'claimed') continue;
@@ -618,7 +623,7 @@ function readForm(){
   if (out.min > out.total) out.errs.push('The smallest part cannot be more than the total.');
   out.hours = HOURS;
   const av = available();
-  if (av !== null && out.total > av) out.errs.push('You can offer up to ' + human(av, 6) + ' LUNC (balance after the burn tax, minus your other live offers and takes waiting for you, and 50 LUNC kept for gas).');
+  if (av !== null && out.total > av) out.errs.push('You can offer up to ' + human(av, 6) + ' LUNC (balance after the burn tax, minus your other live offers and takes waiting for you, and ' + human(GAS_RESERVE, 6) + ' LUNC kept for gas).');
   return out;
 }
 
@@ -791,7 +796,7 @@ function dutyPaint(){
   if (el2) {
     const hrs = Math.round(((POLICY && POLICY.terra_gap_sec) || 86400) / 3600);
     el2.textContent = 'After a buyer claims the LUNC, the relayer claims your GRAM on TON for you. If it is down, open Frontier within about ' + hrs +
-      ' hours to claim it yourself: Frontier claims it as soon as it is open.';
+      ' hours to claim it yourself: Frontier claims it while it is open, in a background tab too.';
   }
 }
 // Outside Telegram there is no initData: the account is proven by pressing
@@ -983,15 +988,49 @@ function lockIdOf(res){
   return null;
 }
 
+/* The chain's own clock (latest Terra block) for the checks a wrong device
+   clock would turn against the user (audit E3, E8). Blocks come every few
+   seconds, so the block time trails real time by seconds; 2 min is allowed. */
+let CHAIN_SKEW = null, CHAIN_SKEW_AT = 0;
+const CLOCK_TOL = 120;
+async function chainSkew(fresh){
+  if (!fresh && CHAIN_SKEW !== null && now() - CHAIN_SKEW_AT < 300) return CHAIN_SKEW;
+  const d = await getJSON(NET.lcd + '/cosmos/base/tendermint/v1beta1/blocks/latest', 8000, 2);
+  const t = Date.parse((((d || {}).block || {}).header || {}).time) / 1000;
+  if (!Number.isFinite(t)) throw new Error('no block time');
+  CHAIN_SKEW = now() - Math.floor(t); CHAIN_SKEW_AT = now();
+  return CHAIN_SKEW;
+}
+async function clockProblem(fresh){
+  let s;
+  try { s = await chainSkew(fresh); } catch (e) { return 'the chain\u2019s time could not be read, try again in a minute'; }
+  return Math.abs(s) > CLOCK_TOL ? 'this device\u2019s clock is ' + Math.max(1, Math.round(Math.abs(s) / 60)) + ' min off the chain\u2019s time; set it to automatic and try again' : '';
+}
+/* The least a new Terra lock may have left. The Worker takes the report while
+   the lock has min_terra_left - report_slack left (audit E3): a third of that
+   slack is kept for the PIN, the block and the report, so a slow block or a
+   report sent a minute later is not refused after the LUNC is locked. */
+function answerFloor(p){
+  const s = Number(p.report_slack_sec) || 0;
+  return now() + p.min_terra_left_sec - s + Math.max(60, Math.floor(s / 3));
+}
+
 // the Terra lock's timeout, computed from the TON lock's at the moment it is used
 function terraTimeout(n){
   const p = POLICY;
   return Math.min(now() + p.t_terra_sec, (n.timeout || 0) - p.terra_gap_sec - MARGIN);
 }
-function heldAt(t){
+// When the take was paid: the buyer gives the TON lock a timeout of the pay
+// time + min_ton_left + ANNOUNCE_SEC, so it is read back from the lock on
+// chain. A take without an intent is then held to the offer as it was when
+// it was paid, not when it is answered (audit E4).
+const ANNOUNCE_SEC = 35 * 60;
+function heldAt(t, n){
   const h = Number(t.held_since), c = Number(t.created);
   const life = Number((POLICY && POLICY.intent_ttl_sec) || 1200) + 60;
-  return h > 0 && c > 0 && h <= c && h >= c - life ? h : now();
+  if (h > 0 && c > 0 && h <= c && h >= c - life) return h;
+  const paid = n && Number(n.timeout) > 0 && POLICY ? Number(n.timeout) - POLICY.min_ton_left_sec - ANNOUNCE_SEC : 0;
+  return paid > 0 ? Math.min(now(), paid) : now();
 }
 async function checkTake(t){
   if (!POLICY) setPolicy((await api('/offers')).policy);
@@ -1010,7 +1049,7 @@ async function checkTake(t){
   // a take from an intent is held to the offer as it was when the intent was
   // registered (held_since); believed only within the intent's life before
   // the take, so a Worker cannot revive an offer that ended long ago
-  else if (Number(offer.expires) <= heldAt(t)) problems.push('your offer has ended');
+  else if (Number(offer.expires) <= heldAt(t, n)) problems.push('your offer has ended');
   else if (offer.total_lunc && Object.entries(mineAll()).filter(([k, x]) => k !== t.ton_lock && x.id && x.offer_id === t.offer_id)
       .reduce((s, [, x]) => s + BigInt(x.lunc || 0), 0n) + BigInt(t.lunc) > BigInt(offer.total_lunc))
     problems.push('this take would sell more than your offer\u2019s total');
@@ -1032,7 +1071,8 @@ async function checkTake(t){
     else if (n.balance < n.amount + n.tip) problems.push('the TON lock does not hold the GRAM it claims');
   }
   const timeout = terraTimeout(n);
-  if (!problems.length && timeout < now() + p.min_terra_left_sec + 60) problems.push('the TON lock ends too soon to answer safely');
+  if (!problems.length) { const clk = await clockProblem(true); if (clk) problems.push(clk); }
+  if (!problems.length && timeout < answerFloor(p)) problems.push('the TON lock ends too soon to answer safely');
   let taxBps = Number(p.tax_bps);
   try { taxBps = await taxBpsFor(p); } catch (e) { problems.push(e.message); }
   const tax = BigInt(taxBps);
@@ -1064,9 +1104,9 @@ $('#gx-takes').addEventListener('click', async function(e){
           const res = await s2.wait();
           if (!res) throw new Error('the refund was sent but is not confirmed yet (tx ' + s2.hash.slice(0, 10) + '\u2026). Refresh in a minute.');
         },
-        'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired.', {
+        'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired, ' + backNote() + '.', {
           steps: ['Sending the refund', 'Waiting for the block'],
-          done: () => ({ title: 'LUNC returned', text: 'The LUNC from lock #' + r.dataset.id + ' is back on your address.' })
+          done: () => ({ title: 'LUNC returned', text: 'The LUNC from lock #' + r.dataset.id + ' is back on your address, ' + backNote() + '.' })
         });
       setFinal(r.dataset.ton, 'refunded');
       load();
@@ -1140,17 +1180,19 @@ async function answerTake(t, b){
       ['Buyer receives', human(t.lunc, 6) + ' LUNC'],
       ['Buyer', t.taker_terra],
       ['Claim until', 'about ' + new Date(c.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (set when you sign)'],
-      ['If unclaimed', 'the LUNC comes back to you after that'],
+      ['If unclaimed', 'it comes back to you after that, ' + backNote()],
       ['Network', NET.chain + ' + TON ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet')]
     ];
     const fee = await feeFor([step]);
     lines.push(feeLine(fee));
-    const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you.';
+    const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you, ' + backNote() + '.';
     await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m, st){
       // the PIN may have taken a while: the timeout is set again now and checked
       st(0);
+      const clk = await clockProblem(true);
+      if (clk) throw new Error(clk + '. Nothing was locked.');
       step.msg.lock.timeout = terraTimeout(c.n);
-      if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now. Nothing was locked.');
+      if (step.msg.lock.timeout < answerFloor(POLICY)) throw new Error('too late to answer this take safely now. Nothing was locked.');
       // the answer window, again after the PIN: a lock past it the Worker may refuse (audit D8)
       if (t.status === 'pending' && windowLeftOf(t) < 60) throw new Error('the answer window for this take is closing. Nothing was locked.');
       // recorded before the broadcast, with what the deal is (audit D1, D3)
@@ -1178,7 +1220,7 @@ async function answerTake(t, b){
         title: 'Answered',
         text: human(t.lunc, 6) + ' LUNC is locked for the buyer (lock #' + r.id + '). When they claim it, ' + human(t.gram, 9) +
           ' GRAM is released to your TON address. If they never do, the LUNC comes back to you after ' +
-          new Date(r.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.'
+          new Date(r.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + backNote() + '.'
       })
     });
     load();
@@ -1237,7 +1279,10 @@ async function openDeal(ton, answer){
 
 async function watchTakes(){
   const me = addrOf();
-  if (!me || !LABS || document.hidden || LOADING) return;
+  if (!me || !LABS || LOADING) return;
+  // a hidden tab still follows a deal this device locked LUNC for, so the GRAM
+  // is claimed with the relayer down (audit E2); without one it stays quiet
+  if (document.hidden && !ownDeals([]).length) return;
   let d;
   try { d = await api('/takes?maker=' + encodeURIComponent(me)); }
   catch (e) {
@@ -1433,7 +1478,7 @@ function quote(){
     '<div><span>Service fee</span><b>' + human(q.tip, 9) + ' GRAM</b></div>' +
     '<div><span>Fee goes to</span><b title="' + esc(feeTo()) + '">Delfos Hub treasury ' + esc(shortAddr(feeTo())) + '</b></div>' +
     '<div><span>TON network reserve</span><b>' + human(RESERVE_NANO, 9) + ' GRAM</b></div>' +
-    '<div><span>You receive</span><b>' + (q.lunc > 0n ? human(q.lunc, 6) : '0') + ' LUNC, no gas needed</b></div>';
+    '<div><span>You receive</span><b>' + (q.lunc > 0n ? human(q.lunc, 6) : '0') + ' LUNC, no gas needed when the relayer claims</b></div>';
   $('#gx-bb-msg').textContent = q.err || (relayerUrl() ? '' : 'No relayer address is set (bottom of the Buy tab).');
   $('#gx-bb-msg').classList.toggle('bad', !!q.err);
   $('#gx-bb-pay').disabled = !!q.err || !relayerUrl();
@@ -1471,7 +1516,9 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (fresh.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
     // the lock's timeout is worked out from this device's clock: one far off
     // would pay a lock the offers service refuses (audit C4)
-    if (fresh.server_time && Math.abs(now() - Number(fresh.server_time)) > 600) {
+    // 5 min: the TON wallet takes the payment for 6 min (validUntil), so a
+    // clock further off could never pay (audit E, info)
+    if (fresh.server_time && Math.abs(now() - Number(fresh.server_time)) > 300) {
       say('#gx-bb-msg', 'This device\u2019s clock is ' + Math.round(Math.abs(now() - Number(fresh.server_time)) / 60) + ' min off. Set the time to automatic and try again.', true);
       return;
     }
@@ -1484,7 +1531,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     const hash = await sha256hex(secret);
     const terms = {
       hash: hash, amount: q.gram, tip: tip,
-      timeout: now() + policy.min_ton_left_sec + 35 * 60,
+      timeout: now() + policy.min_ton_left_sec + ANNOUNCE_SEC,
       takerRef: await takeRefOf(me, q.o.id, q.lunc),
       recipient: tonRaw(q.o.maker_ton), refundTo: tonRaw(acc.address), relayer: tonRaw(policy.tip_address)
     };
@@ -1563,14 +1610,21 @@ $('#gx-bb-pay').addEventListener('click', async function(){
    until it is closed. Other buys in progress are listed below it. */
 const BUY_STEP = { paying: 0, sent: 0, announced: 1, unanswered: 1, claiming: 2, refunding: 1 };
 const STEP_NAMES = ['You lock GRAM', 'Seller locks LUNC', 'You receive LUNC'];
+// the last moment the take can still be announced: the Worker wants the TON
+// lock to have min_ton_left left, and this device's clock may be 2 min off
+function announceBy(b){
+  if (!POLICY || !b.timeout) return '';
+  const t = Number(b.timeout) - POLICY.min_ton_left_sec - 120;
+  return t > now() ? ', or come back before ' + new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+}
 const LIVE = ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'];
 function buyLine(b){
   const late = now() >= b.timeout;
   if (b.stage === 'paying') return (b.validUntil && now() > b.validUntil) ? 'Checking on TON whether your payment went through.' : 'Confirm the payment in your TON wallet. If you already did, this wallet finds it on TON by itself.';
   if (b.stage === 'sent') return b.intent
-    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands, even if you close this page.'
-    : 'Your GRAM is on its way into the lock on TON. Usually under a minute. Keep this page open, or come back within 30 minutes, so the seller is told.';
-  if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + ').';
+    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands. Keep Frontier open until the LUNC arrives (a background tab is fine): it finishes the swap once the seller has locked.'
+    : 'Your GRAM is on its way into the lock on TON. Usually under a minute. Keep this page open' + announceBy(b) + ', so the seller is told, then until the LUNC arrives.';
+  if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + '). Keep Frontier open meanwhile (a background tab is fine): it hands the secret to the relayer once it has checked the seller\u2019s lock.';
   if (b.stage === 'claiming') return 'The seller locked your LUNC and this wallet checked it \u2713. The relayer is claiming it for you now.';
   if (b.stage === 'unanswered') return 'The seller did not answer. Your GRAM can come back ' + (late ? 'now.' : 'in ' + left(b.timeout - now()) + '.');
   if (b.stage === 'refunding') return 'Refund sent. The GRAM comes back to your TON wallet in a minute.';
@@ -1589,7 +1643,7 @@ function problemHtml(b){
 // (it needs a little LUNC for gas), while there is time left
 function selfClaimBtn(id, b){
   if (b.stage !== 'claiming' || !canSign() || !b.terraTimeout) return '';
-  const leftSec = b.terraTimeout - now();
+  const leftSec = b.terraTimeout - (now() - (CHAIN_SKEW || 0));      // on the chain's clock once known (audit E8)
   const late = now() - (b.since || now()) > 180 || leftSec < 2 * CLAIM_MARGIN;
   // a claim too close to the end can land late and still publish the secret
   if (!late || leftSec < CLAIM_MARGIN / 2) return '';
@@ -1619,6 +1673,9 @@ async function selfClaim(id){
         // right before signing (audit round 4, B2)
         const l = await terraLockRead(b.terraLockId);
         if (!l || l.status !== 'open') throw new Error('the seller\u2019s lock is no longer open. Nothing was signed.');
+        // a device clock far behind would publish the secret in a claim that fails (audit E8)
+        const clk = await clockProblem(true);
+        if (clk) throw new Error(clk + '. Nothing was signed.');
         if (Number(l.timeout) - now() < CLAIM_MARGIN / 2) throw new Error('too close to the end of the seller\u2019s lock to claim safely now. Nothing was signed.');
         const r = await sendSwap(addrOf(), [step], m, NET, '', fee);
         st(1);
@@ -1742,7 +1799,10 @@ async function sellerLockOk(b, take){
 let WATCHING_BUYS = false;
 const REFUSAL_FINAL_SEC = 120;          // a take the Worker keeps refusing this long is refused
 async function watchBuys(){
-  if (WATCHING_BUYS || document.hidden) return;
+  // not stopped by a hidden tab (audit E2): the secret reaches the relayer only
+  // from here, and a background tab still runs this about once a minute. It
+  // returns at once when no buy is live, so a quiet tab costs nothing.
+  if (WATCHING_BUYS) return;
   // the wallet this round is about, taken once (audit C8)
   const me = addrOf();
   if (!me) return;
