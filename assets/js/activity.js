@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=5d689f3a';
-import { DEC, knownAsset as marketAsset } from './market.js?v=5d689f3a';
-import { $, go } from './shell.js?v=5d689f3a';
-import { fiatOf, heldTokens } from './tokens.js?v=5d689f3a';
-import { S } from './state.js?v=5d689f3a';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=445615d8';
+import { DEC, knownAsset as marketAsset } from './market.js?v=445615d8';
+import { $, go } from './shell.js?v=445615d8';
+import { fiatOf, heldTokens } from './tokens.js?v=445615d8';
+import { S } from './state.js?v=445615d8';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -311,6 +311,37 @@ function transfersIn(t, me){
   return out;
 }
 
+/* The burn tax this address paid. Since the reverse charge the chain takes it
+   out of a LUNC or USTC send, moves it from the sender to the fee collector and
+   logs a tax_payment event. A move to the fee collector is otherwise skipped as
+   the fee, so the tax went missing: a 180 LUNC send read "Paid -177.3", and
+   with the 10.7 fee that is 188, not the 190.7 the wallet spent. Each tax is
+   matched to the sender's own move of the same amount, so a send this address
+   only received is not charged to it. */
+function eventsOf(t){
+  const fromLogs = [];
+  for (const lg of (t.logs || [])) for (const e of (lg.events || [])) fromLogs.push(e);
+  return fromLogs.length ? fromLogs : (t.events || []);
+}
+function taxPaid(t, me){
+  const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
+  const evs = eventsOf(t), mine = [], out = [];
+  for (const e of evs) {
+    if (e.type === 'transfer' && attr(e, 'sender') === me && attr(e, 'recipient') === FEE_COLLECTOR) mine.push(attr(e, 'amount'));
+  }
+  for (const e of evs) {
+    if (e.type !== 'tax_payment') continue;
+    const what = attr(e, 'tax_amount'), i = mine.indexOf(what);
+    if (!what || i < 0) continue;
+    mine.splice(i, 1);
+    for (const part of what.split(',')) {
+      const mm = /^(\d+)(.+)$/.exec(part.trim());
+      if (mm) out.push({ amount: mm[1], denom: mm[2] });
+    }
+  }
+  return out;
+}
+
 // Token moves are not transfer events; each token contract logs its own
 // from / to / amount, and that is where a CW20 send shows up.
 function tokenMoves(t, me){
@@ -370,6 +401,11 @@ function openTx(hash){
     }).join('') + '</div>';
   }
   if (l.place) html += row('Where', l.place);
+  // what actually arrived, when the tax came out of it
+  if (!failed && taxPaid(t, me).length) {
+    for (const mv of transfersIn(t, me)) if (!mv.mine) html += row('Recipient got', mv.text) +
+      '<p class="tx-who">' + esc(short(mv.other)) + '</p>';
+  }
   if (moves.length && !l.flows.length) {
     html += '<div class="tx-moves">' + moves.slice(0, 8).map(function (mv) {
       return row(mv.mine ? 'Received' : 'Sent',
@@ -381,6 +417,7 @@ function openTx(hash){
   html += row('Status', failed ? 'Failed' : 'Confirmed', failed ? 'out' : 'in');
   html += row('Block', String(t.height || ''));
   if (feeOf(t)) html += row('Network fee', feeOf(t));
+  if (!failed) for (const c of taxPaid(t, me)) html += row('Burn tax', coins([c]));
   if (t.gas_used) html += row('Gas', t.gas_used + ' of ' + (t.gas_wanted || '?'));
   if (memo) html += row('Memo', memo);
   html += '<div class="tx-hash" id="tx-hash">' + esc(hash) + '</div>';
@@ -441,6 +478,8 @@ function flows(t, me){
     } else if (c.action === 'mint' && c.to === me) add(k, n);
     else if (c.action === 'burn' && c.from === me) add(k, -n);
   }
+  // the tax left this wallet too, it only went to the fee collector
+  for (const c of taxPaid(t, me)) add('native:' + c.denom, -Number(c.amount));
   return Object.keys(net).filter(k => net[k]).map(k => ({ key: k, raw: net[k] }))
     .sort((a, b) => Math.abs(worthOf(b)) - Math.abs(worthOf(a)) || Math.abs(b.raw) - Math.abs(a.raw));
 }

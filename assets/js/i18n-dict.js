@@ -467,6 +467,10 @@ const EXTRA = {
   '{x} · Yesterday': ['{x} · Вчера', '{x} · Hier', '{x} · Ieri', '{x} · Ayer', '{x} · Dün'],
   '{x} · Today': ['{x} · Сегодня', '{x} · Aujourd’hui', '{x} · Oggi', '{x} · Hoy', '{x} · Bugün'],
 };
+Object.assign(EXTRA, {
+  'Burn tax': ['Налог на сжигание', 'Taxe de burn', 'Tassa di burn', 'Impuesto de quema', 'Yakım vergisi'],
+  'Recipient got': ['Получатель получил', 'Reçu par le destinataire', 'Ricevuto dal destinatario', 'El destinatario recibió', 'Alıcıya ulaşan'],
+});
 const XL = ['ru', 'fr', 'it', 'es', 'tr'];
 for (const k in EXTRA) XL.forEach((code, i) => { DICT[code][k] = EXTRA[k][i]; });
 
