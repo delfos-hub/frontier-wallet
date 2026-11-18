@@ -188,6 +188,19 @@ than 3 waiting acceptances per address and 20 announcements per minute
 per IP address. Each acceptance requires an actual GRAM lock lasting
 approximately 30 hours. Buyers must check their pending transactions
 before authorising any further payment.</p>
+<p><strong>Unclaimed answers.</strong> If the seller locks LUNC in
+response to an acceptance, the offers service accepts that response, and
+the LUNC is not claimed before the seller’s lock expires, the buyer’s
+Terra Classic address cannot accept offers for 7 days after that lock
+expired. The seller then recovers that LUNC less the burn tax, which the
+network charges again on the refund, and two network fees. The hold does
+not apply when the seller’s response was refused or not given, or when
+the offer ended before the response. A buyer who could not claim for a
+reason outside their control, for example a change in the burn tax
+between the response and the claim, may ask a team member to lift the
+hold through the support channels in section 11, giving the address and
+the transaction of the GRAM lock. A lifted hold does not reverse the
+refund.</p>
 <p><strong>Unanswered acceptances.</strong> An unanswered acceptance
 counts as a miss. A seller’s offers are hidden when, over the preceding
 30 days, the seller has at least 3 misses and those misses are more than one fifth of all acceptances received in that period, answered or not. Offers become visible
