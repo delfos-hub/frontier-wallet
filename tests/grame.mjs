@@ -94,4 +94,10 @@ group('texts (E1, E2, 5, 9)');
   ok('Terms: the refund pays the burn tax again', /charges the burn tax again/.test(terms));
   ok('Terms: late responses are checked, not ignored', !/does not process that/.test(terms));
 }
+group('the relayer address');
+{
+  const net = fs.readFileSync(path.join(SRC, 'gram-net.js'), 'utf8');
+  ok('testnet points to the relayer server, not an old tunnel', /relayer: 'https:\/\/relayer-testnet\.delfos-hub\.net'/.test(net) && !/lhr\.life/.test(net));
+  ok('a saved relayer address is kept per network', /'fw:gram:relayer:' \+ NET\.name/.test(src) && !/getItem\('fw:gram:relayer'\)/.test(src));
+}
 report();

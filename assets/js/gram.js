@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89192f1b';
-import { GRAM_NET, TERMS } from './gram-net.js?v=89192f1b';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89192f1b';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=89192f1b';
-import { S } from './state.js?v=89192f1b';
-import { decryptSeed } from './storage.js?v=89192f1b';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=89192f1b';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89192f1b';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89192f1b';
-import { chime, notify } from './notify.js?v=89192f1b';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=004d6a24';
+import { GRAM_NET, TERMS } from './gram-net.js?v=004d6a24';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=004d6a24';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=004d6a24';
+import { S } from './state.js?v=004d6a24';
+import { decryptSeed } from './storage.js?v=004d6a24';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=004d6a24';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=004d6a24';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=004d6a24';
+import { chime, notify } from './notify.js?v=004d6a24';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1357,10 +1357,14 @@ function saveBuy(id, v){ return saveBuyOf(addrOf(), id, v); }
 // The relayer receives the buyer's secret. Only on testnet may a URL saved on
 // this device replace the one pinned in gram-net.js; anywhere else the pinned
 // one is used even if an old value is still in storage.
+// The saved address is kept per network (fw:gram:relayer:<network>): the old
+// key had none, so an address saved for one network was used on the other.
+// The old key is no longer read.
+const RELAYER_KEY = () => 'fw:gram:relayer:' + NET.name;
 const relayerUrl = () => {
   const pinned = (NET.relayer || '').replace(/\/+$/, '');
   if (NET.name !== 'testnet') return pinned;
-  try { return (localStorage.getItem('fw:gram:relayer') || pinned).replace(/\/+$/, ''); } catch (e) { return pinned; }
+  try { return (localStorage.getItem(RELAYER_KEY()) || pinned).replace(/\/+$/, ''); } catch (e) { return pinned; }
 };
 // the rules as loaded, else the network's pinned ones, never zero (audit C6)
 const tipOf = (gram, p = POLICY || NET.policy || {}) => { const fee = gram * BigInt(p.fee_bps || 0) / 10000n; const min = BigInt(p.min_tip || 5000000); return fee > min ? fee : min; };
@@ -1951,7 +1955,10 @@ $('#gx-relay-edit').addEventListener('click', function(){
   if (NET.name !== 'testnet') return;
   const v = prompt('Relayer address (https://...)', relayerUrl());
   if (v === null) return;
-  try { localStorage.setItem('fw:gram:relayer', v.trim()); } catch (e) {}
+  try {
+    // an empty answer goes back to the pinned address
+    if (v.trim()) localStorage.setItem(RELAYER_KEY(), v.trim()); else localStorage.removeItem(RELAYER_KEY());
+  } catch (e) {}
   showRelayer(); quote();
 });
 
