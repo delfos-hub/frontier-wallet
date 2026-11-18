@@ -1,7 +1,7 @@
 /* The GRAM <-> LUNC swap's own network settings.
 
-   The rest of the wallet is columbus-5 only. The swap is still on test
-   networks (rebel-2 + TON testnet), so it carries its own { chain, lcd } and
+   The rest of the wallet is columbus-5 only. The swap runs on mainnet
+   (columbus-5 + TON) and keeps its testnet entry for testers, so it carries its own { chain, lcd } and
    hands it to tx.js; nothing outside the swap screen imports this file.
    Mainnet is a second entry here once the contracts are audited and deployed.
 */
@@ -42,6 +42,7 @@ const NETS = {
       terra_gap_sec: 900,
       min_terra_left_sec: 900,
       min_ton_left_sec: 3300,
+      report_slack_sec: 300,          // the Worker takes an answer while the lock has min_terra_left - this left
       min_tax_bps: 50,
       max_tax_bps: 100,
       min_deal: null,                 // nanoGRAM per deal; null = no limit
@@ -60,18 +61,30 @@ const NETS = {
 // address and minimum tip against that Worker when it starts.
 NETS.mainnet = {
   name: 'mainnet',
-  ready: false,
+  ready: true,
   chain: 'columbus-5',
   lcd: 'https://terra-classic-lcd.publicnode.com',
-  worker: 'REPLACE_WITH_MAINNET_WORKER_URL',
+  // a second, independent node: the seller's lock is read from both before
+  // the buyer's secret leaves the device (audit round 4, B3)
+  lcd2: 'https://lcd.terra-classic.hexxagon.io',
+  // offers Worker htlc-offers-mainnet, Delfos Hub account (widgets#55)
+  worker: 'https://htlc-offers-mainnet.delfoshub-team.workers.dev',
   // htlc-swap code 11746, instantiated on columbus-5 with no admin
-  htlc: 'REPLACE_WITH_MAINNET_HTLC_ADDRESS',
+  // instantiated 4 Nov 2026 (tx 4DEA0CAC...4C75), code hash 4b1b645e...cfae = artifacts/htlc_swap.wasm
+  htlc: 'terra1hddx7gvnxmtefp2jc93qvrcuy9t54x8wlcecu59q0p057jms47dq3r6ywm',
   tonCodeHash: NETS.testnet.tonCodeHash,
   tonCode: NETS.testnet.tonCode,
   tonChain: '-239',
   relayer: 'https://relayer.delfos-hub.net',
   tonConnectScript: NETS.testnet.tonConnectScript,
-  twaReturnUrl: 'REPLACE_WITH_MAINNET_MINI_APP_URL',
+  // no Mini App return on mainnet: the swap runs in Frontier Web, where TON
+  // Connect comes back by itself (R4-B1; the bot becomes a plain bot)
+  twaReturnUrl: '',
+  // where the mainnet swap is offered: Frontier Web's own addresses only, never
+  // the Mini App's, which is being retired (a deal's secret stays with the
+  // address it was started on)
+  origins: ['https://wallet.delfos-hub.net', 'https://frontier-web-26s.pages.dev',
+    'https://frontier-gram-test-e3v.pages.dev', 'http://localhost:8080', 'http://127.0.0.1:8080'],
   tonApi: 'https://toncenter.com/api/v2',
   tonExplorer: 'https://tonviewer.com/',
   terraExplorer: 'https://finder.terraclassic.community/columbus-5/tx/',
@@ -84,6 +97,7 @@ NETS.mainnet = {
     terra_gap_sec: 86400,             // 24 h between the two locks
     min_terra_left_sec: 18000,        // 5 h the buyer keeps to claim
     min_ton_left_sec: 106800,         // window + 5 h + 24 h + 10 min
+    report_slack_sec: 1800,           // an answer is taken while the lock has 5 h - 30 min left (audit E3)
     min_tax_bps: 150,                 // columbus-5 burn tax 0.015 (read 2026-10-28)
     max_tax_bps: 300,                 // a rise above 3% stops trading until an update
     min_deal: '5000000000',           // 5 GRAM
@@ -92,7 +106,25 @@ NETS.mainnet = {
   }
 };
 
-const GRAM_NET = NETS.testnet;
+// Mainnet once its entry is open. A tester can still use the test networks on
+// their own device: open the wallet once with ?gramnet=testnet in its address
+// (?gramnet=mainnet goes back). Outside a browser (tests) this is mainnet.
+// The choice from a link lasts for that tab only (audit C2): a link must not
+// move a wallet off mainnet for good, leaving its mainnet buys unwatched.
+// On the test origins it is kept, as before, for testers.
+const KEEP_NET_HOSTS = ['frontier-gram-test-e3v.pages.dev', 'localhost', '127.0.0.1'];
+function pickNet(){
+  try {
+    const keep = KEEP_NET_HOSTS.includes(location.hostname);
+    const where = keep ? localStorage : sessionStorage;
+    const q = new URLSearchParams(location.search).get('gramnet');
+    if (q === 'testnet' || q === 'mainnet') where.setItem('fw:gram:net', q);
+    if (!keep) localStorage.removeItem('fw:gram:net');      // a choice kept from an older link
+    if (where.getItem('fw:gram:net') === 'testnet') return NETS.testnet;
+  } catch (e) { /* no browser here */ }
+  return NETS.mainnet.ready ? NETS.mainnet : NETS.testnet;
+}
+const GRAM_NET = pickNet();
 
 // The Terms of Use the swap is offered under (terms.html). A new version id
 // asks every user to accept again before their next offer or buy.
@@ -100,6 +132,8 @@ const GRAM_NET = NETS.testnet;
 // with the support contacts and the compensation claims procedure. The id is
 // 1.0-final so that everyone who accepted the testnet draft accepts again;
 // users see the label.
-const TERMS = { version: '1.0-final', label: '1.0', date: '2026-11-02', url: 'terms.html' };
+// 1.1: refunds pay the burn tax again, the wallet stays open until the LUNC
+// arrives, the fallback claim and late answers described as they work (audit E).
+const TERMS = { version: '1.1', label: '1.1', date: '2026-11-17', url: 'terms.html' };
 
 export { GRAM_NET, NETS, TERMS };

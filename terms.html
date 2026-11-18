@@ -35,8 +35,7 @@ a{color:var(--accent)}
 <body>
 <main>
 <h1>Frontier GRAM ⇄ LUNC Swap - Terms of Use</h1>
-<p class="meta">Version 1.0 · 2 November 2026 · Delfos Hub</p>
-<p class="note">The swap currently runs on test networks with test coins only. These terms apply as written when it opens on the main networks.</p>
+<p class="meta">Version 1.1 · 17 November 2026 · Delfos Hub</p>
 <p>These Terms of Use govern the GRAM and LUNC swap service in Frontier
 Wallet. They set out the operation of the service, the commitments of
 buyers and sellers, applicable fees, and the support and compensation
@@ -114,7 +113,10 @@ released at the next scheduled check, every 5 minutes.</td>
 <tr class="even">
 <td>Seller’s LUNC lock</td>
 <td>Up to 6 hours</td>
-<td>Unclaimed LUNC can be refunded only to the seller.</td>
+<td>Unclaimed LUNC can be refunded only to the seller. The network
+charges the burn tax again when the LUNC leaves the contract, so the
+seller receives about the amount the buyer would have received, not the
+amount locked.</td>
 </tr>
 <tr class="odd">
 <td>Buyer’s GRAM lock</td>
@@ -131,11 +133,10 @@ claim LUNC locked by the seller.</p>
 <p><strong>Late responses.</strong> Frontier disables the Answer button
 after the 30 minute response window. The offers service may nevertheless
 accept a response submitted through another route if the offer has
-sufficient remaining capacity. The buyer’s wallet does not process that
-late response through its normal claim flow. Acceptance by the offers
-service therefore does not establish that the swap can complete in
-Frontier. Each party may recover any unclaimed funds after its own lock
-expires.</p>
+sufficient remaining capacity. The buyer’s wallet checks a late response
+like any other and completes the swap if the seller’s lock still leaves
+enough time to claim. If it does not, each party may recover any
+unclaimed funds after its own lock expires.</p>
 <p>The seller’s LUNC lock expires at least 24 hours before the buyer’s
 GRAM lock, providing a claim window after the secret becomes public.
 Each wallet checks the other party’s lock before proceeding.</p>
@@ -187,6 +188,20 @@ than 3 waiting acceptances per address and 20 announcements per minute
 per IP address. Each acceptance requires an actual GRAM lock lasting
 approximately 30 hours. Buyers must check their pending transactions
 before authorising any further payment.</p>
+<p><strong>Unclaimed answers.</strong> If the seller locks LUNC in
+response to an acceptance, the offers service accepts that response, and
+the LUNC is not claimed before the seller’s lock expires, the buyer’s
+Terra Classic address cannot accept offers for 7 days after that lock
+expired. The seller then recovers that LUNC less the burn tax, which the
+network charges again on the refund, and two network fees. The hold does
+not apply when the seller’s response was refused or not given, including
+because the offer had ended. The wallet checks for a hold before any
+payment. A buyer who could not claim for a
+reason outside their control, for example a change in the burn tax
+between the response and the claim, may ask a team member to lift the
+hold through the support channels in section 11, giving the address and
+the transaction of the GRAM lock. A lifted hold does not reverse the
+refund.</p>
 <p><strong>Unanswered acceptances.</strong> An unanswered acceptance
 counts as a miss. A seller’s offers are hidden when, over the preceding
 30 days, the seller has at least 3 misses and those misses are more than one fifth of all acceptances received in that period, answered or not. Offers become visible
@@ -227,7 +242,8 @@ for storage.</td>
 <tr class="odd">
 <td>Terra Classic burn tax</td>
 <td>Seller, in LUNC</td>
-<td>The current network rate, added to the seller’s lock.</td>
+<td>The current network rate, added to the seller’s lock. If the lock
+is refunded, the network charges the burn tax again on the refund.</td>
 </tr>
 <tr class="even">
 <td>Gas to lock or refund on Terra Classic</td>
@@ -250,9 +266,15 @@ service fee is charged.</p>
 <h2 id="6-the-relayer">6. The relayer</h2>
 <p>Delfos Hub operates a relayer that submits the transactions needed to
 complete swaps on behalf of both parties. During normal relayer
-operation, users do not need to remain online or hold the other
-network’s native coin to pay claim gas. The fallback procedures and
-dependencies below continue to apply.</p>
+operation, users do not need to hold the other network’s native coin
+to pay claim gas. The buyer’s wallet must remain open from payment until
+the LUNC is claimed: it supplies the secret to the relayer only after
+verifying the seller’s lock. On a phone, including inside Telegram, the
+wallet must stay on screen, because a phone may stop a page that is in
+the background; on a computer, an open browser tab in the background is
+sufficient. A seller’s wallet that remains open likewise claims the GRAM
+if the relayer has not. The fallback procedures and dependencies below continue to
+apply.</p>
 <p><strong>Functions.</strong> The relayer uses the secret supplied by
 the buyer’s wallet to claim LUNC for the buyer, then releases GRAM to
 the seller. It also submits refunds after expiry for the swaps it is aware of, which are the swaps a seller has answered.</p>
@@ -269,9 +291,10 @@ after expiry. If the secret is already public, the seller’s wallet can
 claim the GRAM before the GRAM lock expires.</p>
 <p><strong>Secret handling.</strong> A buyer who supplies the secret to
 the relayer relies on it not to disclose that secret without claiming
-the LUNC. As a fallback, the buyer’s wallet attempts to claim the LUNC
-itself if the relayer has not done so in time, provided the wallet
-remains open.</p>
+the LUNC. As a fallback, if the relayer has not claimed within a few
+minutes, the buyer can claim the LUNC from the wallet. This requires the
+PIN and a small amount of LUNC for network gas, and is possible only
+while enough time remains on the seller’s lock.</p>
 <p><strong>Configured endpoint.</strong> Frontier communicates only with
 the relayer endpoint built into the application.</p>
 <h2 id="7-refunds-and-recovery">7. Refunds and recovery</h2>
@@ -281,7 +304,8 @@ refunded after the relevant lock expires. For the swaps it is aware of (those a 
 <li><p>Buyer: select "Get my GRAM back" after the GRAM lock expires. The
 lock pays its own network fee; no separate payment is required.</p></li>
 <li><p>Seller: select "Refund" after the LUNC lock expires. The
-transaction requires a small amount of LUNC for network gas.</p></li>
+transaction requires a small amount of LUNC for network gas, and the
+network charges the burn tax again on the refunded LUNC.</p></li>
 </ul>
 <p>Anyone may submit a refund transaction, but the contract pays only
 the original depositor. Refunds therefore remain possible if Frontier or
@@ -308,9 +332,11 @@ transfers received from a smart contract.</p>
 <p><strong>Seller response.</strong> Maintain enough LUNC to fund the
 lock, burn tax and gas, and respond to valid acceptances within 30
 minutes.</p>
-<p><strong>Pending swaps.</strong> Open the wallet when a swap requires
-action. While open, Frontier can perform the relevant claim if the
-relayer has not done so.</p>
+<p><strong>Pending swaps.</strong> As a buyer, keep the wallet open from
+payment until the LUNC arrives, on screen if you use a phone. As a seller, open the wallet when a swap requires action. While
+open, Frontier can perform the relevant claim if the relayer has not
+done so; a buyer’s claim from the wallet requires the PIN and LUNC for
+gas.</p>
 <p><strong>Compliance and taxation.</strong> Use the service only where
 lawful for you and only if you are not subject to sanctions. You are
 responsible for the taxes applicable to your transactions.</p>
