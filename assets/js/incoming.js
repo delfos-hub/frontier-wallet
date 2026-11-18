@@ -6,18 +6,21 @@
    token contract's own wasm.to) and raises the wallet's notification card for
    anything new: what arrived, how much, and from whom.
 
-   Only plain transfers are announced. A P2P fill or a GRAM swap also pays this
-   address, but those modules announce their own deals, and a second card for
-   the same money would be noise. Anything this address signed itself is
-   skipped too: a send is announced by tx.js, a swap by its own screen.
+   Announced: plain transfers, and anything a contract pays out to this
+   address (a claim on Terra Oracle, a reward, a distribution), also when the
+   claim was signed in another wallet or on a site. Quiet: what this wallet
+   sent itself (its own screen says so; tx.js keeps those hashes), a trade
+   (something also left this address in the same transaction), and the P2P
+   and GRAM swap contracts, which announce their own deals.
 
    The newest height seen is kept per address, so what arrived while the
    wallet was closed is announced on the next open, and nothing twice. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=89192f1b';
-import { nameOf, short, wasmCalls } from './activity.js?v=89192f1b';
-import { notify } from './notify.js?v=89192f1b';
-import { S } from './state.js?v=89192f1b';
-import { heldTokens, refreshBalances } from './tokens.js?v=89192f1b';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=51559b5f';
+import { nameOf, short, wasmCalls } from './activity.js?v=51559b5f';
+import { notify } from './notify.js?v=51559b5f';
+import { S } from './state.js?v=51559b5f';
+import { NETS } from './gram-net.js?v=51559b5f';
+import { heldTokens, refreshBalances } from './tokens.js?v=51559b5f';
 
 const EVERY = 30000;          // two light reads every half minute, while open
 const AT_ONCE = 3;            // more than this in one go becomes one summary card
@@ -40,44 +43,60 @@ function signer(m){
   return (m && (m.from_address || m.sender || m.delegator_address)) || '';
 }
 
-// What reached this address in one transaction, as rows the card can show.
+// the network's fee collector: a fee is not money leaving in a trade
+const FEE_COLLECTOR = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
+// contracts whose deals have their own cards: the P2P market (p2p.js) and the
+// GRAM swap's Terra lock on both networks (gram-net.js)
+const QUIET = new Set(['terra1k65g4hy99sy6h7f2khrt5rz97ydlemtn4459gj9qhrt79tp83hcsdsq5uj']
+  .concat(Object.keys(NETS || {}).map(k => NETS[k] && NETS[k].htlc).filter(Boolean)));
+const CW20_MOVES = { transfer: 1, send: 1, mint: 1, transfer_from: 1, send_from: 1 };
+
+// transactions this wallet broadcast itself (tx.js)
+function sentHere(hash){
+  try { return JSON.parse(localStorage.getItem('fw:mine') || '[]').indexOf(hash) >= 0; } catch (e) { return false; }
+}
+
+// What reached this address in one transaction, as rows the card can show:
+// coins and tokens in, from whom. Nothing when the transaction touches a
+// contract with its own cards, or when something also left this address
+// (a trade, a deposit), so only money that simply arrived is announced.
 function arrivals(t, addr){
   const msgs = ((t.tx || {}).body || {}).messages || [];
-  const m = msgs[0] || {};
-  const type = String(m['@type'] || '');
+  for (const m of msgs) {
+    if (QUIET.has(m.contract)) return [];
+    const inner = m.msg && typeof m.msg === 'object' ? m.msg : {};
+    if (inner.send && QUIET.has(inner.send.contract)) return [];
+  }
   const out = [];
-
-  if (type.indexOf('MsgSend') >= 0 || type.indexOf('MsgMultiSend') >= 0) {
-    for (const lg of (t.logs || [])) {
-      for (const e of (lg.events || [])) {
-        if (e.type !== 'transfer') continue;
-        let to = '', what = '';
-        for (const a of (e.attributes || [])) {
-          if (a.key === 'recipient') to = a.value;
-          if (a.key === 'amount') what = a.value;
-        }
-        if (to !== addr || !what) continue;
-        for (const part of what.split(',')) {
-          const mm = /^(\d+)(.+)$/.exec(part.trim());
-          if (!mm) continue;
-          const tk = nameOf(mm[2]);
-          out.push({ key: 'native:' + mm[2], sym: tk.sym, text: fmt(amt(mm[1], tk.dec)) });
-        }
+  let left = false;
+  for (const lg of (t.logs || [])) {
+    for (const e of (lg.events || [])) {
+      if (e.type !== 'transfer') continue;
+      let to = '', from = '', what = '';
+      for (const a of (e.attributes || [])) {
+        if (a.key === 'recipient') to = a.value;
+        if (a.key === 'sender') from = a.value;
+        if (a.key === 'amount') what = a.value;
+      }
+      if (from === addr && to !== FEE_COLLECTOR && to !== addr) left = true;
+      if (to !== addr || from === addr || !what) continue;
+      for (const part of what.split(',')) {
+        const mm = /^(\d+)(.+)$/.exec(part.trim());
+        if (!mm) continue;
+        const tk = nameOf(mm[2]);
+        out.push({ key: 'native:' + mm[2], sym: tk.sym, text: fmt(amt(mm[1], tk.dec)), from: from });
       }
     }
-  } else if (type.indexOf('MsgExecuteContract') >= 0) {
-    // a token sent by hand: the message is the token contract's own transfer
-    // (or send), not some other contract paying out
-    const top = Object.keys((m.msg && typeof m.msg === 'object') ? m.msg : {})[0];
-    if (top !== 'transfer' && top !== 'send') return out;
-    for (const c of wasmCalls(t)) {
-      if (c.at !== m.contract || c.to !== addr || !c.amount) continue;
-      if (c.action !== 'transfer' && c.action !== 'send') continue;
-      const tk = nameOf(c.at);
-      out.push({ key: 'cw20:' + c.at, sym: tk.sym, text: fmt(amt(c.amount, tk.dec)) });
-    }
   }
-  return out;
+  for (const c of wasmCalls(t)) {
+    if (!CW20_MOVES[c.action] || !c.amount) continue;
+    const src = c.from || c.owner || '';
+    if (src === addr && c.to !== addr) left = true;
+    if (c.to !== addr || src === addr) continue;
+    const tk = nameOf(c.at);
+    out.push({ key: 'cw20:' + c.at, sym: tk.sym, text: fmt(amt(c.amount, tk.dec)), from: src || c.at });
+  }
+  return left ? [] : out;
 }
 
 // the held row if the wallet has one, so the card shows the token's own logo
@@ -114,8 +133,10 @@ async function poll(){
 
     const fresh = all
       .filter(t => Number(t.height) > mark)
-      .filter(t => signer((((t.tx || {}).body || {}).messages || [])[0]) !== addr)
-      .map(t => ({ t: t, rows: arrivals(t, addr) }))
+      // what this wallet sent is announced by its own screen; anything else
+      // this address signed (a claim on a site, another wallet) is not
+      .filter(t => !sentHere(t.txhash))
+      .map(t => ({ t: t, rows: arrivals(t, addr), mine: signer((((t.tx || {}).body || {}).messages || [])[0]) === addr }))
       .filter(x => x.rows.length)
       .sort((a, b) => Number(a.t.height) - Number(b.t.height));
     setMark(addr, top);
@@ -130,11 +151,11 @@ async function poll(){
       for (const x of fresh) {
         const first = x.rows[0];
         const more = x.rows.length > 1 ? ' and ' + (x.rows.length - 1) + ' more' : '';
-        const msg = (((x.t.tx || {}).body || {}).messages || [])[0];
+        // a payout this address asked for (a claim) reads as one
         notify({ key: 'recv:' + x.t.txhash, kind: 'success', icon: tokenRow(first.key, first.sym),
-          label: 'Received \u00b7 ' + first.sym,
+          label: (x.mine ? 'Claimed \u00b7 ' : 'Received \u00b7 ') + first.sym,
           title: '+' + first.text + ' ' + first.sym + more,
-          text: 'From ' + short(signer(msg)) + ' \u00b7 block ' + x.t.height,
+          text: 'From ' + short(first.from) + ' \u00b7 block ' + x.t.height,
           actions: [{ label: 'Details', run: () => show(x.t.txhash) }] });
       }
     }
@@ -161,4 +182,4 @@ document.addEventListener('frontier:wallet', start);
 document.addEventListener('frontier:locked', stop);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 
-export { arrivals, poll };
+export { arrivals, poll, sentHere };
