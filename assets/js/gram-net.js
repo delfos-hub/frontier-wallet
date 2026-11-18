@@ -9,6 +9,7 @@ const NETS = {
   testnet: {
     name: 'testnet',
     chain: 'rebel-2',
+    claim_gas_max: 400000,          // the buyer's own claim of the LUNC: gas ceiling
     lcd: 'https://lcd.luncblaze.com',
     // offers Worker (delfos-hub/widgets offers-worker), Delfos Hub account
     worker: 'https://htlc-offers-testnet.delfoshub-team.workers.dev',
@@ -63,6 +64,9 @@ NETS.mainnet = {
   name: 'mainnet',
   ready: true,
   chain: 'columbus-5',
+  // the buyer's own claim: the first mainnet claim used 382k gas and paid
+  // 14.1 LUNC (the relayer's), the wallet estimated 13.3; 800k x 28.325 = 22.66
+  claim_gas_max: 800000,
   lcd: 'https://terra-classic-lcd.publicnode.com',
   // a second, independent node: the seller's lock is read from both before
   // the buyer's secret leaves the device (audit round 4, B3)

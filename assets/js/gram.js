@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=004d6a24';
-import { GRAM_NET, TERMS } from './gram-net.js?v=004d6a24';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=004d6a24';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=004d6a24';
-import { S } from './state.js?v=004d6a24';
-import { decryptSeed } from './storage.js?v=004d6a24';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=004d6a24';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=004d6a24';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=004d6a24';
-import { chime, notify } from './notify.js?v=004d6a24';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=a4d46b98';
+import { GRAM_NET, TERMS } from './gram-net.js?v=a4d46b98';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=a4d46b98';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=a4d46b98';
+import { S } from './state.js?v=a4d46b98';
+import { decryptSeed } from './storage.js?v=a4d46b98';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=a4d46b98';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=a4d46b98';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=a4d46b98';
+import { chime, notify } from './notify.js?v=a4d46b98';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -211,6 +211,9 @@ const LABS = (function () {
 })();
 // the "Testnet" badges and the testnet line belong to the test networks only
 if (NET.name !== 'testnet') document.querySelectorAll('.gx-testnet').forEach(el => el.remove());
+// the network in the balance line comes from the network itself: it read
+// "rebel-2" on mainnet too (Pablo, first mainnet buy)
+{ const c = document.getElementById('gx-chain'); if (c) c.textContent = NET.chain; }
 const card = $('#xc-gram');
 if (card && LABS) { card.hidden = false; paintCard(); }
 if (card) card.addEventListener('click', () => { go('gram'); load(); });
@@ -1657,7 +1660,8 @@ function stepsHtml(step, big){
 }
 function problemHtml(b){
   if (!b.problem) return '';
-  const fix = b.problem.indexOf('relayer') >= 0 ? ' <button class="gx-link gx-relay-fix" type="button">change relayer</button>' : '';
+  // only on testnet can the relayer address be changed (Pablo, first mainnet buy)
+  const fix = NET.name === 'testnet' && b.problem.indexOf('relayer') >= 0 ? ' <button class="gx-link gx-relay-fix" type="button">change relayer</button>' : '';
   return '<div class="gx-problem">' + esc(b.problem) + fix + '</div>';
 }
 // the relayer is late: the buyer can claim the LUNC with this wallet's own key
@@ -1669,10 +1673,11 @@ function selfClaimBtn(id, b){
   // a claim too close to the end can land late and still publish the secret
   if (!late || leftSec < CLAIM_MARGIN / 2) return '';
   return '<button class="btn solid gx-selfclaim" type="button" data-id="' + esc(id) + '">Claim the LUNC myself</button>' +
-    '<p class="gx-hint">The relayer has not claimed yet. Claiming yourself costs a little LUNC for gas' + (BAL !== null && BAL < 5000000n ? ' - you have none on ' + NET.chain + ' yet' : '') + '.</p>';
+    '<p class="gx-hint">The relayer has not claimed yet. Claiming yourself costs up to ' + human(BigInt(CLAIM_FEE_MAX), 6) + ' LUNC for gas' + (BAL !== null && BAL < BigInt(CLAIM_FEE_MAX) ? ' - you have less than that on ' + NET.chain : '') + '.</p>';
 }
-// a claim uses well under 400k gas; at the network's 28.325 uluna a gas
-const CLAIM_FEE_MAX = Math.ceil(400000 * 28.325);
+// the ceiling for the buyer's own claim, per network (gram-net.js): 400k gas
+// was below what a mainnet claim costs, so it was refused every time
+const CLAIM_FEE_MAX = Math.ceil((NET.claim_gas_max || 400000) * 28.325);
 async function selfClaim(id){
   const b = buys()[id];
   if (!b || !b.terraLockId) return;
@@ -1932,7 +1937,7 @@ async function watchBuys(){
                 let j = null; try { j = await r.json(); } catch (e) {}
                 if (j && j.withheld) problem = 'The relayer kept the secret back: a lock is too close to its end to claim safely. If time is left, claim the LUNC yourself; otherwise both sides go back at their timeouts.';
               }
-            } catch (e) { problem = 'The relayer is not reachable at ' + relayerUrl() + '. Check its address (change relayer).'; }
+            } catch (e) { problem = 'The relayer is not reachable at ' + relayerUrl() + (NET.name === 'testnet' ? '. Check its address (change relayer).' : '. Frontier keeps trying; if it stays down, claim the LUNC yourself when the button appears.'); }
             if (problem !== (b.problem || null) || b.terraTimeout !== all[id].terraTimeout) saveBuyOf(me, id, { problem: problem, terraTimeout: b.terraTimeout });
           }
         } else if (b.stage === 'refunding') {
