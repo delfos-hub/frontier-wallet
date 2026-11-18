@@ -88,7 +88,8 @@ group('texts (E1, E2, 5, 9)');
   const terms = fs.readFileSync(path.resolve(SRC, '..', '..', 'terms.html'), 'utf8');
   ok('Terms: no "do not need to remain online"', !/do not need to remain\s+online/.test(terms));
   ok('Terms: the 7-day hold after an unclaimed answer, and how to have it lifted',
-     /cannot accept offers for 7 days after that lock\s+expired/.test(terms) && /may ask a team member to lift the\s+hold/.test(terms));
+     /cannot accept offers for 7 days after that lock\s+expired/.test(terms) && /may ask a team member to lift the\s+hold/.test(terms) &&
+     /refused or not given, including\s+because the offer had ended/.test(terms));
   ok('Terms: on a phone the wallet stays on screen', /On a phone, including inside Telegram, the\s+wallet must stay on screen/.test(terms));
   ok('Terms: the refund pays the burn tax again', /charges the burn tax again/.test(terms));
   ok('Terms: late responses are checked, not ignored', !/does not process that/.test(terms));

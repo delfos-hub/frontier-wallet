@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=bb2439a8';
-import { GRAM_NET, TERMS } from './gram-net.js?v=bb2439a8';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=bb2439a8';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=bb2439a8';
-import { S } from './state.js?v=bb2439a8';
-import { decryptSeed } from './storage.js?v=bb2439a8';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=bb2439a8';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=bb2439a8';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=bb2439a8';
-import { chime, notify } from './notify.js?v=bb2439a8';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89192f1b';
+import { GRAM_NET, TERMS } from './gram-net.js?v=89192f1b';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89192f1b';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=89192f1b';
+import { S } from './state.js?v=89192f1b';
+import { decryptSeed } from './storage.js?v=89192f1b';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=89192f1b';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89192f1b';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89192f1b';
+import { chime, notify } from './notify.js?v=89192f1b';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1522,6 +1522,18 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     // clock further off could never pay (audit E, info)
     if (fresh.server_time && Math.abs(now() - Number(fresh.server_time)) > 300) {
       say('#gx-bb-msg', 'This device\u2019s clock is ' + Math.round(Math.abs(now() - Number(fresh.server_time)) / 60) + ' min off. Set the time to automatic and try again.', true);
+      return;
+    }
+    // held after an unclaimed answer (E1): told here, before anything is paid,
+    // also in the flow without an intent, which would meet it only at the
+    // announcement with the GRAM already locked (Pablo, #73)
+    let hold;
+    try { hold = await api('/holds/' + encodeURIComponent(me)); }
+    catch (e) { say('#gx-bb-msg', 'The offers service could not be reached just now. Try again in a moment.', true); return; }
+    if (Number(hold && hold.hold_until) > now()) {
+      say('#gx-bb-msg', 'This address left a seller\u2019s LUNC unclaimed after an answer, so it can buy again from ' +
+        new Date(Number(hold.hold_until) * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) +
+        '. If that was outside your control, contact support (Terms, section 11).', true);
       return;
     }
     if (!fresh.live) { say('#gx-bb-msg', 'This offer was cancelled or is no longer shown to buyers. Pick another one.', true); load(); return; }
