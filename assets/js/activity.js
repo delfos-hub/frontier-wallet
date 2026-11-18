@@ -4,11 +4,12 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=14eeca85';
-import { DEC, knownAsset as marketAsset } from './market.js?v=14eeca85';
-import { $, go } from './shell.js?v=14eeca85';
-import { fiatOf, heldTokens } from './tokens.js?v=14eeca85';
-import { S } from './state.js?v=14eeca85';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=f1aa74f9';
+import { DEC, knownAsset as marketAsset } from './market.js?v=f1aa74f9';
+import { $, go } from './shell.js?v=f1aa74f9';
+import { fiatOf, heldTokens } from './tokens.js?v=f1aa74f9';
+import { S } from './state.js?v=f1aa74f9';
+import { NETS } from './gram-net.js?v=f1aa74f9';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -523,6 +524,41 @@ async function learnPlaces(){
 
 const STAKING_MSG = /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/;
 const DEFI_INTENT = /stake|bond|claim|reward|harvest|liquidity|withdraw|deposit|order|redeem|release/;
+/* The GRAM \u21c4 LUNC swap's Terra lock. Its rows read "Claim" or "Lock" on a
+   contract label; they now say what happened, with the GRAM side that only
+   this device knows (gram.js keeps it per network and address): a buy the
+   relayer claimed for this address, a sale and whether it was paid, a refund. */
+const HTLC = {};
+for (const k of Object.keys(NETS || {})) if (NETS[k] && NETS[k].htlc) HTLC[NETS[k].htlc] = k;
+function swapStore(kind, net, me){
+  try { return JSON.parse(localStorage.getItem('fw:gram:' + kind + ':' + net + ':' + me) || '{}') || {}; } catch (e) { return {}; }
+}
+function gramText(nano){
+  const s = String(nano || '0').replace(/\D/g, '').padStart(10, '0');
+  const f = s.slice(-9).replace(/0+$/, '');
+  return Number(s.slice(0, -9)).toLocaleString('en-US') + (f ? '.' + f : '');
+}
+function gramSwapRow(t, m, intent, ins, me){
+  const net = m && HTLC[m.contract];
+  if (!net) return null;
+  const body = (m.msg && m.msg[intent]) || {};
+  const out = { group: 'swaps', sub: 'GRAM \u21c4 LUNC swap', title: '', kind: 'code', below: '' };
+  if (intent === 'claim' && ins.length) {
+    out.title = 'Bought LUNC'; out.kind = 'in';
+    const buys = swapStore('buys', net, me);
+    const b = Object.keys(buys).map(k => buys[k]).filter(x => x && Number(x.terraLockId) === Number(body.id))[0];
+    if (b && b.gram) out.below = 'for ' + gramText(b.gram) + ' GRAM';
+  } else if (intent === 'lock') {
+    const locks = swapStore('locks', net, me);
+    const ton = Object.keys(locks).filter(k => locks[k] && locks[k].tx === t.txhash)[0];
+    const sold = ton && swapStore('final', net, me)[ton] === 'claimed';
+    out.title = sold ? 'Sold LUNC' : 'Locked for a GRAM sale'; out.kind = 'out';
+    if (ton && locks[ton].gram) out.below = (sold ? '+' : 'for ') + gramText(locks[ton].gram) + ' GRAM';
+  } else if (intent === 'refund') { out.title = 'LUNC returned'; out.kind = 'in'; }
+  else return null;
+  return out;
+}
+
 function look(t, me){
   const msgs = ((t.tx || {}).body || {}).messages || [];
   const m = msgs[0] || {};
@@ -575,6 +611,8 @@ function look(t, me){
       msgKey = k;
     }
   }
+  const gs = gramSwapRow(t, m, intent, ins, me);
+  if (gs) { title = gs.title; kind = gs.kind; group = gs.group; sub = gs.sub; if (gs.below) below = gs.below; }
   const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0 } : null));
   const second = swap ? ins[0] : null;
   const usdMain = main ? worthOf(main) : 0;

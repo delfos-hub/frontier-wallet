@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=14eeca85';
-import { GRAM_NET, TERMS } from './gram-net.js?v=14eeca85';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=14eeca85';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=14eeca85';
-import { S } from './state.js?v=14eeca85';
-import { decryptSeed } from './storage.js?v=14eeca85';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=14eeca85';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=14eeca85';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=14eeca85';
-import { chime, notify } from './notify.js?v=14eeca85';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=f1aa74f9';
+import { GRAM_NET, TERMS } from './gram-net.js?v=f1aa74f9';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=f1aa74f9';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=f1aa74f9';
+import { S } from './state.js?v=f1aa74f9';
+import { decryptSeed } from './storage.js?v=f1aa74f9';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=f1aa74f9';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=f1aa74f9';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=f1aa74f9';
+import { chime, notify } from './notify.js?v=f1aa74f9';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -491,6 +491,7 @@ async function checkFinished(list){
         if (OPEN_SEEN.has(t.ton_lock) || was) notify({ key: 'gram:done:' + t.ton_lock, kind: 'success', icon: 'GRAM', label: 'Deal done \u00b7 GRAM',
           title: 'Sold ' + human(t.lunc, 6) + ' LUNC',
           text: 'The buyer claimed the LUNC and ' + human(t.gram, 9) + ' GRAM was paid to your TON address.' });
+        document.dispatchEvent(new CustomEvent('frontier:tx', { detail: {} }));
       } else if (n.status === 'open' && (n.chainTime || now()) < n.timeout) {
         const rel = RELEASE[t.ton_lock] = Object.assign({ sentAt: 0 }, was, { secret: tl.secret || (was && was.secret) });
         if (!was) changed = true;
@@ -1108,6 +1109,7 @@ $('#gx-takes').addEventListener('click', async function(e){
           st(1);
           const res = await s2.wait();
           if (!res) throw new Error('the refund was sent but is not confirmed yet (tx ' + s2.hash.slice(0, 10) + '\u2026). Refresh in a minute.');
+          document.dispatchEvent(new CustomEvent('frontier:tx', { detail: { hash: s2.hash } }));
         },
         'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired, ' + backNote() + '.', {
           steps: ['Sending the refund', 'Waiting for the block'],
@@ -1931,6 +1933,8 @@ async function watchBuys(){
             notify({ key: 'gram:bought:' + id, kind: 'success', icon: 'LUNC', label: 'Buy done \u00b7 GRAM',
               title: 'Received ' + human(b.lunc, 6) + ' LUNC',
               text: 'It is on your Frontier address. The seller got the GRAM.' });
+            // Activity and the balances read again now, not at the next refresh
+            document.dispatchEvent(new CustomEvent('frontier:tx', { detail: {} }));
             load();
           } else if (l.status === 'open') {
             // the relayer finishes it; a repeated /claim with the same pair is answered, not doubled
