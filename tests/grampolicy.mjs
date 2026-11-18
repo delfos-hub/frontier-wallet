@@ -31,7 +31,7 @@ const pinPolicy = new Function('NET', 'tonRaw', lift(src, 'function pinPolicy(p)
 // what the testnet Worker publishes today (GET /offers, 26 Oct 2026)
 const WORKER = { min_deal: null, max_deal: null, max_open_takes_per_taker: 3, tip_address: 'kQDv5WLiT79cdIQjT9KE1BWeyomLMz7H8iRnW5_ef7LkgU7j', min_tip: '5000000', fee_bps: 0,
   ton_code_hash: '39D4C6CCA7AEC5DBEA9FD5BBC5B28CD0BADB04B8E99822FC241075B9FC58172C', min_ton_left_sec: 3300,
-  terra_gap_sec: 900, t_terra_sec: 1200, min_terra_left_sec: 900, answer_window_sec: 900, tax_bps: 50 };
+  terra_gap_sec: 900, t_terra_sec: 1200, min_terra_left_sec: 900, answer_window_sec: 900, tax_bps: 50, report_slack_sec: 300 };
 const refused = (over, why) => {
   try { pinPolicy(Object.assign({}, WORKER, over)); return false; } catch (e) { return why ? e.message.includes(why) : true; }
 };
@@ -47,6 +47,8 @@ ok('a different minimum fee is refused', refused({ min_tip: '900000000' }, 'min_
 ok('a shorter gap between the locks is refused', refused({ terra_gap_sec: 60 }, 'terra_gap_sec'));
 ok('a shorter answer window is refused', refused({ answer_window_sec: 60 }, 'answer_window_sec'));
 ok('less TON time left is refused', refused({ min_ton_left_sec: 600 }, 'min_ton_left_sec'));
+ok('a Worker taking answers with less time left is refused', refused({ report_slack_sec: 3600 }, 'report_slack_sec'));
+ok('a Worker that does not say its report slack is refused', refused({ report_slack_sec: undefined }, 'report_slack_sec'));
 ok('another lock code is refused', refused({ ton_code_hash: 'AB'.repeat(32) }, 'lock code'));
 ok('a burn tax above the ceiling is refused', refused({ tax_bps: 5000 }, 'burn tax'));
 ok('a negative or broken burn tax is refused', refused({ tax_bps: -1 }) && refused({ tax_bps: 'x' }));
@@ -79,7 +81,7 @@ const m = NETS.mainnet.policy;
 // what the mainnet Worker publishes (GET /policy, 4 Nov 2026)
 const WORKER_MAIN = { tip_address: 'EQCJoQe2ZL8tMvcT4LUNzVYana45p1kFDr8upKfiN5qWyJjX', min_tip: '50000000', fee_bps: 30,
   ton_code_hash: '39D4C6CCA7AEC5DBEA9FD5BBC5B28CD0BADB04B8E99822FC241075B9FC58172C', min_ton_left_sec: 106800,
-  terra_gap_sec: 86400, t_terra_sec: 21600, min_terra_left_sec: 18000, answer_window_sec: 1800, tax_bps: 150,
+  terra_gap_sec: 86400, t_terra_sec: 21600, min_terra_left_sec: 18000, answer_window_sec: 1800, tax_bps: 150, report_slack_sec: 1800,
   min_deal: '5000000000', max_deal: '500000000000', max_open_takes_per_taker: 3 };
 const pinMain = new Function('NET', 'tonRaw', lift(src, 'function pinPolicy(p){') + '\nreturn pinPolicy;')(NETS.mainnet, tonRaw);
 ok('open, every deploy value filled', NETS.mainnet.ready === true && !/REPLACE_/.test(JSON.stringify(NETS.mainnet)));
@@ -113,7 +115,13 @@ ok('R4-C2: the seller is told the answer window before publishing, and how to he
 ok('R4-C2: its own line for the seller\u2019s GRAM after a buyer claims, from terra_gap_sec',
   /#gx-duty2/.test(src) && /terra_gap_sec\) \|\| 86400\) \/ 3600/.test(src) && /claim it yourself/.test(src));
 
-ok('R4 (6): every GRAM record key carries the network', /'fw:gram:' \+ kind \+ ':' \+ NET\.name \+ ':' \+ addrOf\(\)/.test(src) &&
+ok('R4 (6): every GRAM record key carries the network', /'fw:gram:' \+ kind \+ ':' \+ NET\.name \+ ':' \+ (addrOf\(\)|addr)/.test(src) &&
   !/'fw:gram:(signed|ton|final|locks|buys):' \+ addrOf\(\)/.test(src.replace(/const old = [^\n]*/, '')));
+
+{
+  const net = fs.readFileSync(path.join(path.dirname(path.resolve(process.argv[2] || 'assets/js/gram.js')), 'gram-net.js'), 'utf8');
+  ok('audit C2: a link\u2019s network lasts for the tab, and an older kept choice is cleared off the test origins',
+    /const where = keep \? localStorage : sessionStorage;/.test(net) && /if \(!keep\) localStorage\.removeItem\('fw:gram:net'\)/.test(net));
+}
 
 report();

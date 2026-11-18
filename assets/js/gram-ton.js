@@ -95,7 +95,8 @@ async function readLock(api, address, codeHash, apiKey) {
   const headers = apiKey ? { 'X-API-Key': apiKey } : {};
   const go = async (path, init) => {
     for (let i = 0; ; i++) {                       // toncenter: 1 request/s without a key
-      const r = await fetch(api + path, Object.assign({ headers: headers }, init || {}));
+      // 15 s at most a request: a node that never answers must not hold a loop (review of D12)
+      const r = await fetch(api + path, Object.assign({ headers: headers, signal: AbortSignal.timeout(15000) }, init || {}));
       if (r.status === 429 && i < 4) { await new Promise(z => setTimeout(z, 1200 * (i + 1))); continue; }
       const j = await r.json();
       if (!j.ok) throw new Error('TON API: ' + (j.error || r.status));
@@ -116,6 +117,8 @@ async function readLock(api, address, codeHash, apiKey) {
   const adr = i => addressOf(b64bytes(s[i][1].bytes));
   return {
     state: 'active', balance: BigInt(info.balance || 0),
+    // the chain's time at this read: a timeout is judged by it, not the device clock
+    chainTime: Number(info.sync_utime) || null,
     status: STATUS[Number(num(0))],
     hash: num(1).toString(16).padStart(64, '0'),
     amount: num(2), timeout: Number(num(3)),

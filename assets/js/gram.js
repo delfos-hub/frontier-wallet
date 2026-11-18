@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=c56fd182';
-import { GRAM_NET, TERMS } from './gram-net.js?v=c56fd182';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=c56fd182';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=c56fd182';
-import { S } from './state.js?v=c56fd182';
-import { decryptSeed } from './storage.js?v=c56fd182';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=c56fd182';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=c56fd182';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=c56fd182';
-import { chime, notify } from './notify.js?v=c56fd182';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=89192f1b';
+import { GRAM_NET, TERMS } from './gram-net.js?v=89192f1b';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=89192f1b';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=89192f1b';
+import { S } from './state.js?v=89192f1b';
+import { decryptSeed } from './storage.js?v=89192f1b';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=89192f1b';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=89192f1b';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=89192f1b';
+import { chime, notify } from './notify.js?v=89192f1b';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -74,7 +74,7 @@ function pinPolicy(p){
   let tip = '';
   try { tip = tonRaw(String(p.tip_address || '')); } catch (e) {}
   if (tip !== tonRaw(pin.tip_address)) bad.push('fee address');
-  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec', 'min_deal', 'max_deal', 'max_open_takes_per_taker']
+  ['min_tip', 'fee_bps', 'answer_window_sec', 't_terra_sec', 'terra_gap_sec', 'min_terra_left_sec', 'min_ton_left_sec', 'report_slack_sec', 'min_deal', 'max_deal', 'max_open_takes_per_taker']
     .forEach(k => { if (String(p[k] ?? null) !== String(pin[k] ?? null)) bad.push(k); });
   if (String(p.ton_code_hash || '').toUpperCase() !== String(NET.tonCodeHash).toUpperCase()) bad.push('lock code');
   const tax = Number(p.tax_bps);
@@ -152,11 +152,12 @@ function setPolicy(p){
 // The network is in every key (Pablo, round 4): testnet and mainnet records
 // never mix. Records from before it was (all made on testnet) move to the
 // testnet keys the first time they are read there.
-function gk(kind){
-  const k = 'fw:gram:' + kind + ':' + NET.name + ':' + addrOf();
+function gk(kind){ return gkOf(kind, addrOf()); }
+function gkOf(kind, addr){
+  const k = 'fw:gram:' + kind + ':' + NET.name + ':' + addr;
   if (NET.name === 'testnet') {
     try {
-      const old = 'fw:gram:' + kind + ':' + addrOf(), v = localStorage.getItem(old);
+      const old = 'fw:gram:' + kind + ':' + addr, v = localStorage.getItem(old);
       if (v !== null && localStorage.getItem(k) === null) { localStorage.setItem(k, v); localStorage.removeItem(old); }
     } catch (e) {}
   }
@@ -336,10 +337,16 @@ async function watchDeal(t, terraLockId){
 }
 async function sendGramClaim(t, secret){
   const r = await fetch(NET.tonApi + '/sendBoc', { method: 'POST', headers: { 'content-type': 'application/json' },
+    signal: AbortSignal.timeout(15000),                       // never hold the claim loop (audit D12)
     body: JSON.stringify({ boc: claimMessage(tonRaw(t.ton_lock), String(secret)) }) });
   let j = {}; try { j = await r.json(); } catch (e) {}
   if (!j.ok) throw new Error('TON refused the claim: ' + (j.error || r.status));
 }
+
+// A refund leaves the swap contract like a claim does, so the network takes
+// the burn tax again on the way back (audit E1): the seller gets back about
+// what the buyer would have received, not what was locked.
+const backNote = () => 'less the ' + (POLICY ? Number(POLICY.tax_bps) / 100 : 1.5) + '% burn tax the network takes on the way out';
 
 function windowLeftOf(t){ return t.created + (POLICY ? POLICY.answer_window_sec : 900) - now(); }
 
@@ -348,6 +355,39 @@ function stepper(done){
   return '<div class="gx-steps">' + names.map((n, k) =>
     '<span class="' + (k < done ? 'ok' : k === done ? 'now' : '') + '">' + n + '</span>').join('') + '</div>';
 }
+
+// The deals this device locked LUNC for, with its own Terra lock id, whatever
+// the Worker says or lists (audit round 5, D1/D4): a lock claimed on Terra
+// means the secret is public, and the GRAM must be claimed with it even when
+// the Worker refused the answer, no longer lists the take or cannot be read.
+function ownDeals(takes){
+  const fin = finals(), mine = mineAll(), by = {};
+  (takes || []).forEach(t => { by[t.ton_lock] = t; });
+  const out = [];
+  for (const [ton, m] of Object.entries(mine)) {
+    if (!m.id || fin[ton]) continue;
+    out.push(Object.assign({ ton_lock: ton, lunc: m.lunc || '0', gram: m.gram || '0' }, by[ton] || {}, { terra_lock_id: m.id, own: true }));
+  }
+  for (const t of takes || []) {
+    if (t.status === 'locked' && t.terra_lock_id && !fin[t.ton_lock] && !(mine[t.ton_lock] && mine[t.ton_lock].id)) out.push(t);
+  }
+  return out;
+}
+// A lock sent for a take whose id never came back: its tx is looked up on
+// every sweep, so the lock joins the deals this device follows (review of D).
+async function resolveIds(){
+  for (const [ton, m] of Object.entries(mineAll())) {
+    if (m.id || !m.tx) continue;
+    try {
+      const r = await fetch(NET.lcd + '/cosmos/tx/v1beta1/txs/' + m.tx, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) continue;
+      const res = (await r.json()).tx_response;
+      if (res && Number(res.code) === 0 && lockIdOf(res)) remember(ton, { id: lockIdOf(res) });
+    } catch (e) {}
+  }
+}
+const REFUND_DUE = {};                 // ton_lock -> own Terra lock id, open past its timeout
+const LOST_SEEN = {};                  // ton_lock -> reads of a TON lock open past its timeout
 
 let DRAWN = [];
 function drawTakes(list, stats){
@@ -361,7 +401,11 @@ function drawTakes(list, stats){
     (t.status === 'pending' && windowLeftOf(t) > 0) ||
     t.status === 'locked' ||
     (t.status === 'unanswered' && mineFor(t.ton_lock).id) ||
-    (t.status === 'pending' && mineFor(t.ton_lock).id)));
+    (t.status === 'pending' && mineFor(t.ton_lock).id) ||
+    // a lock of mine on its way (tx known, id not yet): stays in view
+    (mineFor(t.ton_lock).tx && !mineFor(t.ton_lock).id)))
+    // and this device's own locks the Worker does not list (audit D1)
+    .concat(ownDeals(list).filter(o => !list.some(t => t.ton_lock === o.ton_lock)));
   if (!active.length) {
     box.innerHTML = '<div class="gx-none">No active deals. When a buyer takes your offer it shows up here, with a chime.</div>';
     return;
@@ -370,13 +414,15 @@ function drawTakes(list, stats){
     const mine = mineFor(t.ton_lock);
     const head = '<b>' + human(t.lunc, 6) + ' LUNC</b> for ' + human(t.gram, 9) + ' GRAM';
     const pair = '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'GRAM' }) + iconHTML({ sym: 'LUNC' }) + '</span>';
-    if (mine.id && !t.terra_lock_id && mine.timeout && now() >= mine.timeout) {
+    // a lock of mine open past its timeout, answered or not: it can come back (audit D2)
+    const dueId = REFUND_DUE[t.ton_lock] || (mine.id && !t.terra_lock_id && mine.timeout && now() >= mine.timeout ? mine.id : null);
+    if (dueId) {
       return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
-        '<div class="gx-l">' + head + '<span>Your LUNC lock #' + mine.id + ' was never taken: it can come back to you now</span></div>' +
-        '<button class="btn solid gx-answer gx-terra-refund" type="button" data-id="' + mine.id + '" data-ton="' + esc(t.ton_lock) + '">Refund</button>' +
+        '<div class="gx-l">' + head + '<span>Your LUNC lock #' + dueId + ' was not claimed in time: it can come back to you now, ' + backNote() + '</span></div>' +
+        '<button class="btn solid gx-answer gx-terra-refund" type="button" data-id="' + dueId + '" data-ton="' + esc(t.ton_lock) + '">Refund</button>' +
       '</div>';
     }
-    if (t.status === 'pending' || !t.terra_lock_id) {
+    if (!t.own && (t.status === 'pending' || !t.terra_lock_id)) {
       return '<div class="gx-item gx-deal" data-ton="' + esc(t.ton_lock) + '">' + pair +
         '<div class="gx-l">' + head + '<span>' + (mine.id ? 'LUNC locked, the answer still has to be reported'
           : 'Waiting for your answer \u00b7 ' + left(windowLeftOf(t)) + ' left') + '</span>' + stepper(1) + '</div>' +
@@ -398,7 +444,7 @@ function drawTakes(list, stats){
     '</div>';
   }).join('');
   paintIcons(box);
-  checkFinished(active.filter(t => t.status === 'locked' && t.terra_lock_id));
+  resolveIds().then(() => checkFinished(ownDeals(list)));
 }
 
 // Answered deals, read from both chains. The Terra side tells whether the
@@ -415,13 +461,19 @@ async function checkFinished(list){
       let tl;
       try { tl = await terraLockRead(t.terra_lock_id); } catch (e) { continue; }
       const st = tl && tl.status;
-      if (st === 'open') { OPEN_SEEN.add(t.ton_lock); continue; }
+      if (st === 'open') {
+        OPEN_SEEN.add(t.ton_lock);
+        // past its timeout and still open: the LUNC can come back (audit D2)
+        if (tl.timeout && now() >= Number(tl.timeout) && REFUND_DUE[t.ton_lock] !== t.terra_lock_id) { REFUND_DUE[t.ton_lock] = t.terra_lock_id; changed = true; }
+        continue;
+      }
+      if (REFUND_DUE[t.ton_lock]) { delete REFUND_DUE[t.ton_lock]; changed = true; }
       if (st === 'refunded') {
         setFinal(t.ton_lock, 'refunded');
         changed = true;
         if (OPEN_SEEN.has(t.ton_lock)) notify({ key: 'gram:back:' + t.ton_lock, kind: 'info', icon: 'LUNC', label: 'Deal ended \u00b7 GRAM',
           title: 'Your LUNC came back',
-          text: 'The buyer did not claim in time, so the ' + human(t.lunc, 6) + ' LUNC locked for them is back on your address.' });
+          text: 'The buyer did not claim in time, so the LUNC locked for them is back on your address: about ' + human(t.lunc, 6) + ' LUNC, ' + backNote() + '.' });
         continue;
       }
       if (st !== 'claimed') continue;
@@ -436,15 +488,18 @@ async function checkFinished(list){
         if (OPEN_SEEN.has(t.ton_lock) || was) notify({ key: 'gram:done:' + t.ton_lock, kind: 'success', icon: 'GRAM', label: 'Deal done \u00b7 GRAM',
           title: 'Sold ' + human(t.lunc, 6) + ' LUNC',
           text: 'The buyer claimed the LUNC and ' + human(t.gram, 9) + ' GRAM was paid to your TON address.' });
-      } else if (n.status === 'open' && now() < n.timeout) {
+      } else if (n.status === 'open' && (n.chainTime || now()) < n.timeout) {
         const rel = RELEASE[t.ton_lock] = Object.assign({ sentAt: 0 }, was, { secret: tl.secret || (was && was.secret) });
         if (!was) changed = true;
         if (rel.secret && now() - rel.sentAt > 90) {
           try { await sendGramClaim(t, rel.secret); rel.sentAt = now(); if (rel.error) { rel.error = ''; changed = true; } }
           catch (e) { if (rel.error !== e.message) { rel.error = e.message; changed = true; } }
         }
-      } else {
-        // refunded to the buyer, or past its timeout: the GRAM was not claimed in time
+      } else if (n.status === 'refunded' || (n.status === 'open' && n.chainTime && n.chainTime >= n.timeout &&
+          (LOST_SEEN[t.ton_lock] = (LOST_SEEN[t.ton_lock] || 0) + 1) >= 2)) {
+        // refunded to the buyer, or open past its timeout on two reads: the GRAM
+        // was not claimed in time. Any other answer (uninitialized, foreign
+        // code, a node that lies once) is read again, never final (audit D5).
         setFinal(t.ton_lock, 'lost');
         delete RELEASE[t.ton_lock];
         changed = true;
@@ -510,7 +565,7 @@ const dec = (n, d) => n.toFixed(d).replace(/\.?0+$/, '');
 // what can still be offered: the balance after the burn tax, less my other live offers
 // LUNC kept out of Max for the gas of answering takes (review of #15):
 // a maker who offers everything could not pay for the answer and would get a strike
-const GAS_RESERVE = 50000000n;      // 50 LUNC
+const GAS_RESERVE = 100000000n;     // 100 LUNC: an answer costs ~8.5 LUNC of gas (review of D10)
 function available(){
   if (BAL === null) return null;
   const tax = BigInt(POLICY ? POLICY.tax_bps || 0 : 0);
@@ -568,7 +623,7 @@ function readForm(){
   if (out.min > out.total) out.errs.push('The smallest part cannot be more than the total.');
   out.hours = HOURS;
   const av = available();
-  if (av !== null && out.total > av) out.errs.push('You can offer up to ' + human(av, 6) + ' LUNC (balance after the burn tax, minus your other live offers and takes waiting for you, and 50 LUNC kept for gas).');
+  if (av !== null && out.total > av) out.errs.push('You can offer up to ' + human(av, 6) + ' LUNC (balance after the burn tax, minus your other live offers and takes waiting for you, and ' + human(GAS_RESERVE, 6) + ' LUNC kept for gas).');
   return out;
 }
 
@@ -652,9 +707,15 @@ $('#gx-post').addEventListener('click', async function(){
     await consent('Publish this offer', lines, payload, async function (m, step) {
       step(0);
       const signed = await signArbitrary(m, addrOf(), payload);
+      // the offer's id is the sha256 of the signed text, as the Worker works it
+      // out: its copy is kept and read back BEFORE posting, so no live offer is
+      // left that this device cannot answer (audit D7)
+      const oid = await sha256hex(new TextEncoder().encode(payload));
+      keepSigned(oid, payload);
+      if (signedAll()[oid] !== payload) throw new Error('this browser did not keep the signed offer, so it was not published. Allow this site to store data (not a private window) and try again.');
       step(1);
       const r = await api('/offers', signed);
-      if (r && r.id) keepSigned(r.id, payload);
+      if (r && r.id && r.id !== oid) keepSigned(r.id, payload);
     }, null, {
       steps: ['Signing the offer', 'Publishing it to buyers'],
       done: () => ({
@@ -728,6 +789,8 @@ function dutyPaint(){
     ? 'Each buyer waits for you to lock their LUNC within ' + mins + ' min. The wallet bot tells you when a buyer takes your offer.'
     // no daily-visit advice here: a visit a day cannot meet a 30-minute window (Pablo)
     : 'Each buyer waits for you to lock their LUNC within ' + mins + ' min, or the take counts against your offer. Turn on Telegram alerts below to hear of a take in time.';
+  // said before the seller publishes, not only after a refund (Pablo, E1)
+  el.textContent += ' If a buyer never claims, your LUNC comes back ' + backNote() + '.';
   // after the buyer claims the LUNC, the GRAM is the seller's to collect on TON
   // (audit round 4, C2): the relayer does it; if it is down, the seller's own
   // wallet does, within the gap between the two locks
@@ -735,7 +798,7 @@ function dutyPaint(){
   if (el2) {
     const hrs = Math.round(((POLICY && POLICY.terra_gap_sec) || 86400) / 3600);
     el2.textContent = 'After a buyer claims the LUNC, the relayer claims your GRAM on TON for you. If it is down, open Frontier within about ' + hrs +
-      ' hours to claim it yourself' + (TG_LINKED ? '; the wallet bot tells you when a claim is due.' : '. Telegram alerts tell you when a claim is due.');
+      ' hours to claim it yourself: Frontier claims it while it is open (on a computer, a background tab is enough).';
   }
 }
 // Outside Telegram there is no initData: the account is proven by pressing
@@ -771,6 +834,10 @@ function writeAccess(){
 }
 function tgLinkBox(url){
   const box = $('#gx-tg-msg');
+  // only a t.me start link is opened (audit D9)
+  if (!/^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}\?start=[A-Za-z0-9_-]{1,64}$/.test(String(url))) {
+    box.textContent = 'The alerts link from the offers service did not look right, so it is not shown.'; box.classList.add('err'); return;
+  }
   box.textContent = '';
   box.classList.remove('err');
   const a = document.createElement('a');
@@ -923,10 +990,49 @@ function lockIdOf(res){
   return null;
 }
 
+/* The chain's own clock (latest Terra block) for the checks a wrong device
+   clock would turn against the user (audit E3, E8). Blocks come every few
+   seconds, so the block time trails real time by seconds; 2 min is allowed. */
+let CHAIN_SKEW = null, CHAIN_SKEW_AT = 0;
+const CLOCK_TOL = 120;
+async function chainSkew(fresh){
+  if (!fresh && CHAIN_SKEW !== null && now() - CHAIN_SKEW_AT < 300) return CHAIN_SKEW;
+  const d = await getJSON(NET.lcd + '/cosmos/base/tendermint/v1beta1/blocks/latest', 8000, 2);
+  const t = Date.parse((((d || {}).block || {}).header || {}).time) / 1000;
+  if (!Number.isFinite(t)) throw new Error('no block time');
+  CHAIN_SKEW = now() - Math.floor(t); CHAIN_SKEW_AT = now();
+  return CHAIN_SKEW;
+}
+async function clockProblem(fresh){
+  let s;
+  try { s = await chainSkew(fresh); } catch (e) { return 'the chain\u2019s time could not be read, try again in a minute'; }
+  return Math.abs(s) > CLOCK_TOL ? 'this device\u2019s clock is ' + Math.max(1, Math.round(Math.abs(s) / 60)) + ' min off the chain\u2019s time; set it to automatic and try again' : '';
+}
+/* The least a new Terra lock may have left. The Worker takes the report while
+   the lock has min_terra_left - report_slack left (audit E3): a third of that
+   slack is kept for the PIN, the block and the report, so a slow block or a
+   report sent a minute later is not refused after the LUNC is locked. */
+function answerFloor(p){
+  const s = Number(p.report_slack_sec) || 0;
+  return now() + p.min_terra_left_sec - s + Math.max(60, Math.floor(s / 3));
+}
+
 // the Terra lock's timeout, computed from the TON lock's at the moment it is used
 function terraTimeout(n){
   const p = POLICY;
   return Math.min(now() + p.t_terra_sec, (n.timeout || 0) - p.terra_gap_sec - MARGIN);
+}
+// When the take was paid: the buyer gives the TON lock a timeout of the pay
+// time + min_ton_left + ANNOUNCE_SEC, so it is read back from the lock on
+// chain. A take without an intent is then held to the offer as it was when
+// it was paid, not when it is answered (audit E4).
+const ANNOUNCE_SEC = 35 * 60;
+function heldAt(t, n){
+  const h = Number(t.held_since), c = Number(t.created);
+  const life = Number((POLICY && POLICY.intent_ttl_sec) || 1200) + 60;
+  if (h > 0 && c > 0 && h <= c && h >= c - life) return h;
+  const paid = n && Number(n.timeout) > 0 && POLICY ? Number(n.timeout) - POLICY.min_ton_left_sec - ANNOUNCE_SEC : 0;
+  return paid > 0 ? Math.min(now(), paid) : now();
 }
 async function checkTake(t){
   if (!POLICY) setPolicy((await api('/offers')).policy);
@@ -940,6 +1046,15 @@ async function checkTake(t){
     problems.push('this offer was not signed on this device; answer it from the device that published it');
   else if (BigInt(t.lunc) < BigInt(offer.min_lunc) || BigInt(t.lunc) > BigInt(offer.max_lunc))
     problems.push('the take is outside the amounts you offered');
+  // the offer as signed: not past its end, not past its total counting the
+  // locks this device already made for it (audit D11)
+  // a take from an intent is held to the offer as it was when the intent was
+  // registered (held_since); believed only within the intent's life before
+  // the take, so a Worker cannot revive an offer that ended long ago
+  else if (Number(offer.expires) <= heldAt(t, n)) problems.push('your offer has ended');
+  else if (offer.total_lunc && Object.entries(mineAll()).filter(([k, x]) => k !== t.ton_lock && x.id && x.offer_id === t.offer_id)
+      .reduce((s, [, x]) => s + BigInt(x.lunc || 0), 0n) + BigInt(t.lunc) > BigInt(offer.total_lunc))
+    problems.push('this take would sell more than your offer\u2019s total');
   else if (n.state !== 'active') problems.push('the buyer\u2019s TON lock does not exist (yet)');
   else if (n.foreignCode) problems.push('the TON lock does not run the audited contract');
   else {
@@ -958,7 +1073,8 @@ async function checkTake(t){
     else if (n.balance < n.amount + n.tip) problems.push('the TON lock does not hold the GRAM it claims');
   }
   const timeout = terraTimeout(n);
-  if (!problems.length && timeout < now() + p.min_terra_left_sec + 60) problems.push('the TON lock ends too soon to answer safely');
+  if (!problems.length) { const clk = await clockProblem(true); if (clk) problems.push(clk); }
+  if (!problems.length && timeout < answerFloor(p)) problems.push('the TON lock ends too soon to answer safely');
   let taxBps = Number(p.tax_bps);
   try { taxBps = await taxBpsFor(p); } catch (e) { problems.push(e.message); }
   const tax = BigInt(taxBps);
@@ -990,9 +1106,9 @@ $('#gx-takes').addEventListener('click', async function(e){
           const res = await s2.wait();
           if (!res) throw new Error('the refund was sent but is not confirmed yet (tx ' + s2.hash.slice(0, 10) + '\u2026). Refresh in a minute.');
         },
-        'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired.', {
+        'A transaction: it returns your locked LUNC from the swap contract, now that the lock has expired, ' + backNote() + '.', {
           steps: ['Sending the refund', 'Waiting for the block'],
-          done: () => ({ title: 'LUNC returned', text: 'The LUNC from lock #' + r.dataset.id + ' is back on your address.' })
+          done: () => ({ title: 'LUNC returned', text: 'The LUNC from lock #' + r.dataset.id + ' is back on your address, ' + backNote() + '.' })
         });
       setFinal(r.dataset.ton, 'refunded');
       load();
@@ -1050,7 +1166,7 @@ async function answerTake(t, b){
         return answerTake(t, b);                        // goes straight to Report
       }
       if (res && Number(res.code) !== 0) remember(t.ton_lock, { tx: null });   // it failed on chain: a new lock is fine
-      else if (notFound && now() - (had.at || 0) > 180) remember(t.ton_lock, { tx: null });   // never landed
+      else if (notFound && now() - (had.at || 0) > 600) remember(t.ton_lock, { tx: null });   // never landed (10 min, audit D3)
       else { say('#gx-status', 'Your lock for this take is still on its way (tx ' + had.tx.slice(0, 10) + '\u2026). Try again in a minute.', true); return; }
     }
     say('#gx-status', 'Checking the buyer\u2019s GRAM lock on TON\u2026');
@@ -1066,19 +1182,31 @@ async function answerTake(t, b){
       ['Buyer receives', human(t.lunc, 6) + ' LUNC'],
       ['Buyer', t.taker_terra],
       ['Claim until', 'about ' + new Date(c.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (set when you sign)'],
-      ['If unclaimed', 'the LUNC comes back to you after that'],
+      ['If unclaimed', 'it comes back to you after that, ' + backNote()],
       ['Network', NET.chain + ' + TON ' + (NET.tonChain === '-3' ? 'testnet' : 'mainnet')]
     ];
     const fee = await feeFor([step]);
     lines.push(feeLine(fee));
-    const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you.';
+    const NOTE_ANSWER = 'A transaction: it locks your LUNC on ' + NET.chain + ' for this buyer, then signs your answer. If the buyer never claims, the LUNC comes back to you, ' + backNote() + '.';
     await consent('Answer this take', lines, JSON.stringify(step.msg, null, 1) + '\n\nthen signed: htlc-take-locked for ' + t.ton_lock, async function(m, st){
       // the PIN may have taken a while: the timeout is set again now and checked
       st(0);
+      const clk = await clockProblem(true);
+      if (clk) throw new Error(clk + '. Nothing was locked.');
       step.msg.lock.timeout = terraTimeout(c.n);
-      if (step.msg.lock.timeout < now() + POLICY.min_terra_left_sec + 60) throw new Error('too late to answer this take safely now. Nothing was locked.');
-      const sent = await sendSwap(addrOf(), [step], m, NET, '', fee);
-      remember(t.ton_lock, { tx: sent.hash, at: now(), timeout: step.msg.lock.timeout });
+      if (step.msg.lock.timeout < answerFloor(POLICY)) throw new Error('too late to answer this take safely now. Nothing was locked.');
+      // the answer window, again after the PIN: a lock past it the Worker may refuse (audit D8)
+      if (t.status === 'pending' && windowLeftOf(t) < 60) throw new Error('the answer window for this take is closing. Nothing was locked.');
+      // recorded before the broadcast, with what the deal is (audit D1, D3)
+      const rec = h => remember(t.ton_lock, { tx: h, at: now(), timeout: step.msg.lock.timeout, lunc: t.lunc, gram: t.gram, offer_id: t.offer_id });
+      let sent;
+      try { sent = await sendSwap(addrOf(), [step], m, NET, '', fee, rec); }
+      catch (e) {
+        // refused by the node: it never entered the mempool, a new lock is fine
+        if (/^(rejected \(code|broadcast -> 4)/.test(String(e && e.message))) remember(t.ton_lock, { tx: null });
+        throw e;
+      }
+      rec(sent.hash);
       st(1);
       const res = await sent.wait();
       if (!res) throw new Error('the lock was sent but is not confirmed yet (tx ' + sent.hash.slice(0, 10) + '\u2026). Refresh in a minute, then press Report.');
@@ -1094,7 +1222,7 @@ async function answerTake(t, b){
         title: 'Answered',
         text: human(t.lunc, 6) + ' LUNC is locked for the buyer (lock #' + r.id + '). When they claim it, ' + human(t.gram, 9) +
           ' GRAM is released to your TON address. If they never do, the LUNC comes back to you after ' +
-          new Date(r.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.'
+          new Date(r.timeout * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + backNote() + '.'
       })
     });
     load();
@@ -1153,9 +1281,17 @@ async function openDeal(ton, answer){
 
 async function watchTakes(){
   const me = addrOf();
-  if (!me || !LABS || document.hidden || LOADING) return;
+  if (!me || !LABS || LOADING) return;
+  // a hidden tab still follows a deal this device locked LUNC for, so the GRAM
+  // is claimed with the relayer down (audit E2); without one it stays quiet
+  if (document.hidden && !ownDeals([]).length) return;
   let d;
-  try { d = await api('/takes?maker=' + encodeURIComponent(me)); } catch (e) { return; }
+  try { d = await api('/takes?maker=' + encodeURIComponent(me)); }
+  catch (e) {
+    // the Worker unreachable: this device's own locks are still followed (audit D1)
+    if (now() - LAST_SWEEP >= 60) { LAST_SWEEP = now(); resolveIds().then(() => checkFinished(ownDeals([]))); }
+    return;
+  }
   if (!POLICY) { try { setPolicy((await api('/offers')).policy); } catch (e) {} }
   const waiting = (d.takes || []).filter(t => t.status === 'pending' && stillWaiting(t));
   badge(waiting.length);
@@ -1166,8 +1302,11 @@ async function watchTakes(){
     // off the GRAM screen, answered deals are still seen through: a GRAM
     // left to release is claimed from here (audit round 3, A)
     const fin = finals();
-    const answered = (d.takes || []).filter(t => t.status === 'locked' && t.terra_lock_id && !fin[t.ton_lock]);
-    if (answered.length && now() - LAST_SWEEP >= 60) { LAST_SWEEP = now(); checkFinished(answered); }
+    if (now() - LAST_SWEEP >= 60) {
+      LAST_SWEEP = now();
+      const takes = d.takes || [];
+      resolveIds().then(() => { const own = ownDeals(takes); if (own.length) checkFinished(own); });
+    }
   }
   fresh.forEach(alertTake);
 }
@@ -1202,9 +1341,19 @@ setTimeout(watchTakes, 3000);
 let BOOK = [];
 let TC = null, TC_LOADING = null;
 const CLAIM_MARGIN = NET.name === 'testnet' ? 300 : 3600;     // what the relayer needs left on the Terra lock
-const buysKey = () => gk('buys');
-function buys(){ try { return JSON.parse(localStorage.getItem(buysKey()) || '{}'); } catch (e) { return {}; } }
-function saveBuy(id, v){ const b = buys(); b[id] = Object.assign(b[id] || {}, v); try { localStorage.setItem(buysKey(), JSON.stringify(b)); } catch (e) {} return b[id]; }
+// A wallet's buys, by its address (audit C8): an answer that comes after the
+// wallet was switched is written to the buys of the wallet that made the buy,
+// and a record that would hold only a stage is never created.
+function buysOf(a){ try { return JSON.parse(localStorage.getItem(gkOf('buys', a)) || '{}'); } catch (e) { return {}; } }
+function saveBuyOf(a, id, v){
+  const b = buysOf(a);
+  if (!b[id] && !v.created) return null;
+  b[id] = Object.assign(b[id] || {}, v);
+  try { localStorage.setItem(gkOf('buys', a), JSON.stringify(b)); } catch (e) {}
+  return b[id];
+}
+function buys(){ return buysOf(addrOf()); }
+function saveBuy(id, v){ return saveBuyOf(addrOf(), id, v); }
 // The relayer receives the buyer's secret. Only on testnet may a URL saved on
 // this device replace the one pinned in gram-net.js; anywhere else the pinned
 // one is used even if an old value is still in storage.
@@ -1213,7 +1362,8 @@ const relayerUrl = () => {
   if (NET.name !== 'testnet') return pinned;
   try { return (localStorage.getItem('fw:gram:relayer') || pinned).replace(/\/+$/, ''); } catch (e) { return pinned; }
 };
-const tipOf = gram => { const p = POLICY || {}; const fee = gram * BigInt(p.fee_bps || 0) / 10000n; const min = BigInt(p.min_tip || 5000000); return fee > min ? fee : min; };
+// the rules as loaded, else the network's pinned ones, never zero (audit C6)
+const tipOf = (gram, p = POLICY || NET.policy || {}) => { const fee = gram * BigInt(p.fee_bps || 0) / 10000n; const min = BigInt(p.min_tip || 5000000); return fee > min ? fee : min; };
 const RESERVE_NANO = 50000000n;
 
 /* ---------- tabs ---------- */
@@ -1330,7 +1480,7 @@ function quote(){
     '<div><span>Service fee</span><b>' + human(q.tip, 9) + ' GRAM</b></div>' +
     '<div><span>Fee goes to</span><b title="' + esc(feeTo()) + '">Delfos Hub treasury ' + esc(shortAddr(feeTo())) + '</b></div>' +
     '<div><span>TON network reserve</span><b>' + human(RESERVE_NANO, 9) + ' GRAM</b></div>' +
-    '<div><span>You receive</span><b>' + (q.lunc > 0n ? human(q.lunc, 6) : '0') + ' LUNC, no gas needed</b></div>';
+    '<div><span>You receive</span><b>' + (q.lunc > 0n ? human(q.lunc, 6) : '0') + ' LUNC, no gas needed when the relayer claims</b></div>';
   $('#gx-bb-msg').textContent = q.err || (relayerUrl() ? '' : 'No relayer address is set (bottom of the Buy tab).');
   $('#gx-bb-msg').classList.toggle('bad', !!q.err);
   $('#gx-bb-pay').disabled = !!q.err || !relayerUrl();
@@ -1355,6 +1505,8 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     const policy = POLICY || setPolicy((await api('/offers')).policy);
     if (!policy) { say('#gx-bb-msg', POLICY_ERR || 'The swap rules could not be loaded. Try again in a minute.', true); return; }
     if (policy.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
+    // the fee from the rules just loaded, not from the quote drawn before them (audit C6)
+    const tip = tipOf(q.gram, policy);
     // the offer as it stands now, not as the book showed it (audit round 3, D2)
     let fresh;
     try { fresh = await api('/offers/' + encodeURIComponent(q.o.id)); }
@@ -1364,6 +1516,26 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       return;
     }
     if (fresh.paused) { say('#gx-bb-msg', PAUSED_MSG, true); load(); return; }
+    // the lock's timeout is worked out from this device's clock: one far off
+    // would pay a lock the offers service refuses (audit C4)
+    // 5 min: the TON wallet takes the payment for 6 min (validUntil), so a
+    // clock further off could never pay (audit E, info)
+    if (fresh.server_time && Math.abs(now() - Number(fresh.server_time)) > 300) {
+      say('#gx-bb-msg', 'This device\u2019s clock is ' + Math.round(Math.abs(now() - Number(fresh.server_time)) / 60) + ' min off. Set the time to automatic and try again.', true);
+      return;
+    }
+    // held after an unclaimed answer (E1): told here, before anything is paid,
+    // also in the flow without an intent, which would meet it only at the
+    // announcement with the GRAM already locked (Pablo, #73)
+    let hold;
+    try { hold = await api('/holds/' + encodeURIComponent(me)); }
+    catch (e) { say('#gx-bb-msg', 'The offers service could not be reached just now. Try again in a moment.', true); return; }
+    if (Number(hold && hold.hold_until) > now()) {
+      say('#gx-bb-msg', 'This address left a seller\u2019s LUNC unclaimed after an answer, so it can buy again from ' +
+        new Date(Number(hold.hold_until) * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) +
+        '. If that was outside your control, contact support (Terms, section 11).', true);
+      return;
+    }
     if (!fresh.live) { say('#gx-bb-msg', 'This offer was cancelled or is no longer shown to buyers. Pick another one.', true); load(); return; }
     if (fresh.price !== q.o.price || fresh.maker_ton !== q.o.maker_ton) { say('#gx-bb-msg', 'The seller changed this offer. Check it again before paying.', true); load(); return; }
     if (BigInt(fresh.remaining_lunc) < q.lunc || BigInt(fresh.min_lunc) > q.lunc || Number(fresh.expires) < now() + policy.answer_window_sec) {
@@ -1372,8 +1544,8 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     const secret = crypto.getRandomValues(new Uint8Array(32));
     const hash = await sha256hex(secret);
     const terms = {
-      hash: hash, amount: q.gram, tip: q.tip,
-      timeout: now() + policy.min_ton_left_sec + 35 * 60,
+      hash: hash, amount: q.gram, tip: tip,
+      timeout: now() + policy.min_ton_left_sec + ANNOUNCE_SEC,
       takerRef: await takeRefOf(me, q.o.id, q.lunc),
       recipient: tonRaw(q.o.maker_ton), refundTo: tonRaw(acc.address), relayer: tonRaw(policy.tip_address)
     };
@@ -1381,11 +1553,11 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     if (lock.codeHash !== String(NET.tonCodeHash).toUpperCase()) throw new Error('the lock code in this wallet does not match the audited one');
     id = lock.raw;
     // the secret is kept BEFORE any GRAM moves: without it the LUNC could not be claimed
-    saveBuy(id, { offerId: q.o.id, lunc: String(q.lunc), gram: String(q.gram), tip: String(q.tip), secret: toHex(secret), hash: hash,
+    saveBuyOf(me, id, { offerId: q.o.id, lunc: String(q.lunc), gram: String(q.gram), tip: String(tip), secret: toHex(secret), hash: hash,
                   timeout: terms.timeout, address: lock.address, stage: 'paying', created: now() });
     // read it back: a browser that refuses to store (private window, storage
     // full or blocked) would otherwise lose the secret when the page closes
-    const kept = buys()[id];
+    const kept = buysOf(me)[id];
     if (!kept || kept.secret !== toHex(secret) || kept.address !== lock.address) {
       say('#gx-bb-msg', 'This browser did not keep the swap\u2019s data, so nothing was paid. Allow this site to store data (not a private window) and try again.', true);
       return;
@@ -1402,12 +1574,12 @@ $('#gx-bb-pay').addEventListener('click', async function(){
         const intent = JSON.stringify({ type: 'htlc-take-intent', v: 1, network: NET.name, offer_id: q.o.id,
           ton_lock: id, taker_terra: me, lunc: String(q.lunc), ts: now() });
         await api('/intents', await signArbitrary(S.MNEMONIC, me, intent));
-        saveBuy(id, { intent: true });
+        saveBuyOf(me, id, { intent: true });
       } catch (e) {
         // only these two: any other refusal, a 429 among them (the buyer's
         // pending-takes limit), would also refuse the take after paying
         if (!(e && (e.code === 'intents_full' || e.code === 'rate_limited'))) {
-          saveBuy(id, { stage: 'cancelled' });
+          saveBuyOf(me, id, { stage: 'cancelled' });
           say('#gx-bb-msg', (e && e.message ? e.message : String(e)) + ' Nothing was paid.', true);
           load();
           return;
@@ -1419,10 +1591,10 @@ $('#gx-bb-pay').addEventListener('click', async function(){
     // after validUntil the payment can no longer land, so the chain gives a
     // sure answer then even if the wallet's answer is lost (audit round 3, D1)
     const validUntil = now() + 360;
-    saveBuy(id, { validUntil: validUntil });
+    saveBuyOf(me, id, { validUntil: validUntil });
     await tc.sendTransaction({ validUntil: validUntil, network: NET.tonChain,
       messages: [{ address: lock.address, amount: String(lock.value), stateInit: lock.stateInit, payload: lock.payload }] });
-    saveBuy(id, { stage: 'sent' });
+    saveBuyOf(me, id, { stage: 'sent' });
     $('#gx-buybox').hidden = true; BUYING = null;
     say('#gx-status', '');
     buzz('success');
@@ -1436,7 +1608,7 @@ $('#gx-bb-pay').addEventListener('click', async function(){
       // refused in the TON wallet: nothing was signed. Any other failure (a
       // lost answer, the app closed meanwhile) is settled by reading the
       // chain: the buy stays 'paying' and watchBuys looks the lock up.
-      if (rejected) saveBuy(id, { stage: 'cancelled' });
+      if (rejected) saveBuyOf(me, id, { stage: 'cancelled' });
       else { drawBuys(); watchBuys(); }
     }
     say('#gx-bb-msg', rejected ? 'Payment cancelled in the TON wallet. Nothing was sent.'
@@ -1452,14 +1624,24 @@ $('#gx-bb-pay').addEventListener('click', async function(){
    until it is closed. Other buys in progress are listed below it. */
 const BUY_STEP = { paying: 0, sent: 0, announced: 1, unanswered: 1, claiming: 2, refunding: 1 };
 const STEP_NAMES = ['You lock GRAM', 'Seller locks LUNC', 'You receive LUNC'];
+// A phone (and Telegram minimized) may freeze a page in the background; a
+// desktop browser keeps a background tab running about once a minute (Pablo, E2)
+const KEEP_OPEN = ' (on a phone, keep it on screen; on a computer, a background tab is fine)';
+// the last moment the take can still be announced: the Worker wants the TON
+// lock to have min_ton_left left, and this device's clock may be 2 min off
+function announceBy(b){
+  if (!POLICY || !b.timeout) return '';
+  const t = Number(b.timeout) - POLICY.min_ton_left_sec - 120;
+  return t > now() ? ', or come back before ' + new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+}
 const LIVE = ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'];
 function buyLine(b){
   const late = now() >= b.timeout;
   if (b.stage === 'paying') return (b.validUntil && now() > b.validUntil) ? 'Checking on TON whether your payment went through.' : 'Confirm the payment in your TON wallet. If you already did, this wallet finds it on TON by itself.';
   if (b.stage === 'sent') return b.intent
-    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands, even if you close this page.'
-    : 'Your GRAM is on its way into the lock on TON. Usually under a minute. Keep this page open, or come back within 30 minutes, so the seller is told.';
-  if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + ').';
+    ? 'Your GRAM is on its way into the lock on TON. The seller is told as soon as it lands. Keep Frontier open until the LUNC arrives' + KEEP_OPEN + ': it finishes the swap once the seller has locked.'
+    : 'Your GRAM is on its way into the lock on TON. Usually under a minute. Keep this page open' + announceBy(b) + ', so the seller is told, then until the LUNC arrives.';
+  if (b.stage === 'announced') return 'The seller has been told. Waiting for them to lock your LUNC (up to ' + left(Math.max(0, (POLICY ? POLICY.answer_window_sec : 900))) + '). Keep Frontier open meanwhile' + KEEP_OPEN + ': it hands the secret to the relayer once it has checked the seller\u2019s lock.';
   if (b.stage === 'claiming') return 'The seller locked your LUNC and this wallet checked it \u2713. The relayer is claiming it for you now.';
   if (b.stage === 'unanswered') return 'The seller did not answer. Your GRAM can come back ' + (late ? 'now.' : 'in ' + left(b.timeout - now()) + '.');
   if (b.stage === 'refunding') return 'Refund sent. The GRAM comes back to your TON wallet in a minute.';
@@ -1478,7 +1660,7 @@ function problemHtml(b){
 // (it needs a little LUNC for gas), while there is time left
 function selfClaimBtn(id, b){
   if (b.stage !== 'claiming' || !canSign() || !b.terraTimeout) return '';
-  const leftSec = b.terraTimeout - now();
+  const leftSec = b.terraTimeout - (now() - (CHAIN_SKEW || 0));      // on the chain's clock once known (audit E8)
   const late = now() - (b.since || now()) > 180 || leftSec < 2 * CLAIM_MARGIN;
   // a claim too close to the end can land late and still publish the secret
   if (!late || leftSec < CLAIM_MARGIN / 2) return '';
@@ -1508,6 +1690,9 @@ async function selfClaim(id){
         // right before signing (audit round 4, B2)
         const l = await terraLockRead(b.terraLockId);
         if (!l || l.status !== 'open') throw new Error('the seller\u2019s lock is no longer open. Nothing was signed.');
+        // a device clock far behind would publish the secret in a claim that fails (audit E8)
+        const clk = await clockProblem(true);
+        if (clk) throw new Error(clk + '. Nothing was signed.');
         if (Number(l.timeout) - now() < CLAIM_MARGIN / 2) throw new Error('too close to the end of the seller\u2019s lock to claim safely now. Nothing was signed.');
         const r = await sendSwap(addrOf(), [step], m, NET, '', fee);
         st(1);
@@ -1525,12 +1710,15 @@ async function selfClaim(id){
 
 function refundBtn(id, b){
   const late = now() >= b.timeout;
-  return (late && (b.stage === 'unanswered' || b.stage === 'announced' || b.stage === 'sent'))
+  // refunding and claiming too: a refund that never landed, a claim stuck on an
+  // unreadable node, both past the TON timeout (audit C3)
+  return (late && ['unanswered', 'announced', 'sent', 'refunding', 'claiming'].includes(b.stage))
     ? '<button class="btn solid gx-refund" type="button" data-id="' + esc(id) + '">Get my GRAM back</button>' : '';
 }
 function drawBuys(){
   const box = $('#gx-buys'), hero = $('#gx-hero');
-  const all = Object.entries(buys());
+  // a record with no amounts is not a buy (audit C8)
+  const all = Object.entries(buys()).filter(([, b]) => b && b.lunc && b.gram);
   const live = all.filter(([, b]) => LIVE.includes(b.stage)).sort((a, b) => b[1].created - a[1].created);
   const doneNew = all.filter(([, b]) => b.stage === 'done' && !b.seen).sort((a, b) => b[1].created - a[1].created)[0];
   // the hero: a finished buy not yet closed, else the newest one in progress
@@ -1565,7 +1753,7 @@ function drawBuys(){
     '<div class="gx-item gx-deal">' +
       '<span class="xc-ico gx-deal-ico">' + iconHTML({ sym: 'GRAM' }) + iconHTML({ sym: 'LUNC' }) + '</span>' +
       '<div class="gx-l"><b>' + human(b.lunc, 6) + ' LUNC</b> for ' + human(b.gram, 9) + ' GRAM<span>' + buyLine(b) + '</span>' +
-        stepsHtml(BUY_STEP[b.stage] ?? 1) + problemHtml(b) + '</div>' + refundBtn(id, b) +
+        stepsHtml(BUY_STEP[b.stage] ?? 1) + problemHtml(b) + selfClaimBtn(id, b) + '</div>' + refundBtn(id, b) +
     '</div>').join('');
   paintIcons(box);
 }
@@ -1628,8 +1816,14 @@ async function sellerLockOk(b, take){
 let WATCHING_BUYS = false;
 const REFUSAL_FINAL_SEC = 120;          // a take the Worker keeps refusing this long is refused
 async function watchBuys(){
-  if (WATCHING_BUYS || document.hidden) return;
-  const all = buys();
+  // not stopped by a hidden tab (audit E2): the secret reaches the relayer only
+  // from here, and a background tab still runs this about once a minute. It
+  // returns at once when no buy is live, so a quiet tab costs nothing.
+  if (WATCHING_BUYS) return;
+  // the wallet this round is about, taken once (audit C8)
+  const me = addrOf();
+  if (!me) return;
+  const all = buysOf(me);
   // a buy called off by the phone's clock stays watched for an hour: the TON
   // wallet checks validUntil against chain time, which may be behind (review of #21)
   const live = Object.entries(all).filter(([, b]) => ['paying', 'sent', 'announced', 'claiming', 'refunding', 'unanswered'].includes(b.stage)
@@ -1641,7 +1835,7 @@ async function watchBuys(){
       try {
         if (b.stage === 'cancelled') {
           const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
-          if (n.state === 'active' && n.status === 'open') saveBuy(id, { stage: 'sent', problem: null });   // it landed after all
+          if (n.state === 'active' && n.status === 'open') saveBuyOf(me, id, { stage: 'sent', problem: null });   // it landed after all
           continue;
         }
         if (b.stage === 'paying' || b.stage === 'sent') {
@@ -1650,12 +1844,12 @@ async function watchBuys(){
             // paid: announce the take, and say so plainly if the Worker refuses it
             let refused = null;
             try {
-              await api('/takes', { offerId: b.offerId, tonLock: id, takerTerra: addrOf(), lunc: b.lunc });
+              await api('/takes', { offerId: b.offerId, tonLock: id, takerTerra: me, lunc: b.lunc });
             } catch (e) {
               // announced already (by us earlier, or by anyone on our behalf): fine if the record is ours
               let t = null;
               try { t = await api('/takes/' + encodeURIComponent(id)); } catch (e2) {}
-              if (!t || t.taker_terra !== addrOf() || t.lunc !== b.lunc) {
+              if (!t || t.taker_terra !== me || t.lunc !== b.lunc) {
                 if (!e.status || e.status >= 500 || e.status === 429) throw e;     // not an answer yet: next round
                 refused = e.message;
               }
@@ -1664,42 +1858,58 @@ async function watchBuys(){
             // ("TON lock is uninit"): a refusal counts only once it has
             // lasted REFUSAL_FINAL_SEC (review of #21).
             if (refused && (!b.refusedAt || now() - b.refusedAt < REFUSAL_FINAL_SEC)) {
-              if (!b.refusedAt) saveBuy(id, { refusedAt: now() });
+              if (!b.refusedAt) saveBuyOf(me, id, { refusedAt: now() });
               refused = null;
               continue;
             }
             if (refused) {
-              saveBuy(id, { stage: 'unanswered', problem: 'The offers service refused this purchase: ' + refused +
+              saveBuyOf(me, id, { stage: 'unanswered', problem: 'The offers service refused this purchase: ' + refused +
                 '. Nothing reached the seller. Your GRAM comes back with "Get my GRAM back" from ' + new Date(b.timeout * 1000).toLocaleString() + '.' });
               notify({ key: 'gram:refused:' + id, kind: 'warn', icon: 'GRAM', label: 'Buy \u00b7 GRAM', title: 'Purchase not accepted',
                 text: 'Your GRAM is locked until ' + new Date(b.timeout * 1000).toLocaleString() + ', then you can take it back.' });
-            } else saveBuy(id, { stage: 'announced', problem: null, refusedAt: null });
+            } else saveBuyOf(me, id, { stage: 'announced', problem: null, refusedAt: null });
+          } else if (n.state === 'active' && (n.status === 'claimed' || n.status === 'refunded')) {
+            saveBuyOf(me, id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
           } else if (n.state === 'active' && n.status !== 'open') {
-            saveBuy(id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
+            // any other answer (unfunded, foreign code) is shown and read again,
+            // never taken as a finished purchase (audit C5)
+            const why = 'TON reads this lock as ' + (n.foreignCode ? 'running other code' : (n.status || 'unknown')) + '; reading it again.';
+            if (b.problem !== why) saveBuyOf(me, id, { problem: why });
           } else if (now() > (b.validUntil || b.created + 360) + 300) {
-            saveBuy(id, { stage: 'cancelled' });   // the payment can no longer land: nothing was locked
+            saveBuyOf(me, id, { stage: 'cancelled' });   // the payment can no longer land: nothing was locked
           }                                          // else: it may still land, read again next round
-        } else if (b.stage === 'announced') {
+        } else if (b.stage === 'announced' || (b.stage === 'unanswered' && now() < b.timeout)) {
+          // An unanswered buy is still read, once a minute, while its TON lock
+          // runs: the Worker accepts a seller's late answer, and a refused
+          // announcement can still be promoted from its intent (audit C1).
+          if (b.stage === 'unanswered') {
+            if (b.lookedAt && now() - b.lookedAt < 60) continue;
+            saveBuyOf(me, id, { lookedAt: now() });
+          }
           const t = await api('/takes/' + encodeURIComponent(id));
-          if (t.status === 'locked' && t.terra_lock_id) {
+          if (b.stage === 'unanswered' && t.taker_terra && t.taker_terra !== me) continue;
+          // the Terra lock that already expired for this buy is not taken again
+          const newLock = t.terra_lock_id && !(b.stage === 'unanswered' && Number(t.terra_lock_id) === Number(b.terraLockId));
+          if (t.status === 'locked' && newLock) {
             const problems = await sellerLockOk(b, t);
-            if (problems.length) { saveBuy(id, { problem: 'The seller\u2019s lock did not pass the check: ' + problems.join('; ') + '. The secret stays on this device; your GRAM comes back after the timeout.' }); continue; }
-            saveBuy(id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null, since: now() });
+            if (problems.length) { saveBuyOf(me, id, { problem: 'The seller\u2019s lock did not pass the check: ' + problems.join('; ') + '. The secret stays on this device; your GRAM comes back after the timeout.' }); continue; }
+            saveBuyOf(me, id, { stage: 'claiming', terraLockId: Number(t.terra_lock_id), problem: null, since: now() });
             chime(); buzz('success');
             b.stage = 'claiming'; b.terraLockId = Number(t.terra_lock_id);
-          } else if (t.status === 'unanswered') saveBuy(id, { stage: 'unanswered' });
+          } else if (t.status === 'unanswered' && b.stage === 'announced') saveBuyOf(me, id, { stage: 'unanswered' });
+          else if (t.status === 'pending' && b.stage === 'unanswered') saveBuyOf(me, id, { stage: 'announced', problem: null, refusedAt: null });
         }
         if (b.stage === 'claiming') {
           const q = btoa(JSON.stringify({ lock: { id: b.terraLockId } }));
           const l = (await getJSON(NET.lcd + '/cosmwasm/wasm/v1/contract/' + NET.htlc + '/smart/' + q, 8000, 1)).data || {};
           if (l.status === 'refunded' || (l.status === 'open' && now() >= Number(l.timeout))) {
             // the LUNC was not claimed in time: the GRAM comes back after the TON timeout
-            saveBuy(id, { stage: 'unanswered', problem: 'The LUNC was not claimed before the seller\u2019s lock expired. Your GRAM comes back after the TON lock\u2019s timeout.' });
+            saveBuyOf(me, id, { stage: 'unanswered', problem: 'The LUNC was not claimed before the seller\u2019s lock expired. Your GRAM comes back after the TON lock\u2019s timeout.' });
             continue;
           }
           if (l.status === 'open') b.terraTimeout = Number(l.timeout);
           if (l.status === 'claimed') {
-            saveBuy(id, { stage: 'done', problem: null });
+            saveBuyOf(me, id, { stage: 'done', problem: null });
             notify({ key: 'gram:bought:' + id, kind: 'success', icon: 'LUNC', label: 'Buy done \u00b7 GRAM',
               title: 'Received ' + human(b.lunc, 6) + ' LUNC',
               text: 'It is on your Frontier address. The seller got the GRAM.' });
@@ -1708,15 +1918,22 @@ async function watchBuys(){
             // the relayer finishes it; a repeated /claim with the same pair is answered, not doubled
             let problem = null;
             try {
+              // 15 s at most: a relayer that never answers must not hold the round (audit B13)
               const r = await fetch(relayerUrl() + '/claim', { method: 'POST', headers: { 'content-type': 'application/json' },
+                signal: AbortSignal.timeout(15000),
                 body: JSON.stringify({ terraLockId: b.terraLockId, tonLock: id, secret: b.secret, offerId: b.offerId, lunc: b.lunc }) });
               if (!r.ok) { let m = ''; try { m = (await r.json()).error || ''; } catch (e) {} if (r.status >= 500 || r.status === 429) problem = 'The relayer is busy (' + r.status + '), trying again.'; else problem = 'The relayer refused: ' + (m || r.status); }
+              else {
+                // the relayer kept the secret back: say so (audit B10)
+                let j = null; try { j = await r.json(); } catch (e) {}
+                if (j && j.withheld) problem = 'The relayer kept the secret back: a lock is too close to its end to claim safely. If time is left, claim the LUNC yourself; otherwise both sides go back at their timeouts.';
+              }
             } catch (e) { problem = 'The relayer is not reachable at ' + relayerUrl() + '. Check its address (change relayer).'; }
-            if (problem !== (b.problem || null) || b.terraTimeout !== all[id].terraTimeout) saveBuy(id, { problem: problem, terraTimeout: b.terraTimeout });
+            if (problem !== (b.problem || null) || b.terraTimeout !== all[id].terraTimeout) saveBuyOf(me, id, { problem: problem, terraTimeout: b.terraTimeout });
           }
         } else if (b.stage === 'refunding') {
           const n = await readLock(NET.tonApi, id, NET.tonCodeHash);
-          if (n.status === 'refunded' || n.status === 'claimed') saveBuy(id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
+          if (n.status === 'refunded' || n.status === 'claimed') saveBuyOf(me, id, { stage: n.status === 'refunded' ? 'refunded' : 'done' });
         }
       } catch (e) { /* the next round tries again */ }
     }
