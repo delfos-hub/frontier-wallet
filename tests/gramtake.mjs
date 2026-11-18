@@ -27,10 +27,13 @@ const NOW = 1_800_000_000;
 const OFFER = { type: 'htlc-offer', v: 1, network: 'testnet', maker: ME, maker_ton: MY_TON,
   min_lunc: '100000000', max_lunc: '1000000000', total_lunc: '1000000000', price: '33000000000', expires: NOW + 3600 };
 const gramFor = (l, p) => (l * p + 1000000000000n - 1n) / 1000000000000n;
+let CLOCK = '';
 
 function make({ signed = OFFER, lock = {}, mine = {} } = {}){
   const env = {
-    POLICY: { tax_bps: 50, min_terra_left_sec: 900, t_terra_sec: 1200, terra_gap_sec: 900 },
+    POLICY: { tax_bps: 50, min_terra_left_sec: 900, t_terra_sec: 1200, terra_gap_sec: 900, min_ton_left_sec: 3300, report_slack_sec: 300 },
+    // the chain's clock agrees unless a case says otherwise (audit E3)
+    clockProblem: async () => CLOCK, answerFloor: p => NOW + p.min_terra_left_sec - 200, ANNOUNCE_SEC: 2100,
     NET: { name: 'testnet', tonApi: '', tonCodeHash: '', tonCode: '' },
     signedOffer: () => signed, addrOf: () => ME, now: () => NOW,
     tonRaw: a => a, takeRefOf: async () => 'ref', gramFor: gramFor,
@@ -45,7 +48,7 @@ function make({ signed = OFFER, lock = {}, mine = {} } = {}){
     setPolicy: () => null, mineAll: () => mine
   };
   const names = Object.keys(env);
-  const f = new Function(...names, lift(src, 'function heldAt(t){') + '\n' + lift(src, 'async function checkTake(t){') + '\nreturn checkTake;')(...names.map(k => env[k]));
+  const f = new Function(...names, lift(src, 'function heldAt(t, n){') + '\n' + lift(src, 'async function checkTake(t){') + '\nreturn checkTake;')(...names.map(k => env[k]));
   return t => f(Object.assign({ offer_id: 'o1', ton_lock: LOCK, hash: 'h', taker_terra: 'terra1x', lunc: '500000000' }, t));
 }
 
@@ -113,7 +116,20 @@ ok('registered before the offer ended: answered', !r.problems.some(p => /has end
 r = await make({ signed: ENDED })({ created: NOW - 30, held_since: NOW - 30 * 86400 });
 ok('a held_since far before the take is not believed', r.problems.some(p => /has ended/.test(p)));
 r = await make({ signed: ENDED })({ created: NOW - 30 });
-ok('no held_since: checked against now, as before', r.problems.some(p => /has ended/.test(p)));
+ok('no held_since, a lock paid long ago: checked against now, as before', r.problems.some(p => /has ended/.test(p)));
+// paid 10 min ago, the offer ended a minute ago: the lock's timeout says when (audit E4)
+const PAID = NOW - 600, PAID_LOCK = { timeout: PAID + 3300 + 2100 };
+r = await make({ signed: ENDED, lock: PAID_LOCK })({ created: NOW - 30 });
+ok('no held_since: held to the offer as it was when the TON lock was paid', !r.problems.some(p => /has ended/.test(p)), r.problems.join('; '));
+r = await make({ signed: Object.assign({}, OFFER, { expires: PAID - 60 }), lock: PAID_LOCK })({ created: NOW - 30 });
+ok('an offer that had ended before the payment is still refused', r.problems.some(p => /has ended/.test(p)));
+
+
+group('the seller\u2019s clock (audit E3)');
+CLOCK = 'this device\u2019s clock is 60 min off the chain\u2019s time; set it to automatic and try again';
+r = await make()({});
+ok('a clock off the chain\u2019s stops the answer before anything is locked', r.problems.some(p => /clock is 60 min off/.test(p)), r.problems.join('; '));
+CLOCK = '';
 
 
 group('review of the part D fixes: the chain\u2019s time, a lock on its way');

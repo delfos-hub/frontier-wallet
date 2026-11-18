@@ -88,7 +88,7 @@ ok('nothing landed: stays cancelled', r.b.stage === 'cancelled', r.b.stage);
 group('the secret is read back before any GRAM is asked for');
 // the Pay handler itself, lifted from gram.js; storage either keeps writes or
 // refuses them like a private window or a full disk does
-async function pay(storageWorks, serverTime){
+async function pay(storageWorks, serverTime, holdUntil){
   let saved = {}; const sent = [], msgs = [];
   const LOCK = { raw: ID, address: 'EQlock', value: '1', stateInit: '', payload: '', codeHash: 'AB' };
   const env = {
@@ -98,8 +98,9 @@ async function pay(storageWorks, serverTime){
     tonAccount: () => ({ chain: '-3', address: 'EQme' }),
     NET: { tonChain: '-3', tonCode: '', tonCodeHash: 'ab', name: 'testnet' },
     POLICY: { answer_window_sec: 60, min_ton_left_sec: 60, tip_address: 'EQtip', min_tip: '7' }, POLICY_ERR: '', setPolicy: x => x,
-    api: async () => ({ live: true, price: '1', maker_ton: 'EQmaker', remaining_lunc: '1000000000', min_lunc: '1', expires: NOW + 99999, server_time: serverTime }),
-    load: () => {}, human: x => String(x), now: () => NOW, sha256hex: async () => 'hash', takeRefOf: async () => 'ref',
+    api: async (p) => p.startsWith('/holds/') ? { hold_until: holdUntil || 0 }
+      : ({ live: true, price: '1', maker_ton: 'EQmaker', remaining_lunc: '1000000000', min_lunc: '1', expires: NOW + 99999, server_time: serverTime }),
+    load: () => {}, human: x => String(x), now: () => NOW, sha256hex: async () => 'hash', takeRefOf: async () => 'ref', ANNOUNCE_SEC: 2100,
     tonRaw: x => x, buildLock: async () => LOCK, toHex: u => Buffer.from(u).toString('hex'),
     buys: () => JSON.parse(JSON.stringify(saved)), buysOf: () => JSON.parse(JSON.stringify(saved)),
     saveBuyOf: (a, id, v) => { const b = JSON.parse(JSON.stringify(saved)); b[id] = Object.assign(b[id] || {}, v); if (storageWorks) saved = b; return b[id]; },
@@ -174,6 +175,12 @@ ok('a pair the relayer kept back is said on the buy', /kept the secret back/.tes
 p = await pay(true, NOW - 3600);
 ok('a device clock an hour off stops the buy before paying', p.sent.length === 0 && p.msgs.some(m => /clock is 60 min off/.test(m)), p.msgs.join(' | '));
 p = await pay(true, NOW - 30);
-ok('a clock within 10 min pays as before', p.sent.length === 1, p.msgs.join(' | '));
+ok('a clock within 5 min pays as before', p.sent.length === 1, p.msgs.join(' | '));
+p = await pay(true, NOW, NOW + 86400);
+ok('a held buyer is stopped before paying, in any flow', p.sent.length === 0 && p.msgs.some(m => /can buy again from/.test(m)), p.msgs.join(' | '));
+p = await pay(true, NOW, NOW - 60);
+ok('a hold that has passed does not stop the buy', p.sent.length === 1, p.msgs.join(' | '));
+p = await pay(true, NOW - 420);
+ok('a clock 7 min off stops the buy: the TON wallet would refuse it anyway (validUntil 6 min)', p.sent.length === 0 && p.msgs.some(m => /clock is 7 min off/.test(m)), p.msgs.join(' | '));
 
 report();
