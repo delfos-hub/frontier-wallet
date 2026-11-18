@@ -103,6 +103,8 @@ group('from the first mainnet buy');
   ok('the mainnet claim ceiling covers the first real claim (14.1 LUNC paid, 13.3 estimated) with room', Math.ceil(mc.claim_gas_max * 28.325) / 1.25 > 14100000, mc.claim_gas_max);
   ok('no "change relayer" off testnet', /NET\.name === 'testnet' && b\.problem\.indexOf\('relayer'\)/.test(src));
 }
+group('the self-claim fee error names the ceiling shown (Pablo, #61)');
+ok('the error is reworded with CLAIM_FEE_MAX', /above the ' \+ human\(BigInt\(CLAIM_FEE_MAX\), 6\) \+ ' LUNC ceiling shown/.test(src));
 group('the relayer address');
 {
   const net = fs.readFileSync(path.join(SRC, 'gram-net.js'), 'utf8');

@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=4ef6d73a';
-import { GRAM_NET, TERMS } from './gram-net.js?v=4ef6d73a';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=4ef6d73a';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=4ef6d73a';
-import { S } from './state.js?v=4ef6d73a';
-import { decryptSeed } from './storage.js?v=4ef6d73a';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=4ef6d73a';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=4ef6d73a';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=4ef6d73a';
-import { chime, notify } from './notify.js?v=4ef6d73a';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=14eeca85';
+import { GRAM_NET, TERMS } from './gram-net.js?v=14eeca85';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=14eeca85';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=14eeca85';
+import { S } from './state.js?v=14eeca85';
+import { decryptSeed } from './storage.js?v=14eeca85';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=14eeca85';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=14eeca85';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=14eeca85';
+import { chime, notify } from './notify.js?v=14eeca85';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -1703,7 +1703,16 @@ async function selfClaim(id){
         const clk = await clockProblem(true);
         if (clk) throw new Error(clk + '. Nothing was signed.');
         if (Number(l.timeout) - now() < CLAIM_MARGIN / 2) throw new Error('too close to the end of the seller\u2019s lock to claim safely now. Nothing was signed.');
-        const r = await sendSwap(addrOf(), [step], m, NET, '', fee);
+        let r;
+        try { r = await sendSwap(addrOf(), [step], m, NET, '', fee); }
+        catch (e) {
+          // checkFee words it against the reviewed fee (the ceiling / 1.25);
+          // this sheet showed the ceiling (Pablo, #61)
+          if (/shown in the review/.test(String(e && e.message))) {
+            throw new Error('the network fee is now above the ' + human(BigInt(CLAIM_FEE_MAX), 6) + ' LUNC ceiling shown. Nothing was signed; try again in a minute.');
+          }
+          throw e;
+        }
         st(1);
         if (!(await r.wait())) throw new Error('the claim was sent but is not confirmed yet (tx ' + r.hash.slice(0, 10) + '\u2026). It usually lands within a minute.');
       },
