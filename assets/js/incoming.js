@@ -15,12 +15,12 @@
 
    The newest height seen is kept per address, so what arrived while the
    wallet was closed is announced on the next open, and nothing twice. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=4ef6d73a';
-import { nameOf, short, wasmCalls } from './activity.js?v=4ef6d73a';
-import { notify } from './notify.js?v=4ef6d73a';
-import { S } from './state.js?v=4ef6d73a';
-import { NETS } from './gram-net.js?v=4ef6d73a';
-import { heldTokens, refreshBalances } from './tokens.js?v=4ef6d73a';
+import { LCD, amt, fmt, getJSON, smart } from './chain.js?v=14eeca85';
+import { nameOf, short, wasmCalls } from './activity.js?v=14eeca85';
+import { notify } from './notify.js?v=14eeca85';
+import { S } from './state.js?v=14eeca85';
+import { NETS } from './gram-net.js?v=14eeca85';
+import { heldTokens, refreshBalances } from './tokens.js?v=14eeca85';
 
 const EVERY = 30000;          // two light reads every half minute, while open
 const AT_ONCE = 3;            // more than this in one go becomes one summary card
@@ -94,7 +94,7 @@ function arrivals(t, addr){
     if (src === addr && c.to !== addr) left = true;
     if (c.to !== addr || src === addr) continue;
     const tk = nameOf(c.at);
-    out.push({ key: 'cw20:' + c.at, sym: tk.sym, text: fmt(amt(c.amount, tk.dec)), from: src || c.at });
+    out.push({ key: 'cw20:' + c.at, sym: tk.sym, text: fmt(amt(c.amount, tk.dec)), from: src || c.at, raw: c.amount });
   }
   return left ? [] : out;
 }
@@ -105,6 +105,23 @@ function tokenRow(key, sym){
     return (x.contract ? 'cw20:' + x.contract : 'native:' + x.denom) === key;
   })[0];
   return r || { sym: sym };
+}
+
+// Any contract can emit a wasm event that reads like a token transfer to this
+// address without moving anything (Pablo, #62). A token row stands only if
+// that contract answers as a CW20 and this address holds at least the amount;
+// coins come from the bank's own transfer events and need no check.
+async function realRows(rows, addr){
+  const out = [];
+  for (const r of rows) {
+    if (r.key.indexOf('cw20:') !== 0) { out.push(r); continue; }
+    try {
+      const d = await smart(r.key.slice(5), { balance: { address: addr } }, 1);
+      const have = BigInt(((d && d.data) || {}).balance || 0), got = BigInt(r.raw || 0);
+      if (got > 0n && have >= got) out.push(r);
+    } catch (e) { /* not a token contract: a made-up event */ }
+  }
+  return out;
 }
 
 const show = hash => document.dispatchEvent(new CustomEvent('frontier:show-tx', { detail: { hash: hash } }));
@@ -140,6 +157,8 @@ async function poll(){
       .filter(x => x.rows.length)
       .sort((a, b) => Number(a.t.height) - Number(b.t.height));
     setMark(addr, top);
+    for (const x of fresh) x.rows = await realRows(x.rows, addr);
+    for (let i = fresh.length - 1; i >= 0; i--) if (!fresh[i].rows.length) fresh.splice(i, 1);
     if (!fresh.length) return;
 
     if (fresh.length > AT_ONCE) {
@@ -182,4 +201,4 @@ document.addEventListener('frontier:wallet', start);
 document.addEventListener('frontier:locked', stop);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 
-export { arrivals, poll, sentHere };
+export { arrivals, poll, realRows, sentHere };

@@ -68,4 +68,15 @@ ok('this address sending is not an arrival', r.length === 0);
 group('what this wallet sent is left to its own screen');
 ok('tx.js remembers its own hashes', /localStorage\.setItem\('fw:mine'/.test(fs.readFileSync(path.join(SRC, 'tx.js'), 'utf8')));
 ok('incoming skips them, and no longer everything this address signed', /filter\(t => !sentHere\(t\.txhash\)\)/.test(src) && !/signer\(\(\(\(t\.tx \|\| \{\}\)\.body \|\| \{\}\)\.messages \|\| \[\]\)\[0\]\) !== addr\)/.test(src));
+group('a made-up token event (Pablo, #62)');
+{
+  const pick = new Function('smart', lift(src, 'async function realRows(') + '\nreturn realRows;');
+  const bal = { 'terra1tco': '5000000' };
+  const realRows = pick(async (c, q) => { if (!(c in bal)) throw new Error('not a cw20'); return { data: { balance: bal[c] } }; });
+  const rows = [{ key: 'native:uluna', raw: '1' }, { key: 'cw20:terra1tco', raw: '5000000' }, { key: 'cw20:terra1fake', raw: '9' }, { key: 'cw20:terra1tco', raw: '9000000' }];
+  const kept = await realRows(rows, ME);
+  ok('coins pass, a real token pass', kept.length === 2 && kept[0].key === 'native:uluna' && kept[1].raw === '5000000', JSON.stringify(kept));
+  ok('a contract that is not a token, or more than this address holds, raises nothing', !kept.some(r => r.key === 'cw20:terra1fake' || r.raw === '9000000'));
+  ok('the poll checks token rows before announcing', /x\.rows = await realRows\(x\.rows, addr\)/.test(src));
+}
 report();
