@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=a4d46b98';
-import { $, buzz, go, tap } from './shell.js?v=a4d46b98';
-import { S } from './state.js?v=a4d46b98';
-import { iconHTML, paintIcons } from './chain.js?v=a4d46b98';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=a4d46b98';
-import { notify } from './notify.js?v=a4d46b98';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=4ef6d73a';
+import { $, buzz, go, tap } from './shell.js?v=4ef6d73a';
+import { S } from './state.js?v=4ef6d73a';
+import { iconHTML, paintIcons } from './chain.js?v=4ef6d73a';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=4ef6d73a';
+import { notify } from './notify.js?v=4ef6d73a';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -216,6 +216,13 @@ async function broadcast(raw, net = MAINNET){
   const res = d.tx_response || {};
   if (!r.ok) throw new Error(d.message || ('broadcast -> ' + r.status));
   if (res.code) throw new Error('rejected (code ' + res.code + '): ' + (res.raw_log || ''));
+  // remembered so incoming.js does not announce what this wallet sent itself;
+  // its own screen does that
+  try {
+    const l = JSON.parse(localStorage.getItem('fw:mine') || '[]');
+    l.push(res.txhash);
+    localStorage.setItem('fw:mine', JSON.stringify(l.slice(-100)));
+  } catch (e) {}
   return res.txhash;
 }
 
