@@ -4,11 +4,11 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=51559b5f';
-import { DEC, knownAsset as marketAsset } from './market.js?v=51559b5f';
-import { $, go } from './shell.js?v=51559b5f';
-import { fiatOf, heldTokens } from './tokens.js?v=51559b5f';
-import { S } from './state.js?v=51559b5f';
+import { LCD, amt, clean, esc, fmt, getJSON, iconHTML, paintIcons, usd } from './chain.js?v=4ef6d73a';
+import { DEC, knownAsset as marketAsset } from './market.js?v=4ef6d73a';
+import { $, go } from './shell.js?v=4ef6d73a';
+import { fiatOf, heldTokens } from './tokens.js?v=4ef6d73a';
+import { S } from './state.js?v=4ef6d73a';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';

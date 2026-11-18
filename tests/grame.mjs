@@ -94,4 +94,19 @@ group('texts (E1, E2, 5, 9)');
   ok('Terms: the refund pays the burn tax again', /charges the burn tax again/.test(terms));
   ok('Terms: late responses are checked, not ignored', !/does not process that/.test(terms));
 }
+group('from the first mainnet buy');
+{
+  const html = fs.readFileSync(path.resolve(SRC, '..', '..', 'index.html'), 'utf8');
+  ok('the balance line names the network from NET, not "rebel-2"', !/Your LUNC on rebel-2/.test(html) && /id="gx-chain"/.test(html) && /c\.textContent = NET\.chain/.test(src));
+  ok('the tabs say both sides', /Buy LUNC <small>\(sell GRAM\)<\/small>/.test(html) && /Sell LUNC <small>\(buy GRAM\)<\/small>/.test(html));
+  const mc = net.NETS.mainnet;
+  ok('the mainnet claim ceiling covers the first real claim (14.1 LUNC paid, 13.3 estimated) with room', Math.ceil(mc.claim_gas_max * 28.325) / 1.25 > 14100000, mc.claim_gas_max);
+  ok('no "change relayer" off testnet', /NET\.name === 'testnet' && b\.problem\.indexOf\('relayer'\)/.test(src));
+}
+group('the relayer address');
+{
+  const net = fs.readFileSync(path.join(SRC, 'gram-net.js'), 'utf8');
+  ok('testnet points to the relayer server, not an old tunnel', /relayer: 'https:\/\/relayer-testnet\.delfos-hub\.net'/.test(net) && !/lhr\.life/.test(net));
+  ok('a saved relayer address is kept per network', /'fw:gram:relayer:' \+ NET\.name/.test(src) && !/getItem\('fw:gram:relayer'\)/.test(src));
+}
 report();
