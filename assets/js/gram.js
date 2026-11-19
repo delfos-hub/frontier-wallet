@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=e41db276';
-import { GRAM_NET, TERMS } from './gram-net.js?v=e41db276';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=e41db276';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=e41db276';
-import { S } from './state.js?v=e41db276';
-import { decryptSeed } from './storage.js?v=e41db276';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=e41db276';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=e41db276';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=e41db276';
-import { chime, notify } from './notify.js?v=e41db276';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=112e2a31';
+import { GRAM_NET, TERMS } from './gram-net.js?v=112e2a31';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=112e2a31';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=112e2a31';
+import { S } from './state.js?v=112e2a31';
+import { decryptSeed } from './storage.js?v=112e2a31';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=112e2a31';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=112e2a31';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=112e2a31';
+import { chime, notify } from './notify.js?v=112e2a31';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -226,7 +226,8 @@ if (card) card.addEventListener('click', e => {
 /* The home card, as on the agreed design: with no deal running it shows the
    market (offers live, the best price, the deal size) and both directions;
    with one running it shows that deal, its step and its clock. The market is
-   read at most every 2 minutes while home is on screen. */
+   read at most every 2 minutes, and only while home is the screen shown
+   (onHome: the card's screen has .on) in a visible tab. */
 let HOME_AT = 0, HOME_TAB = '', WAITING_N = 0;
 const hm = s => { const m = Math.max(0, Math.floor(s / 60)); return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; };
 function homeDeal(){
@@ -238,11 +239,23 @@ function homeDeal(){
     s: 'Lock their LUNC within the answer window, or the take counts against your offer', step: 1, tab: 'sell', hot: true, go: 'Answer' };
   if (!d && me) {
     const buys = buysOf(me);
-    const b = Object.keys(buys).map(k => buys[k]).filter(x => x && ['paying', 'sent', 'announced', 'claiming'].indexOf(x.stage) >= 0)[0];
-    if (b) d = { t: 'Buying ' + human(b.lunc, 6) + ' LUNC for ' + human(b.gram, 9) + ' GRAM', tab: 'buy',
-      s: b.stage === 'claiming' ? 'The seller locked your LUNC \u00b7 finishing' + (b.terraTimeout ? ', ' + hm(b.terraTimeout - now()) + ' left' : '')
-        : b.stage === 'announced' ? 'Waiting for the seller to lock your LUNC' : 'Your GRAM is going into the lock on TON',
-      step: b.stage === 'claiming' ? 2 : 1 };
+    // every stage the Buy tab lists as live (LIVE); a buy moving forward comes
+    // before one whose seller did not answer, as it is the one to keep open for
+    const RANK = { claiming: 0, announced: 1, sent: 2, paying: 3, unanswered: 4, refunding: 5 };
+    const b = Object.keys(buys).map(k => buys[k]).filter(x => x && x.stage in RANK)
+      .sort((x, y) => RANK[x.stage] - RANK[y.stage])[0];
+    if (b) {
+      const late = !(Number(b.timeout) > now());
+      d = { t: 'Buying ' + human(b.lunc, 6) + ' LUNC for ' + human(b.gram, 9) + ' GRAM', tab: 'buy',
+        s: b.stage === 'claiming' ? 'The seller locked your LUNC \u00b7 finishing' + (b.terraTimeout ? ', ' + hm(b.terraTimeout - now()) + ' left' : '')
+          : b.stage === 'announced' ? 'Waiting for the seller to lock your LUNC'
+          : b.stage === 'unanswered' ? 'The seller did not answer \u00b7 your GRAM can come back ' + (late ? 'now' : 'in ' + hm(Number(b.timeout) - now()))
+          : b.stage === 'refunding' ? 'Refund sent \u00b7 the GRAM comes back to your TON wallet shortly'
+          : 'Your GRAM is going into the lock on TON',
+        step: b.stage === 'claiming' ? 2 : 1,
+        // a refund that can be taken now is something to do, not to wait for
+        hot: b.stage === 'unanswered' && late, go: b.stage === 'unanswered' && late ? 'Get GRAM back' : '' };
+    }
   }
   if (!d) {
     const o = ownDeals([])[0];
@@ -264,8 +277,9 @@ function homeDeal(){
   $('#xc-gram-deal-go').textContent = d.go || 'Open deal';
   $('#xc-gram-steps').querySelectorAll('i').forEach((el, i) => { el.className = i < d.step ? 'done' : i === d.step ? 'now' : ''; });
 }
+function onHome(){ const st = card && card.closest('.step'); return !!(st && st.classList.contains('on')); }
 async function homeMarket(force){
-  if (!card || card.hidden || document.hidden) return;
+  if (!card || card.hidden || document.hidden || !onHome()) return;
   if (!force && now() - HOME_AT < 120) return;
   HOME_AT = now();
   let book;
@@ -279,11 +293,17 @@ async function homeMarket(force){
   $('#xc-gram-price').textContent = best ? '1 GRAM = ' + Math.round(1e15 / Number(best.price)).toLocaleString('en-US') + ' LUNC' : '\u2014';
   const p = book.policy || {};
   $('#xc-gram-size').textContent = p.min_deal && p.max_deal ? human(p.min_deal, 9) + ' \u2013 ' + human(p.max_deal, 9) + ' GRAM' : '\u2014';
+  const aw = Number(p.answer_window_sec);
+  $('#xc-gram-time').textContent = aw > 0 ? 'up to ' + Math.round(aw / 60) + ' min' : '\u2014';
 }
 function homeCard(force){ if (!card || card.hidden) return; homeDeal(); homeMarket(force); }
 setInterval(() => homeCard(false), 30000);
 document.addEventListener('frontier:tx', () => setTimeout(() => homeCard(true), 4000));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) homeCard(false); });
+// coming back to home reads the market if the last read is over 2 minutes old
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-go="home"], #tabs .tab[data-tab="home"]')) setTimeout(() => homeCard(false), 50);
+});
 setTimeout(() => homeCard(true), 1500);
 
 /* ---------------- loading ---------------- */
