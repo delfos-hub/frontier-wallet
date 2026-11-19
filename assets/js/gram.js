@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=f1aa74f9';
-import { GRAM_NET, TERMS } from './gram-net.js?v=f1aa74f9';
-import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=f1aa74f9';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=f1aa74f9';
-import { S } from './state.js?v=f1aa74f9';
-import { decryptSeed } from './storage.js?v=f1aa74f9';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=f1aa74f9';
-import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=f1aa74f9';
-import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=f1aa74f9';
-import { chime, notify } from './notify.js?v=f1aa74f9';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=e41db276';
+import { GRAM_NET, TERMS } from './gram-net.js?v=e41db276';
+import { PIN_LEN, digitsOnly, dots, focusPin } from './onboarding.js?v=e41db276';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=e41db276';
+import { S } from './state.js?v=e41db276';
+import { decryptSeed } from './storage.js?v=e41db276';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=e41db276';
+import { readLock, takeRefOf, rawOf as tonRaw } from './gram-ton.js?v=e41db276';
+import { buildLock, refundMessage, claimMessage } from './gram-tonlock.js?v=e41db276';
+import { chime, notify } from './notify.js?v=e41db276';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -216,7 +216,75 @@ if (NET.name !== 'testnet') document.querySelectorAll('.gx-testnet').forEach(el 
 { const c = document.getElementById('gx-chain'); if (c) c.textContent = NET.chain; }
 const card = $('#xc-gram');
 if (card && LABS) { card.hidden = false; paintCard(); }
-if (card) card.addEventListener('click', () => { go('gram'); load(); });
+// the card opens the swap; its two buttons open it on their tab
+function openSwap(name){ if (name) tab(name); go('gram'); load(); }
+if (card) card.addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]');
+  openSwap(b ? b.dataset.tab : (e.target.closest('#xc-gram-deal-go') ? HOME_TAB : ''));
+});
+
+/* The home card, as on the agreed design: with no deal running it shows the
+   market (offers live, the best price, the deal size) and both directions;
+   with one running it shows that deal, its step and its clock. The market is
+   read at most every 2 minutes while home is on screen. */
+let HOME_AT = 0, HOME_TAB = '', WAITING_N = 0;
+const hm = s => { const m = Math.max(0, Math.floor(s / 60)); return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; };
+function homeDeal(){
+  const box = $('#xc-gram-deal');
+  if (!box) return;
+  const me = addrOf();
+  let d = null;
+  if (WAITING_N) d = { t: WAITING_N > 1 ? WAITING_N + ' buyers are waiting for your answer' : 'A buyer is waiting for your answer',
+    s: 'Lock their LUNC within the answer window, or the take counts against your offer', step: 1, tab: 'sell', hot: true, go: 'Answer' };
+  if (!d && me) {
+    const buys = buysOf(me);
+    const b = Object.keys(buys).map(k => buys[k]).filter(x => x && ['paying', 'sent', 'announced', 'claiming'].indexOf(x.stage) >= 0)[0];
+    if (b) d = { t: 'Buying ' + human(b.lunc, 6) + ' LUNC for ' + human(b.gram, 9) + ' GRAM', tab: 'buy',
+      s: b.stage === 'claiming' ? 'The seller locked your LUNC \u00b7 finishing' + (b.terraTimeout ? ', ' + hm(b.terraTimeout - now()) + ' left' : '')
+        : b.stage === 'announced' ? 'Waiting for the seller to lock your LUNC' : 'Your GRAM is going into the lock on TON',
+      step: b.stage === 'claiming' ? 2 : 1 };
+  }
+  if (!d) {
+    const o = ownDeals([])[0];
+    if (o) {
+      const to = Number(mineFor(o.ton_lock).timeout) || 0;
+      d = { t: 'Selling ' + human(o.lunc, 6) + ' LUNC for ' + human(o.gram, 9) + ' GRAM', tab: 'sell', step: 2,
+        s: 'Waiting for the buyer to claim' + (to > now() ? ' \u00b7 your lock ends in ' + hm(to - now()) : '') };
+    }
+  }
+  HOME_TAB = d ? d.tab : '';
+  box.hidden = !d;
+  $('#xc-gram-stats').hidden = !!d;
+  $('#xc-gram-acts').hidden = !!d;
+  card.classList.toggle('busy', !!d);
+  card.classList.toggle('hot', !!(d && d.hot));
+  if (!d) return;
+  $('#xc-gram-deal-t').textContent = d.t;
+  $('#xc-gram-deal-s').textContent = d.s;
+  $('#xc-gram-deal-go').textContent = d.go || 'Open deal';
+  $('#xc-gram-steps').querySelectorAll('i').forEach((el, i) => { el.className = i < d.step ? 'done' : i === d.step ? 'now' : ''; });
+}
+async function homeMarket(force){
+  if (!card || card.hidden || document.hidden) return;
+  if (!force && now() - HOME_AT < 120) return;
+  HOME_AT = now();
+  let book;
+  try { book = await api('/offers'); } catch (e) { return; }
+  const me = addrOf(), offers = (book.offers || []).filter(o => o.maker !== me && o.live !== false);
+  const live = $('#xc-gram-live');
+  live.textContent = offers.length ? offers.length + (offers.length > 1 ? ' offers live' : ' offer live') : 'No offers yet';
+  live.classList.toggle('none', !offers.length);
+  live.hidden = false;
+  const best = offers.reduce((a, o) => (a === null || BigInt(o.price) < BigInt(a.price) ? o : a), null);
+  $('#xc-gram-price').textContent = best ? '1 GRAM = ' + Math.round(1e15 / Number(best.price)).toLocaleString('en-US') + ' LUNC' : '\u2014';
+  const p = book.policy || {};
+  $('#xc-gram-size').textContent = p.min_deal && p.max_deal ? human(p.min_deal, 9) + ' \u2013 ' + human(p.max_deal, 9) + ' GRAM' : '\u2014';
+}
+function homeCard(force){ if (!card || card.hidden) return; homeDeal(); homeMarket(force); }
+setInterval(() => homeCard(false), 30000);
+document.addEventListener('frontier:tx', () => setTimeout(() => homeCard(true), 4000));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) homeCard(false); });
+setTimeout(() => homeCard(true), 1500);
 
 /* ---------------- loading ---------------- */
 function say(id, text, bad){
@@ -1252,6 +1320,7 @@ function badge(n){
   if (!el) return;
   el.textContent = n > 9 ? '9+' : String(n);
   el.hidden = !n;
+  if (WAITING_N !== n) { WAITING_N = n; homeDeal(); }
 }
 function windowLeft(t){ return t.created + (POLICY ? POLICY.answer_window_sec : 900) - now(); }
 const stillWaiting = t => windowLeft(t) > 0 && !mineFor(t.ton_lock).id;
