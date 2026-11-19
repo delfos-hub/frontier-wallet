@@ -36,8 +36,8 @@ ok('accepted once this version is stored for this address', accepted() === true)
 me = 'terra1bob';
 ok('another address on the same device has to accept for itself', accepted() === false);
 me = 'terra1alice';
-ok('a new version asks again', make(Object.assign({}, TERMS, { version: '1.1' }))() === false);
-ok('users see version 1.0', TERMS.label === '1.0');
+ok('a new version asks again', make(Object.assign({}, TERMS, { version: '1.2' }))() === false);
+ok('users see version 1.1', TERMS.label === '1.1');
 ok('accepting the testnet draft (id 1.0) does not count for this text', TERMS.version !== '1.0');
 
 group('the page and the sheet');
