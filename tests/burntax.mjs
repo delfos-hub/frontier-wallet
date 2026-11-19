@@ -23,10 +23,11 @@ function lift(s, header){
 const liftLine = (s, h) => { const i = s.indexOf(h); return s.slice(i, s.indexOf(';\n', i) + 1); };
 
 const { burnTaxOn } = new Function(lift(tx, 'function burnTaxOn(') + '\nreturn { burnTaxOn };')();
-const A = new Function('wasmCalls', 'worthOf', [
+const A = new Function('wasmCalls', 'worthOf', 'coins', [
   liftLine(act, 'const FEE_COLLECTOR ='),
   lift(act, 'function eventsOf('), lift(act, 'function taxPaid('), lift(act, 'function flows('),
-  'return { taxPaid, flows };'].join('\n'))(() => [], () => 0);
+  lift(act, 'function transfersIn('),
+  'return { taxPaid, flows, transfersIn };'].join('\n'))(() => [], () => 0, l => l.map(c => c.amount + c.denom).join(', '));
 
 const ME = 'terra1txkkdtkulpqpdw4uc5u3kr5ptj486r7x9qkfup';
 const TO = 'terra1205xwr3xj3wf368f42489g345ywyz52r2qwun5';
@@ -59,4 +60,9 @@ const old = { logs: [{ events: [ev('transfer', { recipient: FC, sender: ME, amou
 ok('a send with no tax_payment is unchanged', A.flows(old, ME)[0].raw === -1000 && A.taxPaid(old, ME).length === 0);
 const viaEvents = { logs: [], events: T.logs[0].events };
 ok('newer nodes with events only', A.taxPaid(viaEvents, ME).length === 1);
+const fe = A.flows(viaEvents, ME), ge = A.flows(viaEvents, TO);
+ok('events only: the sender\'s flow is the whole amount sent', fe.length === 1 && fe[0].raw === -57637494133, JSON.stringify(fe));
+ok('events only: the recipient\'s flow is what arrived', ge.length === 1 && ge[0].raw === 56772931722, JSON.stringify(ge));
+const ti = A.transfersIn(viaEvents, ME).filter(m => !m.mine);
+ok('events only: "Recipient got" has the recipient\'s move', ti.length === 1 && ti[0].other === TO, JSON.stringify(ti));
 report();

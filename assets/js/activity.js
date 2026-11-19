@@ -4,12 +4,12 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=1eb17b2c';
-import { DEC, knownAsset as marketAsset } from './market.js?v=1eb17b2c';
-import { $, go } from './shell.js?v=1eb17b2c';
-import { fiatOf, heldTokens } from './tokens.js?v=1eb17b2c';
-import { S } from './state.js?v=1eb17b2c';
-import { NETS } from './gram-net.js?v=1eb17b2c';
+import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=57412d94';
+import { DEC, knownAsset as marketAsset } from './market.js?v=57412d94';
+import { $, go } from './shell.js?v=57412d94';
+import { fiatOf, heldTokens } from './tokens.js?v=57412d94';
+import { S } from './state.js?v=57412d94';
+import { NETS } from './gram-net.js?v=57412d94';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -287,32 +287,33 @@ const FEE_COLLECTOR = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
 
 function transfersIn(t, me){
   const out = [];
-  for (const lg of (t.logs || [])) {
-    for (const e of (lg.events || [])) {
-      if (e.type !== 'transfer') continue;
-      let to = '', from = '', what = '';
-      for (const a of (e.attributes || [])) {
-        if (a.key === 'recipient') to = a.value;
-        if (a.key === 'sender') from = a.value;
-        if (a.key === 'amount') what = a.value;
-      }
-      if (!what || (to !== me && from !== me)) continue;
-      // the fee is paid as a transfer to the fee collector; it has its own
-      // line below and is not something the transaction sent anywhere
-      if (to === FEE_COLLECTOR) continue;
-      // several coins arrive comma separated, and each is digits then a denom
-      for (const part of what.split(',')) {
-        const mm = /^(\d+)(.+)$/.exec(part.trim());
-        if (!mm) continue;
-        out.push({ mine: to === me, other: to === me ? from : to,
-                   text: coins([{ amount: mm[1], denom: mm[2] }]) });
-      }
+  for (const e of eventsOf(t)) {
+    if (e.type !== 'transfer') continue;
+    let to = '', from = '', what = '';
+    for (const a of (e.attributes || [])) {
+      if (a.key === 'recipient') to = a.value;
+      if (a.key === 'sender') from = a.value;
+      if (a.key === 'amount') what = a.value;
+    }
+    if (!what || (to !== me && from !== me)) continue;
+    // the fee is paid as a transfer to the fee collector; it has its own
+    // line below and is not something the transaction sent anywhere
+    if (to === FEE_COLLECTOR) continue;
+    // several coins arrive comma separated, and each is digits then a denom
+    for (const part of what.split(',')) {
+      const mm = /^(\d+)(.+)$/.exec(part.trim());
+      if (!mm) continue;
+      out.push({ mine: to === me, other: to === me ? from : to,
+                 text: coins([{ amount: mm[1], denom: mm[2] }]) });
     }
   }
   return out;
 }
 
-/* The burn tax this address paid. Since the reverse charge the chain takes it
+/* Transfers and the tax are read from the same events (eventsOf), so a node
+   that returns only top-level events still shows both sides of a send.
+
+   The burn tax this address paid. Since the reverse charge the chain takes it
    out of a LUNC or USTC send, moves it from the sender to the fee collector and
    logs a tax_payment event. A move to the fee collector is otherwise skipped as
    the fee, so the tax went missing: a 180 LUNC send read "Paid -177.3", and
@@ -452,22 +453,20 @@ function permSet(k, v){ try { localStorage.setItem('fw:perm:' + k, JSON.stringif
 function flows(t, me){
   const net = {};
   const add = (k, n) => { if (k && n) net[k] = (net[k] || 0) + n; };
-  for (const lg of (t.logs || [])) {
-    for (const e of (lg.events || [])) {
-      if (e.type !== 'transfer') continue;
-      let to = '', from = '', what = '';
-      for (const a of (e.attributes || [])) {
-        if (a.key === 'recipient') to = a.value;
-        if (a.key === 'sender') from = a.value;
-        if (a.key === 'amount') what = a.value;
-      }
-      if (!what || to === FEE_COLLECTOR) continue;
-      for (const part of what.split(',')) {
-        const mm = /^(\d+)(.+)$/.exec(part.trim());
-        if (!mm) continue;
-        if (to === me) add('native:' + mm[2], Number(mm[1]));
-        if (from === me) add('native:' + mm[2], -Number(mm[1]));
-      }
+  for (const e of eventsOf(t)) {
+    if (e.type !== 'transfer') continue;
+    let to = '', from = '', what = '';
+    for (const a of (e.attributes || [])) {
+      if (a.key === 'recipient') to = a.value;
+      if (a.key === 'sender') from = a.value;
+      if (a.key === 'amount') what = a.value;
+    }
+    if (!what || to === FEE_COLLECTOR) continue;
+    for (const part of what.split(',')) {
+      const mm = /^(\d+)(.+)$/.exec(part.trim());
+      if (!mm) continue;
+      if (to === me) add('native:' + mm[2], Number(mm[1]));
+      if (from === me) add('native:' + mm[2], -Number(mm[1]));
     }
   }
   for (const c of wasmCalls(t)) {

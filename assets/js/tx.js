@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=1eb17b2c';
-import { $, buzz, go, tap } from './shell.js?v=1eb17b2c';
-import { S } from './state.js?v=1eb17b2c';
-import { iconHTML, paintIcons } from './chain.js?v=1eb17b2c';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=1eb17b2c';
-import { notify } from './notify.js?v=1eb17b2c';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=57412d94';
+import { $, buzz, go, tap } from './shell.js?v=57412d94';
+import { S } from './state.js?v=57412d94';
+import { iconHTML, paintIcons } from './chain.js?v=57412d94';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=57412d94';
+import { notify } from './notify.js?v=57412d94';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -71,17 +71,23 @@ const GAS_PRICE = 28.325;        // uluna per gas unit
 // insurance. Station's own ratio on the same transfer is 1.276.
 const GAS_SAFETY = 1.3;
 
-let TAX = null, TAX_RAW = null;
-async function burnTaxRate(){
-  if (TAX !== null) return TAX;
+// The rate can change by governance, so it is kept one minute at most and a
+// new review always reads it again (fresh = true).
+const TAX_TTL_MS = 60000;
+let TAX = null, TAX_RAW = null, TAX_AT = 0;
+async function burnTaxRate(fresh){
+  if (!fresh && TAX !== null && Date.now() - TAX_AT < TAX_TTL_MS) return TAX;
   try {
     const r = await getJSON(LCD + '/terra/tax/v1beta1/burn_tax_rate', 8000);
-    TAX = Number(r.tax_rate);
+    const n = Number(r.tax_rate);
+    if (!(n >= 0 && n < 1)) throw new Error('bad rate');
+    TAX = n;
     TAX_RAW = String(r.tax_rate);
+    TAX_AT = Date.now();
   } catch (e) {
     // the old treasury endpoint reads zero on this chain, so there is no safe
     // fallback - refuse rather than under-pay and have the send bounce
-    TAX = null;
+    TAX = null; TAX_RAW = null; TAX_AT = 0;
     throw new Error('could not read the burn tax rate');
   }
   return TAX;
@@ -191,7 +197,7 @@ function checkFee(gasFee, maxFee){
 */
 async function dryRunNative(from, to, denom, human, memo, mnemonic){
   // kept for display only; a send must not fail because this endpoint moved
-  const rate = await burnTaxRate().then(() => TAX_RAW).catch(() => null);
+  const rate = await burnTaxRate(true).then(() => TAX_RAW).catch(() => null);
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
   const raw = toRaw(human, 6);
   if (!(Number(raw) > 0)) throw new Error('amount must be greater than zero');
