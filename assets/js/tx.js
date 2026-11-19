@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=d3a72c42';
-import { $, buzz, go, tap } from './shell.js?v=d3a72c42';
-import { S } from './state.js?v=d3a72c42';
-import { iconHTML, paintIcons } from './chain.js?v=d3a72c42';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=d3a72c42';
-import { notify } from './notify.js?v=d3a72c42';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=dc67c68f';
+import { $, buzz, go, tap } from './shell.js?v=dc67c68f';
+import { S } from './state.js?v=dc67c68f';
+import { iconHTML, paintIcons } from './chain.js?v=dc67c68f';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=dc67c68f';
+import { notify } from './notify.js?v=dc67c68f';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -156,8 +156,9 @@ async function simulateGas(body, auth, net = MAINNET){
    that stops before signing and sends the user back to review. */
 const FEE_SLACK = 1.25;
 /* A caller that forgets the reviewed fee must not skip the check silently, so
-   a missing one refuses. GRAM (testnet, no fee shown before consent) opts out
-   by passing NO_FEE_REVIEW on purpose. */
+   a missing one refuses. NO_FEE_REVIEW is the explicit way out; nothing uses
+   it now (the GRAM swap shows and passes its fee too, audit round 4, D1), and
+   any new use has to say so on purpose. */
 const NO_FEE_REVIEW = 'no fee review';
 function checkFee(gasFee, maxFee){
   if (maxFee === NO_FEE_REVIEW) return;
@@ -215,6 +216,13 @@ async function broadcast(raw, net = MAINNET){
   const res = d.tx_response || {};
   if (!r.ok) throw new Error(d.message || ('broadcast -> ' + r.status));
   if (res.code) throw new Error('rejected (code ' + res.code + '): ' + (res.raw_log || ''));
+  // remembered so incoming.js does not announce what this wallet sent itself;
+  // its own screen does that
+  try {
+    const l = JSON.parse(localStorage.getItem('fw:mine') || '[]');
+    l.push(res.txhash);
+    localStorage.setItem('fw:mine', JSON.stringify(l.slice(-100)));
+  } catch (e) {}
   return res.txhash;
 }
 
@@ -804,14 +812,19 @@ async function dryRunSwap(from, steps, mnemonic, net = MAINNET, memo = ''){
 
 // Rebuilt from scratch rather than reusing the reviewed bytes: the sequence
 // moves whenever anything else touches this account.
-async function sendSwap(from, steps, mnemonic, net = MAINNET, memo = '', maxFee){
+async function sendSwap(from, steps, mnemonic, net = MAINNET, memo = '', maxFee, onSigned){
   const p = await execPlan(from, steps, mnemonic, net, memo);
   checkFee(p.gasFee, maxFee);
   const real = execTx(p.url, from, steps, p.key.pub, p.acc.seq,
     [{ denom: 'uluna', amount: String(p.gasFee) }], p.gas, memo);
   const doc = signDoc(real.body, real.auth, net.chain, p.acc.num);
   const sig = p.key.node.sign(p.key.sha256(doc));
-  const hash = await broadcast(txRaw(real.body, real.auth, [sig]), net);
+  const raw = txRaw(real.body, real.auth, [sig]);
+  // The tx hash is the sha256 of the signed bytes: known before broadcasting,
+  // so a caller can record it first, and a reply lost after the node took the
+  // tx cannot hide a tx that lands (audit round 5, D3).
+  if (onSigned) await onSigned(Array.from(p.key.sha256(raw), x => x.toString(16).padStart(2, '0')).join('').toUpperCase());
+  const hash = await broadcast(raw, net);
   return { hash: hash, gas: p.gas, gasFee: p.gasFee, wait: function(){ return waitFor(hash, 30, net); } };
 }
 export { dryRunSwap, sendSwap };
