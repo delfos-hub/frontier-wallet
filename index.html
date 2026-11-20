@@ -119,7 +119,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   #fw-splash.gone{opacity:0}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=57412d94">
+<link rel="stylesheet" href="assets/css/app.css?v=1f2425a3">
 </head>
 <body>
 <div id="rt"></div>
@@ -144,7 +144,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   </div>
   <div class="fw-load"><i></i></div>
 </div>
-<script src="assets/js/splash.js?v=57412d94"></script>
+<script src="assets/js/splash.js?v=1f2425a3"></script>
 
 <div class="orb"></div>
 
@@ -379,12 +379,29 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   <!-- transfers on their way (tx.js): one line each until the block lands -->
   <div class="txq" id="txq" hidden></div>
 
-  <button class="xc" id="xc-gram" type="button" hidden>
-    <span class="xc-top"><span class="xc-label">Cross-chain</span><span class="xc-n" id="xc-gram-n" hidden></span><span class="xc-badge gx-testnet">Testnet</span></span>
-    <span class="xc-main"><span class="xc-ico" id="xc-gram-ico"></span>
-      <span class="xc-txt"><b>GRAM &#8644; LUNC</b><span>GRAM (formerly TON) &middot; atomic swap, no bridge</span></span>
-      <svg class="xc-go" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span>
-  </button>
+  <div class="xc xg" id="xc-gram" hidden>
+    <button class="xg-head" type="button" id="xc-gram-open">
+      <span class="xc-ico xg-ico" id="xc-gram-ico"></span>
+      <span class="xc-txt"><b>GRAM &#8644; LUNC</b><span>Atomic swap between TON and Terra Classic &middot; no bridge, no custodian</span></span>
+      <span class="xg-live" id="xc-gram-live" hidden></span>
+      <span class="xc-n" id="xc-gram-n" hidden></span>
+      <span class="xc-badge gx-testnet">Testnet</span>
+    </button>
+    <div class="xg-stats" id="xc-gram-stats">
+      <div><span>Best price</span><b id="xc-gram-price">&mdash;</b></div>
+      <div><span>Deal size</span><b id="xc-gram-size">&mdash;</b></div>
+      <div><span>Seller answers</span><b id="xc-gram-time">&mdash;</b></div>
+    </div>
+    <div class="xg-deal" id="xc-gram-deal" hidden>
+      <div class="xg-deal-top"><div class="xg-deal-t"><b id="xc-gram-deal-t"></b><span id="xc-gram-deal-s"></span></div>
+        <button class="xg-open" type="button" id="xc-gram-deal-go">Open deal</button></div>
+      <div class="xg-steps" id="xc-gram-steps"><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="xg-acts" id="xc-gram-acts">
+      <button class="xg-buy" type="button" data-tab="buy"><b>Buy LUNC</b><small>pay with GRAM</small></button>
+      <button class="xg-sell" type="button" data-tab="sell"><b>Sell LUNC</b><small>get GRAM</small></button>
+    </div>
+  </div>
 
 <div class="warn sunset" id="usdc-sunset" hidden>
   <button class="sunset-x" id="usdc-sunset-x" type="button" aria-label="Close">&times;</button>
@@ -1036,23 +1053,23 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=57412d94"></script>
-<script src="assets/js/ads.js?v=57412d94"></script>
-<script type="module" src="assets/js/swap.js?v=57412d94"></script>
-<script type="module" src="assets/js/activity.js?v=57412d94"></script>
-<script type="module" src="assets/js/nft.js?v=57412d94"></script>
-<script type="module" src="assets/js/wallets.js?v=57412d94"></script>
-<script type="module" src="assets/js/seed.js?v=57412d94"></script>
-<script type="module" src="assets/js/home-tools.js?v=57412d94"></script>
-<script type="module" src="assets/js/p2p.js?v=57412d94"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=57412d94"></script>
-<script type="module" src="assets/js/gram.js?v=57412d94"></script>
-<script type="module" src="assets/js/incoming.js?v=57412d94"></script>
-<script type="module" src="assets/js/token.js?v=57412d94"></script>
-<script type="module" src="assets/js/defi.js?v=57412d94"></script>
-<script type="module" src="assets/js/gov.js?v=57412d94"></script>
-<script type="module" src="assets/js/stake.js?v=57412d94"></script>
-<script type="module" src="assets/js/fav.js?v=57412d94"></script>
-<script type="module" src="assets/js/desktop.js?v=57412d94"></script>
+<script type="module" src="assets/js/app.js?v=1f2425a3"></script>
+<script src="assets/js/ads.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/swap.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/activity.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/nft.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/wallets.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/seed.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/home-tools.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/p2p.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/gram.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/incoming.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/token.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/defi.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/gov.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/stake.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/fav.js?v=1f2425a3"></script>
+<script type="module" src="assets/js/desktop.js?v=1f2425a3"></script>
 </body>
 </html>

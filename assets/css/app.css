@@ -2264,3 +2264,60 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 
 /* read by screen readers, not shown: the rail balance's button name (Pablo, #48) */
 .dk-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* home polish (Nov 2026): the GRAM swap card and the Favorites cards */
+.xg{cursor:default;padding:16px 18px;margin:-8px 0 20px;display:flex;flex-direction:column;gap:14px;
+  background:linear-gradient(120deg,rgba(0,152,234,.16),rgba(123,92,255,.13) 50%,rgba(232,200,64,.10)),var(--surface);
+  border-color:rgba(120,140,255,.28)}
+.xg:hover{transform:none}
+.xg-head{display:flex;align-items:center;gap:12px;width:100%;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:44px}
+.xg-ico .sym{width:36px;height:36px}
+.xg-head .xc-txt b{font-size:20px}
+.xg-head .xc-n{margin-left:0}
+.xg-live{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:999px;
+  color:#34D399;background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.32)}
+.xg-live::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+.xg-live.none{color:var(--muted);background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08)}
+.xg-live[hidden]{display:none}
+.xg-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.xg-stats[hidden]{display:none}
+.xg-stats>div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;background:rgba(8,12,24,.55);min-width:0}
+.xg-stats span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.xg-stats b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xg-acts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.xg-acts[hidden]{display:none}
+.xg-acts button{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px;border-radius:14px;
+  font:inherit;color:#fff;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.xg-acts button small{font-size:11.5px;opacity:.85}
+.xg-buy{border:0;background:linear-gradient(90deg,#3B1FCC,#7B5CFF)}
+.xg-sell{border:1px solid #7B5CFF;background:rgba(8,12,24,.55)}
+.xg-acts button:hover{transform:translateY(-1px);box-shadow:0 10px 26px -14px rgba(123,92,255,.8)}
+.xg-acts button:focus-visible,.xg-open:focus-visible,.xg-head:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
+.xg.busy{border-color:rgba(232,200,64,.55)}
+.xg.hot{border-color:rgba(255,186,73,.8);box-shadow:0 0 0 1px rgba(255,186,73,.25),0 14px 36px -20px rgba(255,186,73,.8)}
+.xg-deal{display:flex;flex-direction:column;gap:12px}
+.xg-deal[hidden]{display:none}
+.xg-deal-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.xg-deal-t{display:flex;flex-direction:column;flex:1 1 220px;min-width:0}
+.xg-deal-t b{font-size:15px}
+.xg-deal-t span{font-size:12.5px;color:#E8C840}
+.xg-open{min-height:44px;padding:0 18px;border:0;border-radius:12px;background:#E8C840;color:#0B0F1A;font:inherit;font-weight:700;cursor:pointer}
+.xg-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.xg-steps i{height:4px;border-radius:2px;background:rgba(255,255,255,.12)}
+.xg-steps i.done{background:#34D399}
+.xg-steps i.now{background:linear-gradient(90deg,#E8C840 50%,rgba(255,255,255,.12) 50%)}
+@media (max-width:560px){
+  .xg-stats{grid-template-columns:1fr 1fr}
+  .xg-stats>div:last-child{grid-column:1 / -1}
+  .xg-head .xc-txt span{white-space:normal}
+}
+.fav-card{display:flex;flex-direction:column}
+.fav-row{display:flex;align-items:center;gap:8px;margin-top:10px;min-width:0}
+.fav-row .fav-v{margin-top:0;flex:1 1 auto;min-width:0}
+.fav-row .fav-ch{flex:none}
+.fav-q{display:flex;align-items:baseline;gap:8px}
+.fav-q span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fav-q em{margin-left:auto;flex:none;font-style:normal;font-size:9.5px;letter-spacing:.06em;opacity:.8}
+.fav-ln{height:34px;margin:auto -13px -10px;padding-top:8px;box-sizing:content-box}
+.fav-nol{height:34px;margin-top:auto}
+.fav-grid{align-items:stretch}
