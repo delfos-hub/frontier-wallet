@@ -1,0 +1,23 @@
+{
+	// frontier-sync: encrypted settings sync for Frontier Wallet.
+	// Deployed to the Delfos Hub Cloudflare account:
+	//   source ~/.delfos-cf.env && npx wrangler deploy
+	"name": "frontier-sync",
+	"main": "worker.js",
+	"compatibility_date": "2026-11-01",
+	"workers_dev": true,
+	// D1, not KV: 100,000 writes a day, apart from the account's KV write
+	// quota (relayer-watchdog). Create it once, put its id here, then
+	//   npx wrangler d1 execute frontier-sync --remote --yes --file schema.sql
+	"d1_databases": [
+		{ "binding": "DB", "database_name": "frontier-sync", "database_id": "2071fc3b-d921-4dd9-9e46-a5a9792403df" }
+	],
+	// daily purge of records not written for 400 days
+	"triggers": { "crons": ["23 3 * * *"] },
+	// per client (IPv4, or IPv6 /64). The namespace ids must differ
+	// from the other Workers' on the account (offers-worker uses its own).
+	"ratelimits": [
+		{ "name": "WRITES", "namespace_id": "2611", "simple": { "limit": 10, "period": 60 } },
+		{ "name": "READS", "namespace_id": "2612", "simple": { "limit": 60, "period": 60 } }
+	]
+}

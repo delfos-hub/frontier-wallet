@@ -2,18 +2,21 @@
 
    A star on a token row pins it (on a phone, a long press on the row); a
    card opens that token's page; on a desktop the cards reorder by dragging.
-   Kept on this device, per wallet: fw:fav:<address> holds the keys with the
-   symbol and logo seen last, so a token sold off still shows its card.
+   Kept per wallet: fw:fav:<address> holds the keys with the symbol and logo
+   seen last, so a token sold off still shows its card. The list follows the
+   wallet to its other devices through sync.js (encrypted; a watched address
+   and a wallet with sync turned off keep it on this device only).
 
    Prices come from the home list (the same arithmetic as everywhere). There
    is no price history for these tokens anywhere we read, so each price seen
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=1f2425a3';
-import { S } from './state.js?v=1f2425a3';
-import { esc, iconHTML, paintIcons } from './chain.js?v=1f2425a3';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=1f2425a3';
+import { $ } from './shell.js?v=47b6e663';
+import { S } from './state.js?v=47b6e663';
+import { esc, iconHTML, paintIcons } from './chain.js?v=47b6e663';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=47b6e663';
+import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=47b6e663';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
@@ -31,16 +34,20 @@ const TOUCH = !(window.matchMedia && window.matchMedia('(hover: hover) and (poin
 
 // Stored values are checked for shape, not only parsed: an older or
 // hand-edited value must not leave the section blank (CodeRabbit).
-function load(){
-  try {
-    const v = JSON.parse(localStorage.getItem('fw:fav:' + addr()) || '[]');
-    if (!Array.isArray(v)) return [];
-    return v.filter(f => f && typeof f.k === 'string' && /^(cw20:|native:)/.test(f.k))
-      .map(f => ({ k: f.k, sym: typeof f.sym === 'string' ? f.sym : '', logo: typeof f.logo === 'string' ? f.logo : undefined }))
-      .slice(0, MAX);
-  } catch (e) { return []; }
+// The same check stands between this device and a list another one sent.
+function shape(v){
+  if (!Array.isArray(v)) return [];
+  const seen = {};
+  return v.filter(f => f && typeof f.k === 'string' && /^(cw20:|native:)/.test(f.k) && !seen[f.k] && (seen[f.k] = 1))
+    .map(f => ({ k: f.k, sym: typeof f.sym === 'string' ? f.sym : '', logo: typeof f.logo === 'string' ? f.logo : undefined }))
+    .slice(0, MAX);
 }
-function save(list){ try { localStorage.setItem('fw:fav:' + addr(), JSON.stringify(list.slice(0, MAX))); } catch (e) {} }
+function loadOf(a){
+  try { return shape(JSON.parse(localStorage.getItem('fw:fav:' + a) || '[]')); } catch (e) { return []; }
+}
+function saveOf(a, list){ try { localStorage.setItem('fw:fav:' + a, JSON.stringify(list.slice(0, MAX))); } catch (e) {} }
+const load = () => loadOf(addr());
+const save = list => saveOf(addr(), list);
 const has = k => load().some(f => f.k === k);
 
 // this device's own price record for the favorites
@@ -120,8 +127,8 @@ function render(){
     (favs.length ? '<span class="fav-n">' + favs.length + '/' + MAX + '<span class="fav-drag"> \u00b7 <span>drag to reorder</span></span></span>' : '') + '</div>';
   if (!favs.length) {
     sec.innerHTML = head + '<div class="fav-empty">' + STAR + '<div><b>Pin the tokens you watch</b><br>' +
-      '<span>' + (TOUCH ? 'Long-press a token in the list to keep it here, under LUNC and USTC. Up to 6, kept on this device.'
-        : 'Tap the star on a token to keep it here, under LUNC and USTC. Up to 6, kept on this device.') + '</span></div></div>';
+      '<span>' + (TOUCH ? 'Long-press a token in the list to keep it here, under LUNC and USTC.' : 'Tap the star on a token to keep it here, under LUNC and USTC.') +
+      ' ' + (syncOn() ? 'Up to 6, synced between your devices (encrypted).' : 'Up to 6, kept on this device.') + '</span></div></div>';
     return;
   }
   let html = '<div class="fav-grid">';
@@ -152,9 +159,10 @@ function toggle(k, meta){
   if (i >= 0) favs.splice(i, 1);
   else if (favs.length >= MAX) { flash('Up to 6 favorites. Remove one first.'); return false; }
   else favs.push(Object.assign({ k: k }, meta || {}));
-  save(favs);
+  save(favs); synced('fav');
   try { const h = window.Telegram && Telegram.WebApp && Telegram.WebApp.HapticFeedback; if (h) h.impactOccurred('light'); } catch (e) {}
   stars(); render(); if (PAGE) paintPage();
+  if (i < 0) offerSync();                 // the first favorite asks about sync, once
   return true;
 }
 function flash(msg){
@@ -261,7 +269,7 @@ document.addEventListener('drop', e => {
   if (DRAG < 0 || !c) return;
   e.preventDefault();
   const to = Number(c.dataset.i), favs = load();
-  if (to !== DRAG && favs[DRAG]) { const [m] = favs.splice(DRAG, 1); favs.splice(to, 0, m); save(favs); }
+  if (to !== DRAG && favs[DRAG]) { const [m] = favs.splice(DRAG, 1); favs.splice(to, 0, m); save(favs); synced('fav'); }
   DRAG = -1; render();
 });
 document.addEventListener('dragend', () => { DRAG = -1; document.querySelectorAll('.fav-card.drag').forEach(c => c.classList.remove('drag')); });
@@ -296,6 +304,24 @@ function paintPage(){
 document.addEventListener('frontier:token', e => { PAGE = (e.detail && e.detail.key) || ''; paintPage(); });
 
 document.addEventListener('frontier:wallet', () => { stars(); render(); paintPage(); });
+document.addEventListener('frontier:sync', () => render());
+
+/* The list as the other devices of this wallet get it (sync.js). What is
+   sent: the keys with symbol and logo address, never an embedded image. A
+   list that arrives is drawn at once when it is the open wallet's. */
+const lean = list => list.map(f => {
+  const o = { k: f.k, sym: (f.sym || '').slice(0, 40) };
+  if (f.logo && /^(https:\/\/|assets\/)/.test(f.logo) && f.logo.length <= 300) o.logo = f.logo;
+  return o;
+});
+syncSection('fav', {
+  read: a => lean(loadOf(a)),
+  write: (a, v) => { saveOf(a, shape(v)); if (a === addr()) { stars(); render(); if (PAGE) paintPage(); } },
+  clean: v => lean(shape(v)),
+  empty: v => !v.length,
+  // first meeting of two lists: theirs first, then what only this device has
+  merge: (mine, theirs) => shape(theirs.concat(mine))
+});
 window.addEventListener('resize', () => { if (SEC) section(); });
 render();
 
