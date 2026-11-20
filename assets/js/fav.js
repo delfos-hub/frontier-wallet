@@ -12,11 +12,11 @@
    is kept here (fw:favpx, one point per 10 min, 26 h): the change and the
    line are this device's own record, labelled with how far back it reaches,
    and appear once it covers an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=dc67c68f';
-import { S } from './state.js?v=dc67c68f';
-import { esc, iconHTML, paintIcons } from './chain.js?v=dc67c68f';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=dc67c68f';
-import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=dc67c68f';
+import { $ } from './shell.js?v=47b6e663';
+import { S } from './state.js?v=47b6e663';
+import { esc, iconHTML, paintIcons } from './chain.js?v=47b6e663';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=47b6e663';
+import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=47b6e663';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
@@ -140,11 +140,13 @@ function render(){
     html += '<div class="fav-card" draggable="true" data-k="' + esc(f.k) + '" data-i="' + i + '" role="button" tabindex="0">' +
       '<div class="fav-top">' + iconHTML(t) + '<b>' + esc(t.sym || '?') + '</b>' +
       '<button class="fav-off" type="button" title="Remove from favorites" data-k="' + esc(f.k) + '">' + STAR + '</button></div>' +
-      '<div class="fav-v">' + money(unit) + '</div>' +
-      '<div class="fav-q">' + qty(t.v) + ' ' + esc(t.sym || '') + (t.v > 0 && fiatOf(t) != null ? ' \u00b7 ' + money(fiatOf(t)) : '') + '</div>' +
-      // the change and how far back the record reaches, over the line: the
-      // ticker and the price keep their own full lines
-      (ch ? line(ch.pts, up) + '<span class="fav-span"><b class="fav-ch ' + (up ? 'up' : 'dn') + '">' + (ch.pct >= 0 ? '+' : '') + ch.pct.toFixed(1) + '%</b>' + ch.hours + 'h</span>' : '<div class="fav-nol"></div>') + '</div>';
+      // the change sits beside the price and the span under it, so the chart
+      // keeps the bottom of the card to itself (nothing drawn over the line)
+      '<div class="fav-row"><div class="fav-v">' + money(unit) + '</div>' +
+        (ch ? '<b class="fav-ch ' + (up ? 'up' : 'dn') + '">' + (ch.pct >= 0 ? '+' : '') + ch.pct.toFixed(1) + '%</b>' : '') + '</div>' +
+      '<div class="fav-q"><span>' + qty(t.v) + ' ' + esc(t.sym || '') + (t.v > 0 && fiatOf(t) != null ? ' \u00b7 ' + money(fiatOf(t)) : '') + '</span>' +
+        (ch ? '<em>' + ch.hours + 'h</em>' : '') + '</div>' +
+      (ch ? line(ch.pts, up) : '<div class="fav-nol"></div>') + '</div>';
   });
   if (favs.length < MAX) html += '<button class="fav-add" type="button"><i>+</i><span>Add a token</span><small>' + (TOUCH ? 'long-press it in the list' : 'star it in the list') + '</small></button>';
   sec.innerHTML = head + html + '</div>';

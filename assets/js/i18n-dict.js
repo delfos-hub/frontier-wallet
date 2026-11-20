@@ -482,6 +482,10 @@ const EXTRA = {
   'Up to 6, kept on this device.': ['До 6, хранится на этом устройстве.', 'Jusqu\u2019à 6, conservés sur cet appareil.', 'Fino a 6, conservati su questo dispositivo.', 'Hasta 6, guardados en este dispositivo.', 'En fazla 6, bu cihazda tutulur.'],
   'Up to 6, synced between your devices (encrypted).': ['До 6, синхронизируются между вашими устройствами (зашифровано).', 'Jusqu\u2019à 6, synchronisés entre vos appareils (chiffrés).', 'Fino a 6, sincronizzati tra i tuoi dispositivi (cifrati).', 'Hasta 6, sincronizados entre tus dispositivos (cifrados).', 'En fazla 6, cihazlarınız arasında eşitlenir (şifreli).'],
 };
+Object.assign(EXTRA, {
+  'Burn tax': ['Налог на сжигание', 'Taxe de burn', 'Tassa di burn', 'Impuesto de quema', 'Yakım vergisi'],
+  'Recipient got': ['Получатель получил', 'Reçu par le destinataire', 'Ricevuto dal destinatario', 'El destinatario recibió', 'Alıcıya ulaşan'],
+});
 const XL = ['ru', 'fr', 'it', 'es', 'tr'];
 for (const k in EXTRA) XL.forEach((code, i) => { DICT[code][k] = EXTRA[k][i]; });
 
