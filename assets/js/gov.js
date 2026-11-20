@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=47b6e663';
-import { $, buzz, go } from './shell.js?v=47b6e663';
-import { S } from './state.js?v=47b6e663';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=47b6e663';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=dfec9205';
+import { $, buzz, go } from './shell.js?v=dfec9205';
+import { S } from './state.js?v=dfec9205';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=dfec9205';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -135,66 +135,136 @@ const accOf = valoper => rewrap(valoper, 'terra');
 const APP_TAG = /^\s*(vote[ds]?|voting|voted)\s+(with|via|using|from)\b[^.!?]{0,40}$/i;
 
 let VALS = null, VALS_AT = 0;
+/* Kept on this device (fw:gov:vals, names and stakes only, public data) so
+   the voters show at once on the next visit; read again in the background
+   when older than 10 min, and never used when older than a day. */
+function keepVals(list){
+  try { localStorage.setItem('fw:gov:vals', JSON.stringify({ at: Date.now(), list: list.map(v => [v.op, v.name, String(v.tokens), v.ident || '']) })); } catch (e) {}
+}
+function keptVals(){
+  try {
+    const k = JSON.parse(localStorage.getItem('fw:gov:vals') || 'null');
+    if (!k || !Array.isArray(k.list) || !(Date.now() - k.at < 86400000)) return null;
+    const list = k.list.filter(x => Array.isArray(x) && /^terravaloper1[0-9a-z]{38,}$/.test(x[0]) && /^\d+$/.test(x[2]))
+      .map(x => ({ op: x[0], acc: accOf(x[0]), name: String(x[1] || '').slice(0, 70) || x[0].slice(0, 18) + '\u2026', tokens: BigInt(x[2]),
+        ident: /^[0-9A-Fa-f]{16}$/.test(String(x[3] || '')) ? String(x[3]) : '' }))
+      .filter(v => v.acc);
+    return list.length ? { at: k.at, list: list } : null;
+  } catch (e) { return null; }
+}
+let VALS_RUN = null;
+function readVals(){
+  if (VALS_RUN) return VALS_RUN;
+  VALS_RUN = getJSON(LCD + '/cosmos/staking/v1beta1/validators?status=BOND_STATUS_BONDED&pagination.limit=300', 15000).then(r => {
+    VALS = (r.validators || []).map(v => ({
+      op: v.operator_address, acc: accOf(v.operator_address),
+      name: (v.description && v.description.moniker || '').trim() || v.operator_address.slice(0, 18) + '\u2026',
+      tokens: BigInt(v.tokens || '0'),
+      // a Keybase key is 16 hex characters; anything else gets no lookup
+      ident: /^[0-9A-Fa-f]{16}$/.test(String(v.description && v.description.identity || '').trim()) ? v.description.identity.trim() : ''
+    })).sort((a, b) => (b.tokens > a.tokens ? 1 : b.tokens < a.tokens ? -1 : 0));
+    VALS_AT = Date.now();
+    keepVals(VALS);
+    return VALS;
+  }).finally(() => { VALS_RUN = null; });
+  return VALS_RUN;
+}
 async function validators(){
   if (VALS && Date.now() - VALS_AT < 10 * 60000) return VALS;
-  const r = await getJSON(LCD + '/cosmos/staking/v1beta1/validators?status=BOND_STATUS_BONDED&pagination.limit=300', 15000);
-  VALS = (r.validators || []).map(v => ({
-    op: v.operator_address, acc: accOf(v.operator_address),
-    name: (v.description && v.description.moniker || '').trim() || v.operator_address.slice(0, 18) + '\u2026',
-    tokens: BigInt(v.tokens || '0')
-  })).sort((a, b) => (b.tokens > a.tokens ? 1 : b.tokens < a.tokens ? -1 : 0));
-  VALS_AT = Date.now();
-  return VALS;
+  if (!VALS) {
+    const k = keptVals();
+    if (k) { VALS = k.list; VALS_AT = k.at; }
+  }
+  if (VALS) {
+    if (Date.now() - VALS_AT >= 10 * 60000) readVals().catch(() => {});
+    return VALS;
+  }
+  return readVals();
 }
 
 const NUM_OPT = { 1: 'VOTE_OPTION_YES', 2: 'VOTE_OPTION_ABSTAIN', 3: 'VOTE_OPTION_NO', 4: 'VOTE_OPTION_NO_WITH_VETO' };
-const VOTERS = {};     // proposal id -> { votes: {addr: option}, memo: {addr: text}, stake: {addr: bigint} }
-async function voters(id){
-  if (VOTERS[id] && Date.now() - VOTERS[id].at < 3 * 60000) return VOTERS[id];
-  const votes = {};
-  let key = '';
-  for (let i = 0; i < 10; i++) {
-    const r = await getJSON(G + '/proposals/' + id + '/votes?pagination.limit=1000' + (key ? '&pagination.key=' + encodeURIComponent(key) : ''));
-    (r.votes || []).forEach(v => { votes[v.voter] = v.options && v.options[0] ? v.options[0].option : ''; });
-    key = r.pagination && r.pagination.next_key;
-    if (!key) break;
-  }
-  // Newest first, so the first memo seen for a voter belongs to the vote that
-  // counts. An older vote's reason is not shown under a changed vote.
-  const memo = {}, seen = {}, txv = {};
-  const q = encodeURIComponent('proposal_vote.proposal_id=' + id);
-  for (let page = 1; page <= 10; page++) {
-    let r;
-    try { r = await getJSON(LCD + '/cosmos/tx/v1beta1/txs?query=' + q + '&limit=100&page=' + page + '&order_by=ORDER_BY_DESC', 25000, 2); }
-    catch (e) { break; }
-    const txs = r.tx_responses || [];
-    txs.forEach(t => {
+/* Who voted, in three steps that each show as soon as they land, so the list
+   never waits for the slowest read:
+     1. the chain's own record of votes (open proposals; a few fast pages);
+     2. the vote transactions, for the comments (memos) and, once voting has
+        ended and the chain has cleared its record, for who chose what. The
+        first page tells how many there are; the rest are read together;
+     3. the stake of commenters who are not validators, to rank them.
+   VOTERS[id] = { votes, memo, stake, txv, tx, at, step } with step 1..3;
+   tx[voter] = { hash, time } of the vote that counts. */
+const VOTERS = {};
+const RUNS = {};
+function voters(id, onStep){
+  const v = VOTERS[id];
+  if (v && v.step === 3 && Date.now() - v.at < 3 * 60000) { if (onStep) onStep(v); return Promise.resolve(v); }
+  if (v && onStep) onStep(v);                 // what is known already, at once
+  if (RUNS[id]) { if (onStep) RUNS[id].subs.push(onStep); return RUNS[id].p; }
+  const run = RUNS[id] = { subs: onStep ? [onStep] : [] };
+  const tell = x => { run.subs.forEach(f => { try { f(x); } catch (e) {} }); };
+  run.p = (async () => {
+    const out = { votes: {}, memo: {}, stake: {}, txv: {}, tx: {}, at: Date.now(), step: 0 };
+    let key = '';
+    for (let i = 0; i < 10; i++) {
+      const r = await getJSON(G + '/proposals/' + id + '/votes?pagination.limit=1000' + (key ? '&pagination.key=' + encodeURIComponent(key) : ''));
+      (r.votes || []).forEach(x => { out.votes[x.voter] = x.options && x.options[0] ? x.options[0].option : ''; });
+      key = r.pagination && r.pagination.next_key;
+      if (!key) break;
+    }
+    out.step = 1; VOTERS[id] = Object.assign({}, out); tell(VOTERS[id]);
+
+    // Newest first, so the first memo seen for a voter belongs to the vote
+    // that counts. An older vote's reason is not shown under a changed vote.
+    const seen = {};
+    const q = encodeURIComponent('proposal_vote.proposal_id=' + id);
+    const page = n => getJSON(LCD + '/cosmos/tx/v1beta1/txs?query=' + q + '&limit=100&page=' + n + '&order_by=ORDER_BY_DESC', 25000, 2);
+    const take = r => (r && r.tx_responses || []).forEach(t => {
       // the vote for this proposal: one transaction can vote on several
       const m = ((t.tx && t.tx.body && t.tx.body.messages) || []).find(x => x.voter && String(x.proposal_id) === String(id));
       if (!m || seen[m.voter]) return;
       seen[m.voter] = 1;
       const o = m.option || (m.options && m.options[0] && m.options[0].option);
-      if (o) txv[m.voter] = String(NUM_OPT[o] || o);
+      if (o) out.txv[m.voter] = String(NUM_OPT[o] || o);
+      if (/^[0-9A-F]{64}$/i.test(String(t.txhash || ''))) out.tx[m.voter] = { hash: String(t.txhash).toUpperCase(), time: String(t.timestamp || '') };
       const text = String(t.tx.body.memo || '').trim();
-      if (text && !APP_TAG.test(text)) memo[m.voter] = text.slice(0, 600);
+      if (text && !APP_TAG.test(text)) out.memo[m.voter] = text.slice(0, 600);
     });
-    if (txs.length < 100) break;
-  }
-  // stake of commenters who are not validators, to rank them
-  const vals = await validators();
-  const valAcc = new Set(vals.map(v => v.acc));
-  const others = Object.keys(memo).filter(a => !valAcc.has(a));
-  const stake = {};
-  await Promise.all(others.map(a => getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + a, 10000, 1)
-    .then(r => { stake[a] = (r.delegation_responses || []).reduce((s, d) => s + BigInt(d.balance && d.balance.amount || '0'), 0n); })
-    .catch(() => { stake[a] = 0n; })));
-  VOTERS[id] = { votes: votes, memo: memo, stake: stake, txv: txv, at: Date.now() };
-  return VOTERS[id];
+    let first = null;
+    try { first = await page(1); } catch (e) { first = null; }
+    if (first) {
+      const total = Number(first.total || (first.pagination && first.pagination.total) || 0);
+      const more = (first.tx_responses || []).length < 100 ? 0 : Math.min(9, Math.max(0, Math.ceil(total / 100) - 1));
+      // the pages after the first, together; kept in page order (newest first)
+      const rest = more ? await Promise.all(Array.from({ length: more }, (_, i) => page(i + 2).catch(() => null))) : [];
+      take(first); rest.forEach(take);
+    }
+    out.step = 2; VOTERS[id] = Object.assign({}, out); tell(VOTERS[id]);
+
+    // the stake of every voter who is not a validator (commenters first), to
+    // weigh and rank them; shown as it arrives, a batch at a time
+    const vals = await validators();
+    const valAcc = new Set(vals.map(x => x.acc));
+    const who = Object.keys(Object.assign({}, out.votes, out.txv, out.memo)).filter(a => !valAcc.has(a));
+    who.sort((a, b) => (out.memo[b] ? 1 : 0) - (out.memo[a] ? 1 : 0));
+    const ask = who.slice(0, 300);
+    for (let i = 0; i < ask.length; i += 24) {
+      await Promise.all(ask.slice(i, i + 24).map(a => getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + a, 10000, 1)
+        .then(r => { out.stake[a] = (r.delegation_responses || []).reduce((s, d) => s + BigInt(d.balance && d.balance.amount || '0'), 0n); })
+        .catch(() => { out.stake[a] = 0n; })));
+      if (i + 24 < ask.length) { VOTERS[id] = Object.assign({}, out); tell(VOTERS[id]); }
+    }
+    out.step = 3; out.at = Date.now(); VOTERS[id] = out; tell(out);
+    return out;
+  })().finally(() => { delete RUNS[id]; });
+  return run.p;
 }
 
 let DATA = null;       // { live, recent, rules, bonded, power, mine }
 
-async function load(addr){
+/* The reads behind the screen, kept raw: built into DATA by build(), and kept
+   on this device per address (fw:gov:raw:<addr>, a day at most) so the next
+   visit draws at once while the chain is read again. A proposal's messages
+   are kept only while small; its text is capped. */
+async function fetchRaw(addr){
   const [live, recent, rules, pool, dels] = await Promise.all([
     getJSON(G + '/proposals?proposal_status=PROPOSAL_STATUS_VOTING_PERIOD&pagination.limit=50'),
     getJSON(G + '/proposals?pagination.limit=12&pagination.reverse=true').catch(() => ({ proposals: [] })),
@@ -202,7 +272,7 @@ async function load(addr){
     getJSON(LCD + '/cosmos/staking/v1beta1/pool').catch(() => ({})),
     addr ? getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + addr).catch(() => ({})) : Promise.resolve({})
   ]);
-  const props = (live.proposals || []).sort((a, b) => new Date(a.voting_end_time) - new Date(b.voting_end_time));
+  const props = live.proposals || [];
   const [tallies, mine] = await Promise.all([
     Promise.all(props.map(p => getJSON(G + '/proposals/' + p.id + '/tally').then(r => r.tally).catch(() => null))),
     Promise.all(props.map(p => addr
@@ -212,17 +282,62 @@ async function load(addr){
           .catch(e => (e && (e.status === 400 || e.status === 404)) ? null : UNKNOWN)
       : Promise.resolve(null)))
   ]);
-  props.forEach((p, i) => { p._tally = tallies[i]; p._mine = mine[i]; });
+  return { addr: addr, at: Date.now(), live: props, recent: recent.proposals || [], rules: rules, pool: pool,
+    dels: (dels.delegation_responses || []).map(d => ({ op: d.delegation && d.delegation.validator_address, amount: d.balance && d.balance.amount })),
+    tallies: tallies, mine: mine };
+}
+function build(raw){
+  // a kept "unknown" comes back as a plain object: the same marker again
+  const props = raw.live.map((p, i) => Object.assign({}, p, { _tally: raw.tallies[i],
+    _mine: raw.mine[i] && raw.mine[i].unknown ? UNKNOWN : raw.mine[i] }))
+    .sort((a, b) => new Date(a.voting_end_time) - new Date(b.voting_end_time));
   const liveIds = new Set(props.map(p => p.id));
+  const rules = raw.rules || {};
   const tp = rules.tally_params || rules.params || {};
-  DATA = {
+  const dels = (raw.dels || []).filter(d => d && d.op && /^\d+$/.test(String(d.amount || '')));
+  return {
     live: props,
-    recent: (recent.proposals || []).filter(p => !liveIds.has(p.id)).slice(0, 10),
+    recent: (raw.recent || []).filter(p => !liveIds.has(p.id)).slice(0, 10),
     rules: { quorum: Number(tp.quorum || 0.4), threshold: Number(tp.threshold || 0.5), veto: Number(tp.veto_threshold || 0.334),
              expedited: Number((rules.params && rules.params.expedited_threshold) || tp.expedited_threshold || 0.667) },
-    bonded: BigInt((pool.pool && pool.pool.bonded_tokens) || '0'),
-    power: (dels.delegation_responses || []).reduce((a, d) => a + BigInt(d.balance && d.balance.amount || '0'), 0n)
+    bonded: BigInt((raw.pool && raw.pool.pool && raw.pool.pool.bonded_tokens) || '0'),
+    power: dels.reduce((a, d) => a + BigInt(d.amount), 0n),
+    dels: dels.map(d => ({ op: d.op, amount: BigInt(d.amount) })),
+    at: raw.at
   };
+}
+const RAW_KEY = addr => 'fw:gov:raw:' + (addr || '-');
+function slim(p){
+  const o = Object.assign({}, p);
+  if (typeof o.summary === 'string' && o.summary.length > 20000) o.summary = o.summary.slice(0, 20000);
+  try {
+    if (JSON.stringify(o.messages || []).length > 24000) {
+      o.messages = (o.messages || []).map(m => {
+        const c = m && m.content;
+        const keep = { '@type': m && m['@type'] };
+        if (c) keep.content = { '@type': c['@type'], title: c.title, description: String(c.description || '').slice(0, 20000) };
+        return keep;
+      });
+    }
+  } catch (e) { o.messages = []; }
+  return o;
+}
+function keepRaw(raw){
+  try { localStorage.setItem(RAW_KEY(raw.addr), JSON.stringify(Object.assign({}, raw, { live: raw.live.map(slim), recent: raw.recent.map(slim) }))); }
+  catch (e) { try { localStorage.removeItem(RAW_KEY(raw.addr)); } catch (x) {} }
+}
+function keptRaw(addr){
+  try {
+    const r = JSON.parse(localStorage.getItem(RAW_KEY(addr)) || 'null');
+    if (!r || r.addr !== addr || !(Date.now() - r.at < 86400000) || !Array.isArray(r.live) || !Array.isArray(r.recent) ||
+        !Array.isArray(r.tallies) || !Array.isArray(r.mine) || r.tallies.length !== r.live.length) return null;
+    return r;
+  } catch (e) { return null; }
+}
+async function load(addr){
+  const raw = await fetchRaw(addr);
+  keepRaw(raw);
+  DATA = build(raw);
   return DATA;
 }
 
@@ -290,7 +405,7 @@ const ST_ICON = {
   deposit: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>'
 };
 
-function draw(){
+function drawPhone(){
   const body = $('#gov-body');
   const d = DATA;
   let h = '';
@@ -342,14 +457,167 @@ function draw(){
   if (st) st.addEventListener('click', e => { e.preventDefault(); go('stake'); });
 }
 
+/* ---------------- Frontier Web on a wide screen ----------------
+   The list on the left, the open proposal beside it (no sheet): its dates,
+   the tally against the rules, the vote, what it changes on chain, its text,
+   the validators by vote, and everyone who voted. The phone layout above is
+   untouched; html.dk (desktop.js) decides which one draws. */
+const isDesk = () => document.documentElement.classList.contains('dk');
+let SEL = '', FILTER = '';
+const VOTE_C = { VOTE_OPTION_YES: 'y', VOTE_OPTION_NO: 'n', VOTE_OPTION_NO_WITH_VETO: 'v', VOTE_OPTION_ABSTAIN: 'a' };
+const when = t => { const d = new Date(t); return isNaN(d) || d.getFullYear() < 2000 ? '' : d.toLocaleString(document.documentElement.lang || 'en-GB',
+  { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
+const valByOp = op => (VALS || []).find(v => v.op === op);
+const pct1 = x => (Math.round(x * 10) / 10).toFixed(1);
+
+/* What a proposal does on chain, read from its messages, in plain words.
+   Everything shown is the proposal's own data, escaped where it is drawn. */
+function changesOf(p){
+  const out = [];
+  const coinTxt = cs => (Array.isArray(cs) ? cs : []).map(c => c && /^\d+$/.test(String(c.amount)) ?
+    (c.denom === 'uluna' ? L(c.amount) + ' LUNC' : c.denom === 'uusd' ? L(c.amount) + ' USTC' : String(c.amount) + ' ' + String(c.denom).slice(0, 40)) : '').filter(Boolean).join(', ');
+  const short = a => { a = String(a || ''); return a.length > 24 ? a.slice(0, 14) + '\u2026' + a.slice(-6) : a; };
+  const one = (m, depth) => {
+    if (!m || out.length >= 8) return;
+    const t = String(m['@type'] || '');
+    const name = t.split('.').pop();
+    if (name === 'MsgExecLegacyContent' && m.content && depth < 2) return one(m.content, depth + 1);
+    if (/SoftwareUpgrade/.test(name)) {
+      const plan = m.plan || {};
+      out.push(['Action', 'Upgrade the chain software']);
+      if (plan.name) out.push(['Plan', String(plan.name).slice(0, 60)]);
+      if (plan.height && plan.height !== '0') out.push(['At block', String(plan.height)]);
+      return;
+    }
+    if (/CancelUpgrade/.test(name)) { out.push(['Action', 'Cancel the planned upgrade']); return; }
+    if (name === 'MsgUpdateParams') {
+      const mod = (t.split('.')[1] || '').replace(/^\//, '');
+      const keys = Object.keys(m.params || {}).slice(0, 8);
+      out.push(['Action', 'Set the ' + (mod || 'module') + ' parameters']);
+      if (keys.length) out.push(['Parameters', keys.join(', ') + (Object.keys(m.params || {}).length > 8 ? ', \u2026' : '')]);
+      return;
+    }
+    if (/CommunityPoolSpend/.test(name)) {
+      out.push(['Action', 'Pay from the community pool']);
+      if (m.recipient) out.push(['To', short(m.recipient)]);
+      const a = coinTxt(m.amount);
+      if (a) out.push(['Amount', a]);
+      return;
+    }
+    if (name === 'MsgExecuteContract') {
+      let act = '';
+      try { act = Object.keys(typeof m.msg === 'string' ? JSON.parse(m.msg) : (m.msg || {}))[0] || ''; } catch (e) { act = ''; }
+      out.push(['Action', 'Run a contract' + (act ? ': ' + act.slice(0, 40) : '')]);
+      if (m.contract) out.push(['Contract', short(m.contract)]);
+      return;
+    }
+    if (name === 'MsgStoreCode') { out.push(['Action', 'Upload contract code']); return; }
+    if (name === 'MsgInstantiateContract' || name === 'MsgInstantiateContract2') {
+      out.push(['Action', 'Create a contract' + (m.code_id ? ' from code ' + String(m.code_id) : '')]); return;
+    }
+    if (name === 'MsgMigrateContract') {
+      out.push(['Action', 'Migrate a contract' + (m.code_id ? ' to code ' + String(m.code_id) : '')]);
+      if (m.contract) out.push(['Contract', short(m.contract)]);
+      return;
+    }
+    if (/TextProposal/.test(name)) { out.push(['Action', 'None on chain: a signal vote']); return; }
+    if (name) out.push(['Action', name.replace(/^Msg/, '').replace(/Proposal$/, '').replace(/([a-z])([A-Z])/g, '$1 $2')]);
+  };
+  const msgs = p.messages || [];
+  if (!msgs.length) out.push(['Action', 'None on chain: a signal vote']);
+  msgs.slice(0, 4).forEach(m => one(m, 0));
+  return out;
+}
+
+function drawDesk(){
+  const body = $('#gov-body');
+  const d = DATA;
+  const all = d.live.concat(d.recent);
+  if (!FILTER) FILTER = d.live.length ? 'voting' : 'all';
+  const st = p => (STATUS[p.status] || '').toLowerCase();
+  const count = f => all.filter(p => f === 'all' || st(p) === f).length;
+  const F = [['voting', 'Voting'], ['deposit', 'Deposit'], ['passed', 'Passed'], ['rejected', 'Rejected'], ['all', 'All']]
+    .filter(([k]) => k === 'all' || k === 'voting' || count(k));
+  const list = all.filter(p => FILTER === 'all' || st(p) === FILTER);
+  if (!SEL || !all.some(p => String(p.id) === SEL)) SEL = String((list[0] || all[0] || {}).id || '');
+
+  let h = '<div class="gvd"><div class="gvd-stats" id="gvd-stats"></div><div class="gvd-cols"><aside class="gvd-side">' +
+    '<div class="gvd-filter" role="tablist" aria-label="Filter proposals">' + F.map(([k, l]) =>
+      '<button type="button" role="tab" data-f="' + k + '" aria-selected="' + (FILTER === k) + '" class="' + (FILTER === k ? 'on' : '') + '">' +
+      l + (k === 'all' ? '' : ' \u00b7 ' + count(k)) + '</button>').join('') + '</div>' +
+    '<div class="gvd-items">' + (list.length ? list.map(p => {
+      const live = d.live.indexOf(p) >= 0;
+      const s = live && p._tally ? standing(p._tally, rulesFor(p, d.rules), d.bonded) : finalSplit(p);
+      const mine = p._mine && p._mine.options && p._mine.options[0] ? p._mine.options[0].option : null;
+      return '<button type="button" class="gvd-item' + (String(p.id) === SEL ? ' on' : '') + '" data-id="' + esc(p.id) + '">' +
+        '<span class="gvd-meta"><span class="gv-id">#' + esc(p.id) + '</span><span class="gv-kind">' + esc(kindOf(p)) + '</span>' +
+        (live ? '<span class="gv-time">' + CLOCK + '<span>' + left(p.voting_end_time) + '</span></span>'
+              : '<span class="gv-pill ' + esc(st(p)) + '">' + esc(STATUS[p.status] || p.status) + '</span>') + '</span>' +
+        '<span class="gv-title">' + esc(titleOf(p)) + '</span>' + (s ? bar(s) : '') +
+        '<span class="gvd-foot"><span>' + (live && s ? 'Turnout ' + s.turnout.toFixed(1) + '% of ' + (rulesFor(p, d.rules).quorum * 100).toFixed(0) + '%'
+          : st(p) === 'deposit' ? 'Waiting for its deposit' : esc(when(p.voting_end_time).split(',')[0] || '')) + '</span>' +
+        (live ? (mine ? '<b class="gvd-you ' + (VOTE_C[mine] || '') + '">You voted ' + esc(OPT[mine] || mine) + '</b>'
+          : p._mine === UNKNOWN ? '' : '<b class="gvd-you todo">Not voted</b>') : '') + '</span></button>';
+    }).join('') : '<div class="empty">Nothing here.</div>') + '</div>' +
+    '<p class="tiny gv-note">Proposals come straight from the chain. A vote can be changed until voting ends; the last one counts.</p>' +
+    '</aside><div class="gvd-pane" id="gov-pane"></div></div></div>';
+
+  // a vote being chosen or written is never redrawn under the person
+  const busy = FLOW && FLOW.desk && FLOW.id === SEL && (FLOW.opt || ($('#gov-memo') && $('#gov-memo').value.trim()));
+  const pane = busy ? $('#gov-pane') : null;
+  body.innerHTML = h;
+  if (pane) $('#gov-pane').replaceWith(pane);
+  paintStats();
+  body.querySelectorAll('.gvd-filter button').forEach(b => b.addEventListener('click', () => { FILTER = b.getAttribute('data-f'); SEL = ''; draw(); }));
+  body.querySelectorAll('.gvd-item').forEach(b => b.addEventListener('click', () => {
+    SEL = b.getAttribute('data-id');
+    body.querySelectorAll('.gvd-item').forEach(x => x.classList.toggle('on', x === b));
+    open(SEL);
+  }));
+  if (!pane && SEL) open(SEL);
+}
+
+function paintStats(){
+  const box = $('#gvd-stats');
+  if (!box || !DATA) return;
+  const d = DATA, a = addrOf();
+  const todo = d.live.filter(p => p._mine === null).length;
+  const mineVals = d.dels.slice().sort((x, y) => (y.amount > x.amount ? 1 : y.amount < x.amount ? -1 : 0));
+  const tile = (k, v, s, extra) => '<div class="gvd-tile"><span>' + k + '</span><b>' + v + '</b><small>' + s + '</small>' + (extra || '') + '</div>';
+  box.innerHTML =
+    tile('Voting now', d.live.length + (d.live.length === 1 ? ' proposal' : ' proposals'),
+      !a ? 'Open a wallet to vote' : todo ? '<span class="gvd-todo">You have not voted on ' + todo + '</span>' : d.live.length ? 'You voted on all of them' : 'Nothing to vote on') +
+    tile('Your voting power', d.power > 0n ? L(d.power) + ' LUNC' : 'None staked',
+      d.power > 0n ? share(d.power, d.bonded) + '% of all staked' : 'A vote weighs the LUNC you stake',
+      '<button class="gvd-tile-go" id="gov-to-stake" type="button">' + (d.power > 0n ? 'Stake more' : 'Stake LUNC') + '</button>') +
+    tile('Your validators', '<span class="gvd-faces">' + mineVals.slice(0, 4).map(x => { const v = valByOp(x.op); return face(v ? v.name : x.op.slice(12), x.op, x.op, v && v.ident); }).join('') +
+      '</span>' + mineVals.length, mineVals.length ? 'They vote for you when you do not' : 'Stake to have one') +
+    tile('Rules', 'Quorum ' + (d.rules.quorum * 100).toFixed(0) + '%',
+      'Pass over ' + (d.rules.threshold * 100).toFixed(0) + '% Yes \u00b7 veto at ' + pct1(d.rules.veto * 100) + '%');
+  fillLogos(box);
+  const sb = $('#gov-to-stake');
+  if (sb) sb.addEventListener('click', e => { e.preventDefault(); go('stake'); });
+  if (!VALS && mineVals.length) validators().then(() => paintStats()).catch(() => {});
+}
+
+function draw(){ return isDesk() ? drawDesk() : drawPhone(); }
+
 let LOADING = false;
 async function loadGov(){
   if (LOADING) return;
   LOADING = true;
   const body = $('#gov-body');
-  if (!DATA) body.innerHTML = '<div class="empty"><span class="spin"></span>Reading proposals</div>';
-  try { await load(addrOf()); draw(); badgeFromData(); }
-  catch (e) { body.innerHTML = '<div class="empty">Could not read proposals: ' + esc(e.message || e) + '</div>'; }
+  const a = addrOf();
+  validators().catch(() => {});          // the voters list needs them; start now
+  // what this device kept from the last visit, drawn at once; the chain is
+  // read meanwhile and the screen redrawn when it answers
+  if (!DATA || DATA.addr !== a) {
+    const k = keptRaw(a);
+    if (k) { DATA = build(k); DATA.addr = a; draw(); }
+    else body.innerHTML = '<div class="empty"><span class="spin"></span>Reading proposals</div>';
+  }
+  try { await load(a); DATA.addr = a; draw(); badgeFromData(); }
+  catch (e) { if (!DATA) body.innerHTML = '<div class="empty">Could not read proposals: ' + esc(e.message || e) + '</div>'; }
   finally { LOADING = false; }
 }
 
@@ -369,7 +637,8 @@ function open(id){
   const p = DATA.live.find(x => String(x.id) === String(id)) || DATA.recent.find(x => String(x.id) === String(id));
   if (!p) return;
   const live = DATA.live.indexOf(p) >= 0;
-  FLOW = { id: String(p.id), live: live };
+  const desk = isDesk();
+  FLOW = { id: String(p.id), live: live, desk: desk };
   $('#gov-sheet-title').textContent = 'Proposal #' + p.id;
   const rules = rulesFor(p, DATA.rules);
   const s = live && p._tally ? standing(p._tally, rules, DATA.bonded) : null;
@@ -377,30 +646,28 @@ function open(id){
   const mine = p._mine && p._mine.options && p._mine.options[0] ? p._mine.options[0].option : null;
   const st = (STATUS[p.status] || '').toLowerCase();
   const text = textOf(p);
-  let h = '<div class="gv-sh-meta"><span class="gv-pill ' + esc(st) + '">' + esc(STATUS[p.status] || p.status) + '</span>' +
+  const meta = '<div class="gv-sh-meta"><span class="gv-pill ' + esc(st) + '">' + esc(STATUS[p.status] || p.status) + '</span>' +
     '<span class="gv-kind">' + esc(kindOf(p)) + '</span>' +
     (p.expedited ? '<span class="gv-kind">expedited</span>' : '') +
-    (live ? '<span class="gv-time">' + CLOCK + '<span>' + left(p.voting_end_time) + '</span></span>' : '') + '</div>' +
-    '<h3 class="gov-title">' + esc(titleOf(p)) + '</h3>';
+    (live ? '<span class="gv-time">' + CLOCK + '<span>' + left(p.voting_end_time) + '</span></span>' : '') + '</div>';
   const split = s || f;
-  if (split) {
-    h += '<div class="gv-tally">' + bar(split) +
+  const tally = !split ? '' : '<div class="gv-tally">' + bar(split) +
       '<div class="gv-legend">' +
         [['y', 'Yes', split.yes], ['n', 'No', split.no], ['v', 'No with veto', split.veto], ['a', 'Abstain', split.abstain]]
           .map(x => '<span class="' + x[0] + '"><i></i><em>' + x[1] + '</em><b>' + x[2].toFixed(1) + '%</b></span>').join('') +
       '</div>' +
-      (s ? turnout(s, rules) + '<div class="gv-verdict ' + (s.verdict.ok ? 'ok' : 'bad') + '">' + esc(s.verdict.text) + '</div>' : '') +
+      (s ? turnout(s, rules) + (desk ? '<div class="gvd-if">If voting ended now</div>' : '') +
+        '<div class="gv-verdict ' + (s.verdict.ok ? 'ok' : 'bad') + '">' + esc(s.verdict.text) + '</div>' : '') +
       '</div>';
-  }
-  if (live) h += '<div class="gv-ends">Ends ' + new Date(p.voting_end_time).toLocaleString(document.documentElement.lang || 'en-GB',
-    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>';
+  let txt = '';
   if (text) {
-    const long = text.length > 700;
-    h += '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + linkify(text, p.status !== 'PROPOSAL_STATUS_DEPOSIT_PERIOD') + '</div>' +
+    const long = text.length > (desk ? 1200 : 700);
+    txt = '<div class="gov-text' + (long ? ' clip' : '') + '" id="gov-text">' + linkify(text, p.status !== 'PROPOSAL_STATUS_DEPOSIT_PERIOD') + '</div>' +
       (long ? '<button class="dust" id="gov-more" type="button">Show all</button>' : '');
   }
+  let vote = '';
   if (live) {
-    h += '<div class="gv-vote">' +
+    vote = '<div class="gv-vote">' +
       '<div class="gv-vote-h"><b>Your vote</b><span>' + (mine ? esc(OPT[mine] || mine) + ' \u00b7 you can change it'
         : p._mine === UNKNOWN ? 'Could not read your vote' : 'Not voted yet') + '</span></div>' +
       '<div class="gov-opts">' + ['yes', 'no', 'veto', 'abstain'].map(o =>
@@ -410,11 +677,42 @@ function open(id){
         '<div class="gv-compose-f"><span>Public, saved on chain with the vote</span><b id="gov-memo-n">0 / ' + MEMO_MAX + '</b></div></div>' +
       '<div id="gov-review"><p class="gv-pick">Pick an option to see the fee and vote.</p></div></div>';
   }
-  h += '<div id="gov-voters"><div class="empty"><span class="spin"></span>Reading votes and comments</div></div>';
-  const bodyEl = $('#gov-sheet-body');
-  bodyEl.innerHTML = h;
-  sheet(true);
-  showVoters(String(p.id), live);
+  const votersBox = '<div id="gov-voters"><div class="empty"><span class="spin"></span>Reading votes and comments</div></div>';
+  let host;
+  if (desk) {
+    host = $('#gov-pane');
+    if (!host) return;
+    // the phone's sheet holds nothing while the wide layout is in use (one set of ids)
+    $('#gov-sheet-body').innerHTML = ''; sheet(false);
+    const dates = [['Submitted', p.submit_time],
+      st === 'deposit' ? ['Deposit ends', p.deposit_end_time] : ['Voting started', p.voting_start_time],
+      [live || st === 'deposit' ? 'Voting ends' : 'Voting ended', p.voting_end_time]].filter(x => when(x[1]));
+    const ch = changesOf(p);
+    const at = ch.find(x => x[0] === 'At block');
+    host.innerHTML = '<section class="gvd-head ' + esc(st) + '">' + meta + '<h2>' + esc(titleOf(p)) + '</h2>' +
+        '<div class="gvd-dates">' + dates.concat(at ? [['Upgrade at block', at[1]]] : []).map(x =>
+          '<div><span>' + x[0] + '</span><b>' + esc(x[0] === 'Upgrade at block' ? x[1] : when(x[1])) + '</b></div>').join('') + '</div>' +
+        (!live && addrOf() && st !== 'deposit' ? '<div class="gvd-me" id="gov-me-ended"></div>' : '') + '</section>' +
+      '<div class="gvd-row">' +
+        (tally ? '<section class="gvd-card gvd-t"><h3>' + (live ? 'Tally' : 'Final tally') + '</h3>' + tally + '</section>' : '') +
+        (live ? '<section class="gvd-card gvd-v">' + vote + '<div id="gov-myvals"></div></section>'
+          : DATA.dels.length && st !== 'deposit' ? '<section class="gvd-card gvd-v"><div id="gov-myvals"></div></section>' : '') +
+      '</div>' +
+      (ch.length ? '<section class="gvd-card"><h3>What it changes</h3><div class="gvd-ch">' +
+        ch.map(x => '<div><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>').join('') +
+        '</div><p class="tiny gvd-src">Read from the proposal\u2019s messages.</p></section>' : '') +
+      (txt ? '<section class="gvd-card"><h3>Proposal text</h3>' + txt + '</section>' : '') +
+      (st !== 'deposit' ? '<section class="gvd-card" id="gov-sum"><div class="empty"><span class="spin"></span>Reading votes</div></section>' +
+        '<section class="gvd-card gvd-tcard"><div id="gov-voters"><div class="empty"><span class="spin"></span>Reading votes and comments</div></div></section>' : '');
+  } else {
+    host = $('#gov-sheet-body');
+    host.innerHTML = meta + '<h3 class="gov-title">' + esc(titleOf(p)) + '</h3>' + tally +
+      (live ? '<div class="gv-ends">Ends ' + new Date(p.voting_end_time).toLocaleString(document.documentElement.lang || 'en-GB',
+        { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>' : '') +
+      txt + vote + votersBox;
+    sheet(true);
+  }
+  if (!desk || st !== 'deposit') showVoters(String(p.id), live);
   const more = $('#gov-more');
   if (more) more.addEventListener('click', () => { $('#gov-text').classList.remove('clip'); more.remove(); });
   const gt = $('#gov-text');
@@ -446,8 +744,8 @@ function open(id){
       }
     }
   });
-  document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(b => b.addEventListener('click', () => {
-    document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(x => x.classList.toggle('on', x === b));
+  host.querySelectorAll('.gov-opt').forEach(b => b.addEventListener('click', () => {
+    host.querySelectorAll('.gov-opt').forEach(x => x.classList.toggle('on', x === b));
     review(b.getAttribute('data-opt'));
   }));
 }
@@ -462,65 +760,295 @@ const OPT_ICON = {
   abstain: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>'
 };
 const shortAcc = a => a.slice(0, 12) + '\u2026' + a.slice(-5);
-// Validator logos: Cosmostation's public set, by operator address; a letter
-// on the validator's own colour when there is none.
+// Validator logos. A validator sets a Keybase key (identity) in its
+// description and Keybase serves its picture: the lookup every explorer does,
+// kept for a week under the same keys as Stake (vlogo2:<key>), "no picture"
+// for a day. Until it is known, Cosmostation's public set by operator address;
+// with neither, a letter on the validator's own colour.
 const LOGO = op => 'https://raw.githubusercontent.com/cosmostation/chainlist/main/chain/terra-classic/moniker/' + op + '.png';
 const hue = s => { s = String(s || ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; };
-const face = (name, key, op) => '<span class="gv-ava" style="--h:' + hue(key) + '"><em>' + esc((name || '?').trim().slice(0, 1).toUpperCase()) + '</em>' +
-  (op ? '<img src="' + esc(LOGO(op)) + '" alt="" loading="lazy">' : '') + '</span>';
-
-async function showVoters(id, live){
-  const box = $('#gov-voters');
-  let v, vals;
-  try { [v, vals] = await Promise.all([voters(id), validators()]); }
-  catch (e) { if (box) box.innerHTML = '<div class="tiny">Could not read the votes: ' + esc(e.message || e) + '</div>'; return; }
-  if (!FLOW || FLOW.id !== id || !$('#gov-voters')) return;
-  const total = vals.reduce((a, x) => a + x.tokens, 0n) || 1n;
-  const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">Not voted</b>';
-  const byAcc = {};
-  vals.forEach(x => { byAcc[x.acc] = x; });
-  // Who chose what: the chain's own record while voting is open; once it
-  // ends the chain clears that record, and each voter's last vote transaction
-  // is what remains.
-  const votes = Object.assign({}, v.txv || {}, live ? v.votes : {});
-  // One list: every validator, and every other address that left a comment,
-  // ranked by voting power (a validator weighs what is bonded to it, anyone
-  // else what they have staked). Each row carries its vote and its comment.
-  const weight = a => byAcc[a] ? byAcc[a].tokens : (v.stake[a] || 0n);
-  const accs = vals.filter(x => x.acc).map(x => x.acc).concat(Object.keys(v.memo).filter(a => !byAcc[a]));
-  accs.sort((a, b) => (weight(b) > weight(a) ? 1 : weight(b) < weight(a) ? -1 : 0));
-  const voted = accs.filter(a => votes[a]).length;
-  const said = accs.filter(a => v.memo[a]).length;
-  let h = '<div class="head" style="margin:20px 2px 8px"><h2>Voters</h2><span>' + voted + ' of ' + accs.length + ' voted</span></div>' +
-    '<div class="gv-filter" id="gov-filter"><button class="on" data-f="all" type="button">All</button>' +
-    '<button data-f="yes" type="button">Voted</button><button data-f="no" type="button">Not voted</button>' +
-    (said ? '<button data-f="memo" type="button">With comments</button>' : '') + '</div>' +
-    '<div class="gov-voters gv-comments" id="gov-vals">' + accs.map((a, i) => {
-      const val = byAcc[a], w = weight(a), o = votes[a], c = v.memo[a];
-      return '<div class="gov-voter' + (i >= 20 ? ' more' : '') + '" data-v="' + (o ? 'yes' : 'no') + '"' + (c ? ' data-m="1"' : '') + '>' +
-        '<div class="gov-voter-top"><span class="gov-rank">' + (i + 1) + '</span>' + face(val ? val.name : a.slice(6), a, val && val.op) +
-        '<span class="gov-who">' + esc(val ? val.name : shortAcc(a)) + '<small>' +
-        (w > 0n ? 'VP ' + share(w, total) + '% \u00b7 ' + L(w) + ' LUNC' : 'no stake') + '</small></span>' + tag(o) + '</div>' +
-        (c ? '<div class="gov-memo">' + esc(c) + '</div>' : '') + '</div>';
-    }).join('') + '</div>' +
-    (accs.length > 20 ? '<button class="dust" id="gov-vals-all" type="button">Show all ' + accs.length + '</button>' : '') +
-    (live ? '' : '<p class="tiny gv-note">Read from the vote transactions: the chain clears its own record when voting ends.</p>');
-  box.innerHTML = h;
-  // a missing logo falls back to the letter under it
-  box.querySelectorAll('.gv-ava img').forEach(img => img.addEventListener('error', () => img.remove(), { once: true }));
-  const all = $('#gov-vals-all');
-  if (all) all.addEventListener('click', () => { $('#gov-vals').classList.add('all'); all.remove(); });
-  const fl = $('#gov-filter');
-  if (fl) fl.addEventListener('click', e => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    fl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-    const w = $('#gov-vals');
-    w.setAttribute('data-f', b.getAttribute('data-f'));
-    if (b.getAttribute('data-f') !== 'all') { w.classList.add('all'); if (all) all.remove(); }
-  });
+function kbCached(id){
+  if (!id) return null;
+  try { const c = JSON.parse(localStorage.getItem('vlogo2:' + id) || 'null'); if (c && Date.now() - c.t < (c.u ? 7 * 86400000 : 86400000)) return c; } catch (e) {}
+  return null;
+}
+const face = (name, key, op, ident) => {
+  const c = kbCached(ident);
+  const src = c && c.u && /^https:\/\//.test(c.u) ? c.u : op ? LOGO(op) : '';
+  return '<span class="gv-ava" style="--h:' + hue(key) + '"' + (ident && !c ? ' data-ident="' + esc(ident) + '"' : '') +
+    '><em>' + esc((name || '?').trim().slice(0, 1).toUpperCase()) + '</em>' +
+    (src ? '<img src="' + esc(src) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span>';
+};
+let KB_Q = Promise.resolve(), KB_PAUSE = 0;
+function fillLogos(root){
+  if (!root) return;
+  // a picture that does not load leaves the letter under it
+  root.querySelectorAll('.gv-ava img').forEach(img => { if (!img._w) { img._w = 1; img.addEventListener('error', () => img.remove(), { once: true }); } });
+  const ids = [...new Set([...root.querySelectorAll('.gv-ava[data-ident]')].map(e => e.getAttribute('data-ident')))];
+  if (!ids.length) return;
+  // four at a time, behind any lookup already running; after a refusal or an
+  // error Keybase is left alone for 5 minutes
+  KB_Q = KB_Q.then(async () => {
+    for (let i = 0; i < ids.length; i += 4) {
+      await Promise.all(ids.slice(i, i + 4).map(async id => {
+        let c = kbCached(id);
+        if (!c) {
+          if (Date.now() < KB_PAUSE) return;
+          try {
+            const r = await fetch('https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=' + encodeURIComponent(id) + '&fields=pictures');
+            if (!r.ok) { KB_PAUSE = Date.now() + 300000; return; }
+            const j = await r.json();
+            if (!j || !j.status || j.status.code !== 0 || !Array.isArray(j.them)) { KB_PAUSE = Date.now() + 300000; return; }
+            let u = (j.them[0] && j.them[0].pictures && j.them[0].pictures.primary && j.them[0].pictures.primary.url) || '';
+            if (!/^https:\/\//.test(u)) u = '';
+            c = { u: u, t: Date.now() };
+            try { localStorage.setItem('vlogo2:' + id, JSON.stringify(c)); } catch (e) {}
+          } catch (e) { KB_PAUSE = Date.now() + 300000; return; }
+        }
+        const sel = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(id) : id.replace(/["\\]/g, '\\$&');
+        document.querySelectorAll('.gv-ava[data-ident="' + sel + '"]').forEach(el => {
+          el.removeAttribute('data-ident');
+          if (!c.u) return;
+          const old = el.querySelector('img');
+          if (old) old.remove();
+          const img = document.createElement('img');
+          img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.src = c.u; img._w = 1;
+          img.addEventListener('error', () => img.remove(), { once: true });
+          el.appendChild(img);
+        });
+      }));
+    }
+  }).catch(() => {});
 }
 
+async function showVoters(id, live){
+  let vals;
+  try { vals = await validators(); }
+  catch (e) { const box = $('#gov-voters'); if (box) box.innerHTML = '<div class="tiny">Could not read the validators: ' + esc(e.message || e) + '</div>'; return; }
+  // the wide table's choices, kept while this proposal stays open
+  const T = { tab: 'all', opt: 'all', memo: false, quiet: false, q: '', limit: 40, open: {} };
+  let filt = 'all', opened = false, last = null;
+  const paint = v => {
+    last = v;
+    if (!FLOW || FLOW.id !== id || !$('#gov-voters')) return;
+    if (FLOW.desk) return paintTable(id, live, v, vals, T, () => paint(last));
+    const box = $('#gov-voters');
+    const total = vals.reduce((a, x) => a + x.tokens, 0n) || 1n;
+    const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">Not voted</b>';
+    const byAcc = {};
+    vals.forEach(x => { byAcc[x.acc] = x; });
+    // Who chose what: the chain's own record while voting is open; once it
+    // ends the chain clears that record, and each voter's last vote transaction
+    // is what remains.
+    const votes = Object.assign({}, v.txv || {}, live ? v.votes : {});
+    if (!live && v.step < 2) { box.innerHTML = '<div class="empty"><span class="spin"></span>Reading the vote transactions</div>'; return; }
+    // One list: every validator, and every other address that left a comment,
+    // ranked by voting power (a validator weighs what is bonded to it, anyone
+    // else what they have staked). Each row carries its vote and its comment.
+    const weight = a => byAcc[a] ? byAcc[a].tokens : (v.stake[a] || 0n);
+    const accs = vals.filter(x => x.acc).map(x => x.acc).concat(Object.keys(v.memo).filter(a => !byAcc[a]));
+    accs.sort((a, b) => (weight(b) > weight(a) ? 1 : weight(b) < weight(a) ? -1 : 0));
+    const voted = accs.filter(a => votes[a]).length;
+    const said = accs.filter(a => v.memo[a]).length;
+    box.innerHTML = '<div class="head" style="margin:20px 2px 8px"><h2>Voters</h2><span>' + voted + ' of ' + accs.length + ' voted' +
+      (v.step < 2 ? ' \u00b7 reading comments\u2026' : '') + '</span></div>' +
+      '<div class="gv-filter" id="gov-filter">' + [['all', 'All'], ['yes', 'Voted'], ['no', 'Not voted']].concat(said ? [['memo', 'With comments']] : [])
+        .map(([k, l]) => '<button class="' + (filt === k ? 'on' : '') + '" data-f="' + k + '" type="button">' + l + '</button>').join('') + '</div>' +
+      '<div class="gov-voters gv-comments' + (opened ? ' all' : '') + '" id="gov-vals" data-f="' + filt + '">' + accs.map((a, i) => {
+        const val = byAcc[a], w = weight(a), o = votes[a], c = v.memo[a];
+        return '<div class="gov-voter' + (i >= 20 ? ' more' : '') + '" data-v="' + (o ? 'yes' : 'no') + '"' + (c ? ' data-m="1"' : '') + '>' +
+          '<div class="gov-voter-top"><span class="gov-rank">' + (i + 1) + '</span>' + face(val ? val.name : a.slice(6), a, val && val.op, val && val.ident) +
+          '<span class="gov-who">' + esc(val ? val.name : shortAcc(a)) + '<small>' +
+          (w > 0n ? 'VP ' + share(w, total) + '% \u00b7 ' + L(w) + ' LUNC' : 'no stake') + '</small></span>' + tag(o) + '</div>' +
+          (c ? '<div class="gov-memo">' + esc(c) + '</div>' : '') + '</div>';
+      }).join('') + '</div>' +
+      (accs.length > 20 && !opened ? '<button class="dust" id="gov-vals-all" type="button">Show all ' + accs.length + '</button>' : '') +
+      (live ? '' : '<p class="tiny gv-note">Read from the vote transactions: the chain clears its own record when voting ends.</p>');
+    fillLogos(box);
+    const all = $('#gov-vals-all');
+    if (all) all.addEventListener('click', () => { opened = true; $('#gov-vals').classList.add('all'); all.remove(); });
+    const fl = $('#gov-filter');
+    if (fl) fl.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      filt = b.getAttribute('data-f');
+      fl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      const w = $('#gov-vals');
+      w.setAttribute('data-f', filt);
+      if (filt !== 'all') { opened = true; w.classList.add('all'); if (all) all.remove(); }
+    });
+  };
+  try { await voters(id, paint); }
+  catch (e) {
+    const box = $('#gov-voters');
+    if (box && FLOW && FLOW.id === id && !VOTERS[id]) box.innerHTML = '<div class="tiny">Could not read the votes: ' + esc(e.message || e) + '</div>';
+  }
+}
+
+/* ---------------- who voted, on a wide screen ----------------
+   Two summaries (validators and everyone else), then one table of the votes:
+   voter, stake, share of all staked LUNC, the vote and when (linked to its
+   transaction); a comment
+   opens under its row. Validators that did not vote are hidden unless asked. */
+const big = raw => {                                   // uluna -> 12.3B / 450M / 9.1K LUNC
+  const n = Number(raw) / 1e6;
+  if (!(n > 0)) return '0';
+  return n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(n >= 10 ? 0 : 2);
+};
+const ago = t => {
+  const ms = Date.now() - new Date(t);
+  if (!(ms >= 0)) return '';
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  return d ? d + (d === 1 ? ' day ago' : ' days ago') : h ? h + (h === 1 ? ' hour ago' : ' hours ago') : m ? m + ' min ago' : 'just now';
+};
+const FINDER_TX = 'https://finder.terraclassic.community/columbus-5/tx/';
+const OPT_SHORT = { VOTE_OPTION_YES: 'Yes', VOTE_OPTION_NO: 'No', VOTE_OPTION_NO_WITH_VETO: 'No with veto', VOTE_OPTION_ABSTAIN: 'Abstain' };
+const C_OF = { y: '#3ecf8e', n: '#f06a6a', v: '#c77dff', a: '#8a93a6', none: 'rgba(107,130,168,.28)' };
+const MEMO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H9l-4 4z"/></svg>';
+
+function donut(title, center, sub, parts, rows){
+  // parts: [{k, w}] by weight; drawn as a ring with conic-gradient
+  const sum = parts.reduce((a, p) => a + p.w, 0) || 1;
+  let at = 0;
+  const stops = parts.filter(p => p.w > 0).map(p => { const a = at; at += p.w / sum * 100; return C_OF[p.k] + ' ' + a.toFixed(2) + '% ' + at.toFixed(2) + '%'; });
+  return '<div class="gvd-sum"><h3>' + title + '</h3><div class="gvd-sum-b">' +
+    '<div class="gvd-ring" style="background:conic-gradient(' + (stops.length ? stops.join(',') : C_OF.none + ' 0 100%') + ')"><span><b>' + center + '</b><small>' + sub + '</small></span></div>' +
+    '<div class="gvd-sum-l">' + rows.map(r => '<div class="' + r.k + '"><span><i></i>' + r.label + '<em>' + r.n + '</em></span><small>' + r.stake + '</small><b>' + r.pct + '</b></div>').join('') + '</div></div></div>';
+}
+
+function paintTable(id, live, v, vals, T, again){
+  const box = $('#gov-voters'), sum = $('#gov-sum');
+  if (!box) return;
+  const votes = Object.assign({}, v.txv || {}, live ? v.votes : {});
+  const waiting = !live && v.step < 2;
+  const byAcc = {};
+  vals.forEach(x => { byAcc[x.acc] = x; });
+  const K = o => OPT_CLASS[o] || 'none';
+  const bonded = DATA && DATA.bonded > 0n ? DATA.bonded : (vals.reduce((a, x) => a + x.tokens, 0n) || 1n);
+  const pctOf = (x, t) => t > 0n ? Number(x * 10000n / t) / 100 : 0;
+
+  const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">Not voted</b>';
+  // ---- this wallet's validators and their votes (they vote for its stake when it does not)
+  const mv = $('#gov-myvals');
+  if (mv && DATA) {
+    const mine = DATA.dels.slice().sort((x, y) => (y.amount > x.amount ? 1 : y.amount < x.amount ? -1 : 0)).slice(0, 6);
+    mv.innerHTML = !mine.length ? '' :
+      '<div class="gvd-mv-h">' + (live ? 'If you do not vote, your validators vote for you' : 'Your validators') + '</div>' + mine.map(x => {
+        const val = vals.find(y => y.op === x.op), acc = val ? val.acc : accOf(x.op);
+        return '<div class="gvd-mv">' + face(val ? val.name : x.op.slice(12), acc, x.op, val && val.ident) +
+          '<span><b>' + esc(val ? val.name : shortAcc(x.op)) + '</b><small>' + L(x.amount) + ' LUNC of yours</small></span>' +
+          (waiting ? '<b class="gov-v none">\u2026</b>' : tag(votes[acc])) + '</div>';
+      }).join('');
+    fillLogos(mv);
+  }
+  // ---- an ended proposal: this wallet's own vote, read from its vote transaction
+  const me = $('#gov-me-ended'), my = addrOf();
+  if (me && my) me.innerHTML = waiting ? '<span class="tiny">Reading your vote\u2026</span>' :
+    votes[my] ? 'You voted ' + tag(votes[my]) + (v.tx[my] && v.tx[my].time ? ' <span class="gvd-dim">' + esc(ago(v.tx[my].time)) + '</span>' : '') : 'You did not vote on this one.';
+
+  // ---- the two summaries
+  if (sum) {
+    if (waiting) sum.innerHTML = '<div class="empty"><span class="spin"></span>Reading the vote transactions</div>';
+    else {
+      const opts = ['VOTE_OPTION_YES', 'VOTE_OPTION_NO', 'VOTE_OPTION_NO_WITH_VETO', 'VOTE_OPTION_ABSTAIN'];
+      const vv = vals.filter(x => x.acc);
+      const vTot = vv.reduce((a, x) => a + x.tokens, 0n) || 1n;
+      const vBy = o => vv.filter(x => votes[x.acc] === o);
+      const vStake = o => vBy(o).reduce((a, x) => a + x.tokens, 0n);
+      const vVoted = vv.filter(x => votes[x.acc]);
+      const vNone = vTot - vVoted.reduce((a, x) => a + x.tokens, 0n);
+      const dl = Object.keys(votes).filter(a => !byAcc[a]);
+      const dStake = a => v.stake[a] || 0n;
+      const dKnown = dl.filter(a => a in v.stake).length;
+      const dTot = dl.reduce((a, x) => a + dStake(x), 0n);
+      const dBy = o => dl.filter(a => votes[a] === o);
+      const dSt = o => dBy(o).reduce((a, x) => a + dStake(x), 0n);
+      const useStake = dTot > 0n;
+      sum.innerHTML = '<div class="gvd-sums">' +
+        donut('Validators', vVoted.length + ' / ' + vv.length, 'voted',
+          opts.map(o => ({ k: K(o), w: Number(vStake(o) / 1000000n) })).concat([{ k: 'none', w: Number(vNone / 1000000n) }]),
+          opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: vBy(o).length, stake: big(vStake(o)), pct: pctOf(vStake(o), vTot).toFixed(2) + '%' }))) +
+        donut('Delegators', String(dl.length), dKnown < dl.length ? 'voted \u00b7 stake ' + Math.round(dKnown / Math.max(1, dl.length) * 100) + '%' : 'voted',
+          opts.map(o => ({ k: K(o), w: useStake ? Number(dSt(o) / 1000000n) : dBy(o).length })),
+          opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: dBy(o).length, stake: useStake ? big(dSt(o)) : '\u2014',
+            pct: useStake ? pctOf(dSt(o), dTot).toFixed(2) + '%' : '' }))) +
+        '</div><p class="tiny gvd-src">Validators weigh what is bonded to them; a delegator who votes overrides their validator for their own stake.' +
+        (live ? '' : ' Read from the vote transactions: the chain clears its own record when voting ends.') + '</p>';
+    }
+  }
+  if (waiting) { box.innerHTML = ''; return; }
+
+  // ---- the rows
+  const rows = [];
+  vals.filter(x => x.acc).forEach((x, i) => rows.push({ a: x.acc, val: x, rank: i + 1, stake: x.tokens, o: votes[x.acc] }));
+  Object.keys(votes).filter(a => !byAcc[a]).forEach(a => rows.push({ a: a, val: null, rank: 0, stake: v.stake[a], o: votes[a] }));
+  const nVal = rows.filter(r => r.val && r.o).length, nDel = rows.filter(r => !r.val).length;
+  const q = T.q.trim().toLowerCase();
+  let list = rows.filter(r =>
+    (T.tab === 'all' || (T.tab === 'val') === !!r.val) &&
+    (r.o || (r.val && T.quiet)) &&
+    (T.opt === 'all' || K(r.o) === T.opt) &&
+    (!T.memo || v.memo[r.a]) &&
+    (!q || r.a.toLowerCase().includes(q) || (r.val && (r.val.name.toLowerCase().includes(q) || r.val.op.toLowerCase().includes(q)))));
+  const w = r => r.stake === undefined ? -1n : r.stake;
+  list.sort((x, y) => (w(y) > w(x) ? 1 : w(y) < w(x) ? -1 : 0));
+  const shown = list.slice(0, T.limit);
+  const said = rows.filter(r => v.memo[r.a]).length;
+
+  const optSel = [['all', 'All votes'], ['y', 'Yes'], ['n', 'No'], ['v', 'No with veto'], ['a', 'Abstain']];
+  box.innerHTML =
+    '<div class="gvd-tb-head"><h3>Votes</h3><span>' + (v.step < 2 ? 'reading comments\u2026' : v.step < 3 ? 'reading delegators\u2019 stake\u2026' : '') + '</span></div>' +
+    '<div class="gvd-tools">' +
+      '<div class="gvd-seg" role="tablist" aria-label="Voters">' +
+        [['all', 'All', nVal + nDel], ['val', 'Validators', nVal], ['del', 'Delegators', nDel]].map(([k, l, n]) =>
+          '<button type="button" role="tab" data-tab="' + k + '" aria-selected="' + (T.tab === k) + '" class="' + (T.tab === k ? 'on' : '') + '">' + l + '<em>' + n + '</em></button>').join('') + '</div>' +
+      '<label class="gvd-sel"><span class="gvd-sr">Vote type</span><select id="gvd-opt">' +
+        optSel.map(([k, l]) => '<option value="' + k + '"' + (T.opt === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
+      '<label class="gvd-sw"><input type="checkbox" id="gvd-memo"' + (T.memo ? ' checked' : '') + '><i></i>Comments only<em>' + said + '</em></label>' +
+      '<label class="gvd-sw"><input type="checkbox" id="gvd-quiet"' + (T.quiet ? ' checked' : '') + '><i></i>Validators that did not vote</label>' +
+      '<label class="gvd-find"><span class="gvd-sr">Find a voter</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
+        '<input type="search" id="gvd-q" placeholder="Name or address" value="' + esc(T.q) + '"></label>' +
+    '</div>' +
+    (shown.length ? '<div class="gvd-tbl-wrap"><table class="gvd-tbl"><thead><tr><th>Voter</th><th class="r">Voting stake</th><th>Voting power</th><th>Vote</th></tr></thead><tbody>' +
+      shown.map(r => {
+        const c = v.memo[r.a], tx = v.tx[r.a], k = K(r.o), p = r.stake ? pctOf(r.stake, bonded) : 0, isOpen = !!T.open[r.a];
+        return '<tr class="gvd-tr' + (c ? ' has' : '') + (isOpen ? ' open' : '') + '" data-a="' + esc(r.a) + '">' +
+          '<td><span class="gvd-voter">' + (r.val ? '<span class="gvd-rank">' + r.rank + '</span>' + face(r.val.name, r.a, r.val.op, r.val.ident)
+            : '<span class="gvd-rank d">D</span><span class="gv-ava gvd-del" style="--h:' + hue(r.a) + '"><em>' + esc(r.a.slice(6, 7).toUpperCase()) + '</em></span>') +
+            '<span class="gvd-vn"><b>' + esc(r.val ? r.val.name : shortAcc(r.a)) + '</b><small>' + (r.val ? 'Validator' : 'Delegator') + '</small></span></span></td>' +
+          '<td class="r">' + (r.stake === undefined ? '<span class="gvd-dim">\u2026</span>' : r.stake > 0n ? big(r.stake) : '<span class="gvd-dim">\u2014</span>') + '</td>' +
+          '<td><span class="gvd-vp"><i style="width:' + Math.min(100, p * 10).toFixed(1) + '%"></i><b>' + (p ? (p < 0.01 ? '<0.01' : p.toFixed(2)) + '%' : '\u2014') + '</b></span></td>' +
+          '<td><span class="gvd-vcell">' + (r.o ? '<span class="gvd-vote ' + k + '">' + esc(OPT_SHORT[r.o] || r.o) + '</span>' : '<span class="gvd-vote none">Did not vote</span>') +
+            (c ? '<button type="button" class="gvd-mbtn" aria-expanded="' + isOpen + '" aria-label="Show the comment">' + MEMO_ICON + '</button>' : '') + '</span>' +
+            // when, linked to the vote transaction on the explorer
+            '<small class="gvd-when">' + (tx ? '<a class="gvd-hash" href="' + FINDER_TX + esc(tx.hash) + '" target="_blank" rel="noopener noreferrer" title="Transaction ' + esc(tx.hash) + '">' +
+              esc(tx.time ? ago(tx.time) : tx.hash.slice(0, 8) + '\u2026') + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>'
+              : r.o && v.step < 2 ? '\u2026' : '') + '</small></td></tr>' +
+          (c ? '<tr class="gvd-memo-r"' + (isOpen ? '' : ' hidden') + '><td colspan="4"><div class="gvd-memo">' + esc(c) + '</div></td></tr>' : '');
+      }).join('') + '</tbody></table></div>' : '<div class="empty">No votes match.</div>') +
+    (list.length > shown.length ? '<button class="dust gvd-more" id="gvd-more" type="button">Show ' + Math.min(40, list.length - shown.length) + ' more' + (list.length - shown.length > 40 ? ' of ' + (list.length - shown.length) : '') + '</button>' : '');
+
+  fillLogos(box);
+  box.querySelectorAll('.gvd-seg button').forEach(b => b.addEventListener('click', () => { T.tab = b.getAttribute('data-tab'); T.limit = 40; again(); }));
+  const sel = $('#gvd-opt'); if (sel) sel.addEventListener('change', () => { T.opt = sel.value; T.limit = 40; again(); });
+  const m = $('#gvd-memo'); if (m) m.addEventListener('change', () => { T.memo = m.checked; again(); });
+  const qu = $('#gvd-quiet'); if (qu) qu.addEventListener('change', () => { T.quiet = qu.checked; again(); });
+  const fi = $('#gvd-q');
+  if (fi) fi.addEventListener('input', () => {
+    clearTimeout(fi._t);
+    fi._t = setTimeout(() => { T.q = fi.value; T.limit = 40; again(); const n = $('#gvd-q'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250);
+  });
+  const more = $('#gvd-more'); if (more) more.addEventListener('click', () => { T.limit += 40; again(); });
+  // a comment opens under its row: the row with one, or its button
+  box.querySelectorAll('.gvd-tr.has').forEach(tr => tr.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    const a = tr.getAttribute('data-a'), memo = tr.nextElementSibling;
+    T.open[a] = !T.open[a];
+    tr.classList.toggle('open', T.open[a]);
+    const b = tr.querySelector('.gvd-mbtn'); if (b) b.setAttribute('aria-expanded', String(T.open[a]));
+    if (memo && memo.classList.contains('gvd-memo-r')) memo.hidden = !T.open[a];
+  }));
+}
 
 async function review(opt){
   const f = FLOW;
@@ -576,7 +1104,7 @@ async function confirm(btn, f, opt){
   btn.disabled = true;
   btn.classList.remove('danger');
   btn.textContent = 'Signing and sending\u2026';
-  document.querySelectorAll('#gov-sheet-body .gov-opt').forEach(x => { x.disabled = true; });
+  document.querySelectorAll('#gov-sheet-body .gov-opt, #gov-pane .gov-opt').forEach(x => { x.disabled = true; });
   const out = $('#gov-out');
   try {
     const memo = ($('#gov-memo') && $('#gov-memo').value || '').trim();
@@ -589,7 +1117,7 @@ async function confirm(btn, f, opt){
       '</span><b>' + res.hash.slice(0, 10) + '\u2026</b></div>';
     btn.textContent = 'Done';
     btn.disabled = false;
-    btn.onclick = () => { FLOW = null; sheet(false); };
+    btn.onclick = () => { if (f.desk) { FLOW = null; open(f.id); } else { FLOW = null; sheet(false); } };
     delete VOTERS[f.id];
     loadGov();
   } catch (e) {
@@ -638,6 +1166,19 @@ setInterval(badge, 10 * 60000);
     if (on && !was) loadGov();
     was = on;
   }).observe(st, { attributes: true, attributeFilter: ['class'] });
+})();
+
+// the wide layout comes and goes with the window (desktop.js sets html.dk)
+(function () {
+  if (typeof MutationObserver === 'undefined') return;
+  let was = isDesk();
+  new MutationObserver(() => {
+    const now = isDesk();
+    if (now === was) return;
+    was = now;
+    FLOW = null; sheet(false);
+    if (DATA) draw();
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 })();
 
 export { loadGov, standing, kindOf, rewrap, APP_TAG, linkify };

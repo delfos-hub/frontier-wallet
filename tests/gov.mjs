@@ -104,5 +104,30 @@ check('an address with a user name before the host stays plain text',
   linkify('https://terra-classic.io@evil.com/claim').includes('<a'), false);
 check('an address with a user name and password stays plain text',
   linkify('https://user:pass@evil.com/x').includes('<a'), false);
+
+// what a proposal changes on chain, read from its messages (Vote on a wide screen)
+const changesOf = new Function('L', gsrc.slice(gsrc.indexOf('function changesOf('), gsrc.indexOf('function drawDesk(')) + '; return changesOf;')(x => String(Number(x) / 1e6));
+console.log('\nwhat a proposal changes');
+const row = (ch, k) => (ch.find(x => x[0] === k) || [])[1];
+const up = changesOf({ messages: [{ '@type': '/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade', plan: { name: 'v4.2.0', height: '27450000' } }] });
+check('an upgrade names its plan and block', row(up, 'Plan') + ' @ ' + row(up, 'At block'), 'v4.2.0 @ 27450000');
+const legacy = changesOf({ messages: [{ '@type': '/cosmos.gov.v1.MsgExecLegacyContent', content: { '@type': '/cosmos.upgrade.v1beta1.SoftwareUpgradeProposal', plan: { name: 'v3', height: '1' } } }] });
+check('a legacy proposal is read through its content', row(legacy, 'Plan'), 'v3');
+const spend = changesOf({ messages: [{ '@type': '/cosmos.distribution.v1beta1.MsgCommunityPoolSpend', recipient: 'terra1recipientaddressxxxxxxxxxxxxxxxxxxxxxx', amount: [{ denom: 'uluna', amount: '5000000' }] }] });
+check('a pool spend names the amount', row(spend, 'Amount'), '5 LUNC');
+check('a long address is shortened', row(spend, 'To').length < 30, true);
+const params = changesOf({ messages: [{ '@type': '/cosmwasm.wasm.v1.MsgUpdateParams', params: { code_upload_access: {}, instantiate_default_permission: 'x' } }] });
+check('a params change names the module and keys', row(params, 'Action') + ' / ' + row(params, 'Parameters'), 'Set the wasm parameters / code_upload_access, instantiate_default_permission');
+check('no messages is a signal vote', row(changesOf({ messages: [] }), 'Action'), 'None on chain: a signal vote');
+const bad = changesOf({ messages: [{ '@type': '/cosmwasm.wasm.v1.MsgExecuteContract', contract: 'terra1c', msg: '{not json' }] });
+check('a contract message that does not parse still reads', row(bad, 'Action'), 'Run a contract');
+
+// the voters table's numbers
+console.log('\nvoters table');
+const big = new Function(gsrc.slice(gsrc.indexOf('const big ='), gsrc.indexOf('const ago =')) + '; return big;')();
+check('billions', big(88520000000000000n), '88.52B');
+check('millions', big(792000000000000n), '792.00M');
+check('thousands', big(1500000000n), '1.5K');
+check('nothing', big(0n), '0');
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
