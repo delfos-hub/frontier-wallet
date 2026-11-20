@@ -46,6 +46,8 @@ const api = new Function('atob', 'short', 'coins', 'fmt', 'amt', 'knownAsset', '
   lift(src, 'function swapMoves('),
   liftLine(src, 'const VERB ='),
   lift(src, 'function hookOf('),
+  liftLine(src, 'const PREP ='),
+  lift(src, 'function primaryMsg('),
   lift(src, 'function intentOf('),
   liftLine(src, 'const ICON ='),
   lift(src, 'function describe('),
@@ -244,4 +246,15 @@ group('a contract call wears the face of what it did');
                                               amount: '1500000000000000000' } }), 'me');
   ok('a cw20 leaving the wallet reports how much',
      staked.value === '-1.5 CL8Y', staked.value);
+}
+
+group('approvals before the action do not name it');
+{
+  const ex = msg => ({ '@type': '/cosmwasm.wasm.v1.MsgExecuteContract', contract: 'terra1pool', msg });
+  const t = { tx: { body: { messages: [ex({ increase_allowance: { spender: 'terra1pool', amount: '1' } }),
+    ex({ increase_allowance: { spender: 'terra1pool', amount: '1' } }), ex({ provide_liquidity: {} })] } }, logs: [] };
+  ok('two approvals and a deposit read as the deposit', api.describe(t, 'me').title === 'Added liquidity', api.describe(t, 'me').title);
+  const only = { tx: { body: { messages: [ex({ increase_allowance: { spender: 'x', amount: '1' } })] } }, logs: [] };
+  ok('an approval on its own is still named', api.describe(only, 'me').title === 'Approved spending', api.describe(only, 'me').title);
+  ok('a prediction is named in words', api.describe({ tx: { body: { messages: [ex({ predict: {} })] } }, logs: [] }, 'me').title === 'Prediction placed');
 }
