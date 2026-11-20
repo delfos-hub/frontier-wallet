@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=112e2a31';
-import { $, buzz, go, tap } from './shell.js?v=112e2a31';
-import { S } from './state.js?v=112e2a31';
-import { iconHTML, paintIcons } from './chain.js?v=112e2a31';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=112e2a31';
-import { notify } from './notify.js?v=112e2a31';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=1f2425a3';
+import { $, buzz, go, tap } from './shell.js?v=1f2425a3';
+import { S } from './state.js?v=1f2425a3';
+import { iconHTML, paintIcons } from './chain.js?v=1f2425a3';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=1f2425a3';
+import { notify } from './notify.js?v=1f2425a3';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -71,23 +71,47 @@ const GAS_PRICE = 28.325;        // uluna per gas unit
 // insurance. Station's own ratio on the same transfer is 1.276.
 const GAS_SAFETY = 1.3;
 
-let TAX = null;
-async function burnTaxRate(){
-  if (TAX !== null) return TAX;
+// The rate can change by governance, so it is kept one minute at most and a
+// new review always reads it again (fresh = true).
+const TAX_TTL_MS = 60000;
+let TAX = null, TAX_RAW = null, TAX_AT = 0;
+async function burnTaxRate(fresh){
+  if (!fresh && TAX !== null && Date.now() - TAX_AT < TAX_TTL_MS) return TAX;
   try {
     const r = await getJSON(LCD + '/terra/tax/v1beta1/burn_tax_rate', 8000);
-    TAX = Number(r.tax_rate);
+    const n = Number(r.tax_rate);
+    if (!(n >= 0 && n < 1)) throw new Error('bad rate');
+    TAX = n;
+    TAX_RAW = String(r.tax_rate);
+    TAX_AT = Date.now();
   } catch (e) {
     // the old treasury endpoint reads zero on this chain, so there is no safe
     // fallback - refuse rather than under-pay and have the send bounce
-    TAX = null;
+    TAX = null; TAX_RAW = null; TAX_AT = 0;
     throw new Error('could not read the burn tax rate');
   }
   return TAX;
 }
 
+/* The burn tax on a LUNC or USTC bank send, in base units. The chain takes it
+   out of what the recipient gets (reverse charge, logged as tax_payment) and
+   truncates: 57637494133 uluna at 0.015 paid 864562411 on chain, not ...412.
+   The rate is a decimal string with up to 18 places, so this stays in BigInt. */
+const TAXED = { uluna: 1, uusd: 1 };
+function burnTaxOn(raw, rate){
+  const m = /^(\d+)(?:\.(\d{0,18}))?/.exec(String(rate == null ? '' : rate));
+  if (!m) return 0n;
+  return BigInt(raw) * BigInt(m[1] + (m[2] || '').padEnd(18, '0')) / (10n ** 18n);
+}
+
 async function account(addr, net = MAINNET){
-  const r = await getJSON(net.lcd + '/cosmos/auth/v1beta1/accounts/' + addr, 10000);
+  let r;
+  try { r = await getJSON(net.lcd + '/cosmos/auth/v1beta1/accounts/' + addr, 10000); }
+  catch (e) {
+    // the chain only knows an account once something has been sent to it
+    if (e && e.status === 404) throw new Error('This wallet has no funds yet: receive some LUNC first to pay the network fee.');
+    throw e;
+  }
   const a = r.account || {};
   return { num: a.account_number || '0', seq: a.sequence || '0' };
 }
@@ -173,7 +197,7 @@ function checkFee(gasFee, maxFee){
 */
 async function dryRunNative(from, to, denom, human, memo, mnemonic){
   // kept for display only; a send must not fail because this endpoint moved
-  const rate = await burnTaxRate().catch(() => 0);
+  const rate = await burnTaxRate(true).then(() => TAX_RAW).catch(() => null);
   const [acc, key] = await Promise.all([account(from), keyOf(mnemonic)]);
   const raw = toRaw(human, 6);
   if (!(Number(raw) > 0)) throw new Error('amount must be greater than zero');
@@ -184,10 +208,11 @@ async function dryRunNative(from, to, denom, human, memo, mnemonic){
   const used = await simulateGas(first.body, first.auth);
   const gas = Math.ceil(used * GAS_SAFETY);
   const gasFee = Math.ceil(gas * GAS_PRICE);
-  // The burn tax is not added here. On this chain it is charged as gas, and
-  // the simulator above already counted it - that is why a plain send comes
-  // back at a quarter million gas instead of eighty thousand.
-  const tax = 0;
+  // The burn tax is not part of the fee. The chain takes it out of the amount
+  // sent, so the recipient gets less than was typed and the wallet spends
+  // exactly the amount plus the fee. Unknown (null) when the rate could not be read.
+  const tax = !TAXED[denom] ? '0' : rate === null ? null : burnTaxOn(raw, rate).toString();
+  const received = tax === null ? null : (BigInt(raw) - BigInt(tax)).toString();
 
   // and the transaction as it would actually be signed
   const real = nativeSendTx(from, to, denom, raw, memo, key.pub, acc.seq,
@@ -196,7 +221,8 @@ async function dryRunNative(from, to, denom, human, memo, mnemonic){
   const sig = key.node.sign(key.sha256(doc));
 
   return {
-    rate: rate, amount: raw, tax: tax, gas: gas, gasUsed: used, gasFee: gasFee,
+    rate: rate === null ? null : Number(rate), amount: raw, tax: tax, received: received,
+    gas: gas, gasUsed: used, gasFee: gasFee,
     total: Number(raw) + gasFee,
     seq: acc.seq, num: acc.num,
     bytes: txRaw(real.body, real.auth, [sig]).length,
@@ -463,13 +489,16 @@ async function review(){
       const over = same ? d.total > avail : Number(d.amount) > avail;
       out.innerHTML =
         line('Amount', fmt(amt(d.amount, 6)) + ' ' + t.sym) +
-        line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE +
-             ' (burn tax included)', fmt(amt(d.gasFee, 6)) + ' LUNC') +
+        line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE,
+             fmt(amt(d.gasFee, 6)) + ' LUNC') +
         line('Leaves your wallet', same
               ? fmt(amt(total, 6)) + ' LUNC'
               : fmt(amt(d.amount, 6)) + ' ' + t.sym + ' and ' + fmt(amt(d.gasFee, 6)) + ' LUNC',
              true) +
-        line('Recipient gets', fmt(amt(d.amount, 6)) + ' ' + t.sym, true) +
+        line('Recipient gets', d.received === null
+              ? fmt(amt(d.amount, 6)) + ' ' + t.sym + ', before the burn tax'
+              : fmt(amt(d.received, 6)) + ' ' + t.sym +
+                (Number(d.tax) > 0 ? ' (' + Number((d.rate * 100).toFixed(4)) + '% burn tax)' : ''), true) +
         (over ? '<div class="sbad">More than this address holds - ' +
                 fmt(amt(avail, 6)) + ' ' + t.sym + ' available.</div>' : '') +
         '<div class="tiny" style="margin-top:12px">Signed at ' + d.bytes +
