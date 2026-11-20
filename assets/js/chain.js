@@ -1,4 +1,4 @@
-import { $ } from './shell.js?v=47b6e663';
+import { $ } from './shell.js?v=12072d06';
 
 /* ---------------- chain reads ---------------- */
 const LCD = 'https://terra-classic-lcd.publicnode.com';
@@ -43,13 +43,6 @@ const KNOWN_IBC = {
     { sym: 'USDC.inj', dec: 6, note: 'Injective', logo: 'assets/tokens/USDC.png', usd: 1 },
 };
 const COLOR  = { LUNC:'#7B5CFF', USTC:'#00FFB0', TCO:'#00D4FF', TERRA:'#E8C840' };
-// a stable colour per symbol so tokens do not change appearance between loads
-function hue(sym){
-  let h = 0;
-  for (const c of sym) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return 'hsl(' + h + ',62%,58%)';
-}
-const swatch = sym => COLOR[sym] || hue(sym);
 // Terraswap-fork factories. Every pair they make answers {pool:{}} the same
 // way, so one code path covers Terraport, Astroport and the rest. Pools that
 // were deployed straight from a wallet are invisible here - that is a known
@@ -188,11 +181,16 @@ function iconHTML(t){
     const base = localIcon(sym);             // ещё не искали
     cands.push(base + '.png', base + '.svg', base + '.webp');
   }                                          // known is a number - recent miss, not searched
-  return '<span class="sym" style="background:' + swatch(sym) + '" ' +
+  // Until (or unless) a picture loads: the four core tokens keep their own
+  // colour and letter; any other token gets one calm coin with a question mark,
+  // the same for all, instead of a letter on a random colour.
+  const core = !!COLOR[sym];
+  return '<span class="sym' + (core ? '' : ' q') + '"' + (core ? ' style="background:' + COLOR[sym] + '"' : '') + ' ' +
          'data-sym="' + attr(sym) + '" ' +
          'data-logo="' + attr(t.logo || '') + '" ' +
-         'data-icons="' + attr(cands.join('|')) + '">' + sym[0] + '</span>';
+         'data-icons="' + attr(cands.join('|')) + '">' + (core ? attr(sym[0]) : Q_MARK) + '</span>';
 }
+const Q_MARK = '<svg class="q-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.5-2.8 4.3"/><path d="M12 18.2h.01"/></svg>';
 
 // The tint is dropped the moment a real image loads, because most token art is
 // transparent and a coloured disc behind it reads as the token's own colour.
@@ -213,6 +211,7 @@ function paintIcons(root){
       img.onload = () => {
         el.textContent = '';
         el.removeAttribute('style');
+        el.classList.remove('q');
         el.classList.add('has-img');
         el.appendChild(img);
         // only local paths are worth remembering: a contract logo arrives as a

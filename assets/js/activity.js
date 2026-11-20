@@ -4,12 +4,12 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=47b6e663';
-import { DEC, knownAsset as marketAsset } from './market.js?v=47b6e663';
-import { $, go } from './shell.js?v=47b6e663';
-import { fiatOf, heldTokens } from './tokens.js?v=47b6e663';
-import { S } from './state.js?v=47b6e663';
-import { NETS } from './gram-net.js?v=47b6e663';
+import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=12072d06';
+import { DEC, knownAsset as marketAsset } from './market.js?v=12072d06';
+import { $, go } from './shell.js?v=12072d06';
+import { fiatOf, heldTokens } from './tokens.js?v=12072d06';
+import { S } from './state.js?v=12072d06';
+import { NETS } from './gram-net.js?v=12072d06';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -159,8 +159,12 @@ const VERB = {
   claim_reward: 'Claimed rewards', harvest: 'Claimed rewards',
   stake: 'Staked', unstake: 'Unstaked', unbond: 'Unstaked', bond: 'Staked',
   deposit: 'Deposited', withdraw: 'Withdrew', vote: 'Voted', enter: 'Entered',
-  register: 'Registered', mint_nft: 'Minted an NFT', approve: 'Approved'
+  register: 'Registered', mint_nft: 'Minted an NFT', approve: 'Approved',
+  predict: 'Prediction placed', settle: 'Settled', resolve: 'Resolved'
 };
+// Oracle Prophecy's own calls, in its words
+const PROPHECY = { predict: 'Prediction placed', create: 'Market created', create_market: 'Market created',
+  settle: 'Market settled', resolve: 'Market settled', claim: 'Winnings claimed', refund: 'Refunded' };
 
 /* Which face a contract call wears.
    Only swaps had one, so staking, unstaking and claiming all came out wearing
@@ -187,6 +191,14 @@ function hookOf(msg){
   } catch (e) { return null; }
 }
 
+/* The message that says what happened. A pool deposit comes as two token
+   approvals and then the deposit; the row read "Approved spending \u00d72"
+   because it named the first message. Approvals are skipped when something
+   else is in the transaction. */
+const PREP = /^(increase_allowance|decrease_allowance|approve|approve_all)$/;
+function primaryMsg(msgs){
+  return msgs.find(x => !PREP.test(intentOf(x))) || msgs[0] || {};
+}
 function intentOf(m){
   const msg = m && m.msg;
   if (!msg || typeof msg !== 'object') return '';
@@ -215,9 +227,10 @@ const ICON = {
 // what the transaction was, and which face it wears
 function describe(t, me){
   const msgs = ((t.tx || {}).body || {}).messages || [];
-  const m = msgs[0] || {};
+  const m = primaryMsg(msgs);
   const type = String(m['@type'] || '');
-  const extra = msgs.length > 1 ? ' +' + (msgs.length - 1) : '';
+  const rest = msgs.filter(x => x !== m && !PREP.test(intentOf(x))).length;
+  const extra = rest ? ' +' + rest : '';
 
   if (type.indexOf('MsgSend') >= 0) {
     const mine = m.from_address === me;
@@ -532,6 +545,8 @@ function placeOf(c, me){
 function prettyLabel(l){
   // a contract's label is whatever its deployer typed
   l = clean(l, 60).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // an all-lowercase label ("oracle prophecy") reads as a name with capitals
+  if (l === l.toLowerCase()) l = l.replace(/(^|\s)([a-z])/g, (x, a, b) => a + b.toUpperCase());
   if (/router/i.test(l)) return 'Swap router' + (/terraport/i.test(l) ? ' \u00b7 Terraport' : /garuda/i.test(l) ? ' \u00b7 Garuda' : '');
   return l.length > 28 ? l.slice(0, 27) + '\u2026' : l;
 }
@@ -599,7 +614,7 @@ function gramSwapRow(t, m, intent, ins, me){
 
 function look(t, me){
   const msgs = ((t.tx || {}).body || {}).messages || [];
-  const m = msgs[0] || {};
+  const m = primaryMsg(msgs);
   const type = String(m['@type'] || '');
   const d = describe(t, me);
   const intent = type.indexOf('MsgExecuteContract') >= 0 ? intentOf(m) : '';
@@ -617,10 +632,15 @@ function look(t, me){
   }
   if (intent === 'withdraw_unlocked' || intent === 'withdraw_released') { title = 'Withdrew'; kind = 'in'; }
   if (intent === 'withdraw' && ins.length && PLACE_CODE[permGet('code:' + m.contract)] === 'Garuda staking') { title = 'Claimed rewards'; kind = 'gift'; }
-  if (msgs.length > 1 && !swap) title += msgs.every(x => x['@type'] === m['@type']) ? ' \u00d7' + msgs.length : '';
+  // the same action repeated in one transaction (approvals before it do not count)
+  const same = msgs.filter(x => x['@type'] === m['@type'] && intentOf(x) === intent).length;
+  if (same > 1 && !swap) title += ' \u00d7' + same;
   // where: the product for a contract call, the other person for a transfer
   let sub = d.sub;
-  const place = m.contract ? placeOf(m.contract, me) : '';
+  // a token sent into a contract (a farm, a pool) happened at that contract,
+  // not at the token's own: the hook's target names the place
+  const target = m.msg && m.msg.send && m.msg.send.contract;
+  const place = (target && placeOf(target, me)) || (m.contract ? placeOf(m.contract, me) : '');
   if (swap) {
     const a = outs[0], b = ins[0];
     sub = a && b ? symOfKey(a.key) + ' \u2192 ' + symOfKey(b.key) : d.sub;
@@ -648,6 +668,11 @@ function look(t, me){
       top = fmt(human({ key: k, raw: Number(body.amount) })) + ' ' + symOfKey(k);
       msgKey = k;
     }
+  }
+  if (/prophecy/i.test(place) && PROPHECY[intent]) {
+    title = PROPHECY[intent] + (same > 1 ? ' \u00d7' + same : '');
+    group = 'defi';
+    kind = ins.length && !outs.length ? 'in' : outs.length && !ins.length ? 'out' : kind;
   }
   const gs = gramSwapRow(t, m, intent, ins, me);
   if (gs) { title = gs.title; kind = gs.kind; group = gs.group; sub = gs.sub; if (gs.below) below = gs.below; }
@@ -679,17 +704,29 @@ function face(l, failed, pending){
 }
 
 // One row of the list. The token screen draws the same rows for one token.
-function rowHTML(t, me, dated){
+// The product a contract belongs to is a chip beside the title ("Garuda farm"),
+// and the line under it says the rest (the pair, the other side of a swap).
+function rowHTML(t, me, dated, fold){
   TXS[t.txhash] = t;
   const l = look(t, me);
   const failed = Number(t.code) > 0;
   const when = dated && dayName(t.timestamp) !== 'Today' ? dayName(t.timestamp) : clock(t.timestamp);
   const dollars = l.usd ? usd(Math.abs(l.usd)) : '';
-  return '<div class="ac-row" data-hash="' + esc(t.txhash) + '">' + face(l, failed) +
-    '<div class="ac-mid"><div class="ac-t">' + esc(l.title) + '</div>' +
-      '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') + esc(l.sub || short(t.txhash)) + '</div></div>' +
+  const app = l.place ? l.place.split(' \u00b7 ')[0] : '';
+  const sub = l.place && l.sub === l.place ? l.place.split(' \u00b7 ').slice(1).join(' \u00b7 ') : (l.sub || (app ? '' : short(t.txhash)));
+  if (fold) {
+    // several of the same in a row, folded into one line (render)
+    l.title = l.title.replace(/ \u00d7\d+$/, '') + ' \u00d7' + fold.n;
+    if (fold.top) { l.top = fold.top; l.below = ''; }
+    if (fold.usd) { l.usd = fold.usd; }
+  }
+  const usd2 = l.usd ? usd(Math.abs(l.usd)) : dollars;
+  return '<div class="ac-row' + (fold ? ' ac-fold-head' : '') + '" data-hash="' + esc(t.txhash) + '" data-g="' + esc(failed ? 'fail' : l.group) + '">' + face(l, failed) +
+    '<div class="ac-mid"><div class="ac-t"><span>' + esc(l.title) + '</span>' + (app ? '<em class="ac-app">' + esc(app) + '</em>' : '') +
+      (fold ? '<i class="ac-chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></i>' : '') + '</div>' +
+      ((failed || sub) ? '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span>' + (sub ? ' \u00b7 ' : '') : '') + esc(sub) + '</div>' : '') + '</div>' +
     '<div class="ac-r"><div class="ac-v' + (l.topIn && !failed ? ' in' : '') + '">' + (failed ? '' : esc(l.top)) + '</div>' +
-      '<div class="ac-w">' + esc(l.below && !failed ? l.below : (dollars && !failed ? dollars + ' \u00b7 ' : '') + when) + '</div></div>' +
+      '<div class="ac-w">' + esc(l.below && !failed ? l.below : (usd2 && !failed ? usd2 + ' \u00b7 ' : '') + when) + '</div></div>' +
     '</div>';
 }
 
@@ -782,15 +819,134 @@ function render(){
       const tag = inn >= 0.01 && out < 0.01 ? '+' + usd(inn) + ' in'
         : out >= 0.01 && inn < 0.01 ? '-' + usd(out) + ' out'
         : inn + out >= 0.01 ? (inn - out >= 0 ? '+' : '-') + usd(Math.abs(inn - out)) + ' net' : '';
-      html += '<div class="ac-day"><span>' + dayName(xs[0].t.timestamp) + '</span><em>' + tag + '</em></div>';
-      html += xs.map(x => rowHTML(x.t, me)).join('');
+      html += '<div class="ac-day" id="ac-d-' + k + '"><span>' + dayName(xs[0].t.timestamp) + '</span><em>' + tag + '</em></div>';
+      html += foldDay(xs, me);
     }
     if (MORE || ALL.length > SHOWN) html += '<button type="button" class="ac-more" id="ac-more">Load more</button>';
     list.innerHTML = html;
     paintIcons(list);
   }
   $('#ac-note').textContent = ALL.length ? ALL.length + ' transactions read so far.' : '';
+  summary(me);
   learnPlaces();
+}
+
+/* The same thing several times in a row on one day (two markets settled at
+   02:15) is one line, "\u00d72", with the total when it is all one token;
+   tapped, it opens to show each. */
+const FOLD_OPEN = {};
+function foldDay(xs, me){
+  const keyOf = x => {
+    const f = x.l.main;
+    return Number(x.t.code) > 0 ? '' : x.l.title.replace(/ \u00d7\d+$/, '') + '|' + (x.l.place || x.l.sub || '') + '|' + (f ? f.key + (f.raw > 0 ? '+' : '-') : '');
+  };
+  let out = '';
+  for (let i = 0; i < xs.length;) {
+    let j = i + 1;
+    const k = keyOf(xs[i]);
+    while (k && j < xs.length && keyOf(xs[j]) === k) j++;
+    const run = xs.slice(i, j);
+    if (run.length < 2) out += rowHTML(run[0].t, me);
+    else {
+      const id = run[0].t.txhash;
+      const main = run.map(x => x.l.main);
+      const sameKey = main.every(f => f && f.key === main[0].key);
+      let fold = { n: run.length };
+      if (sameKey) {
+        const tot = { key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) };
+        fold.top = amountText(tot);
+        fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
+      }
+      out += '<div class="ac-fold' + (FOLD_OPEN[id] ? ' open' : '') + '" data-fold="' + esc(id) + '">' + rowHTML(run[0].t, me, false, fold) +
+        '<div class="ac-fold-in">' + run.map(x => rowHTML(x.t, me)).join('') + '</div></div>';
+    }
+    i = j;
+  }
+  return out;
+}
+
+/* ---------------- the period at a glance (wide screen) ----------------
+   What came in, what went out and the network fees over 7 days, 30 days or
+   everything read so far, at today's prices, and a bar per day: in above the
+   line, out below. A bar jumps to its day in the list. Built from the history
+   already read, so it grows as older pages are read. */
+let PERIOD = 30;
+const isDesk = () => document.documentElement.classList.contains('dk');
+// the network fee this address paid: its moves to the fee collector that are
+// not the burn tax (the tax has its own line)
+function feePaid(t, me){
+  let fee = 0;
+  for (const e of eventsOf(t)) {
+    if (e.type !== 'transfer') continue;
+    let to = '', from = '', what = '';
+    for (const a of (e.attributes || [])) { if (a.key === 'recipient') to = a.value; if (a.key === 'sender') from = a.value; if (a.key === 'amount') what = a.value; }
+    if (from !== me || to !== FEE_COLLECTOR) continue;
+    for (const part of what.split(',')) { const mm = /^(\d+)uluna$/.exec(part.trim()); if (mm) fee += Number(mm[1]); }
+  }
+  for (const c of taxPaid(t, me)) if (c.denom === 'uluna') fee -= Number(c.amount);
+  return Math.max(0, fee);
+}
+function summary(me){
+  let box = document.getElementById('ac-sum');
+  if (!isDesk() || !ALL.length) { if (box) box.hidden = true; return; }
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'ac-sum'; box.className = 'ac-sum';
+    const chips = $('#ac-chips');
+    chips.parentNode.insertBefore(box, chips);
+    box.addEventListener('click', e => {
+      const p = e.target.closest('[data-p]');
+      if (p) { PERIOD = Number(p.getAttribute('data-p')); summary(S.ADDR || (S.SAVED && S.SAVED.addr) || ''); return; }
+      const d = e.target.closest('[data-day]');
+      const el = d && document.getElementById('ac-d-' + d.getAttribute('data-day'));
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  box.hidden = false;
+  const now = Date.now(), span = PERIOD ? PERIOD * 86400000 : Infinity;
+  const xs = ALL.filter(t => Number(t.code) === 0 && now - new Date(t.timestamp) < span);
+  let inn = 0, out = 0, fee = 0, nIn = 0, nOut = 0;
+  const perDay = {};
+  xs.forEach(t => {
+    const f = flows(t, me);
+    let a = 0, b = 0;
+    f.forEach(x => { const w = worthOf(x); if (w > 0) a += w; else b -= w; });
+    inn += a; out += b;
+    // counted by what moved, priced or not
+    if (f.some(x => x.raw > 0)) nIn++;
+    if (f.some(x => x.raw < 0)) nOut++;
+    fee += feePaid(t, me);
+    const k = dayKey(t.timestamp);
+    const d = perDay[k] = perDay[k] || { a: 0, b: 0, ca: 0, cb: 0 };
+    d.a += a; d.b += b;
+    if (f.some(x => x.raw > 0)) d.ca++;
+    if (f.some(x => x.raw < 0)) d.cb++;
+  });
+  // the bars: the last 30 days (7 when the period is 7)
+  const nBars = PERIOD === 7 ? 7 : 30;
+  const bars = [];
+  for (let i = nBars - 1; i >= 0; i--) {
+    const d = new Date(now - i * 86400000), k = dayKey(d);
+    bars.push({ k: k, v: perDay[k] || { a: 0, b: 0, ca: 0, cb: 0 }, label: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) });
+  }
+  // priced in dollars; with no prices yet, by how many transactions
+  if (!bars.some(b => b.v.a || b.v.b)) bars.forEach(b => { b.v = { a: b.v.ca, b: b.v.cb, ca: b.v.ca, cb: b.v.cb, n: true }; });
+  const top = Math.max(0.01, ...bars.map(b => Math.max(b.v.a, b.v.b)));
+  const h = v => v > 0 ? Math.max(2, Math.round(v / top * 42)) : 0;
+  const net = inn - out;
+  const lunc = fee / 1e6;
+  box.innerHTML =
+    '<div class="ac-sum-top"><div class="ac-per" role="tablist" aria-label="Period">' + [[7, '7D'], [30, '30D'], [0, 'All']].map(([v, l]) =>
+      '<button type="button" role="tab" data-p="' + v + '" aria-selected="' + (PERIOD === v) + '" class="' + (PERIOD === v ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
+      '<span>' + (PERIOD ? 'Last ' + PERIOD + ' days' : 'Everything read so far') + ' \u00b7 at today\u2019s prices</span></div>' +
+    '<div class="ac-sum-b"><div class="ac-tiles">' +
+      '<div><span>Came in</span><b class="in">+' + usd(inn) + '</b><small>' + nIn + ' transaction' + (nIn === 1 ? '' : 's') + '</small></div>' +
+      '<div><span>Went out</span><b>-' + usd(out) + '</b><small>' + nOut + ' transaction' + (nOut === 1 ? '' : 's') + '</small></div>' +
+      '<div><span>Network fees</span><b>' + fmt(lunc) + ' LUNC</b><small>paid by this address</small></div>' +
+      '<div><span>Net</span><b class="' + (net >= 0 ? 'in' : 'out') + '">' + (net >= 0 ? '+' : '-') + usd(Math.abs(net)) + '</b><small>' + xs.length + ' in total</small></div>' +
+    '</div><div class="ac-bars" aria-label="In and out by day">' + bars.map(b =>
+      '<button type="button" data-day="' + b.k + '" title="' + esc(b.label + (b.v.a || b.v.b ? (b.v.n ? ': ' + b.v.ca + ' in / ' + b.v.cb + ' out' : ': +' + usd(b.v.a) + ' / -' + usd(b.v.b)) : '')) + '"' + (b.v.a || b.v.b ? '' : ' disabled') + '>' +
+        '<i class="a" style="height:' + h(b.v.a) + 'px"></i><i class="b" style="height:' + h(b.v.b) + 'px"></i></button>').join('') + '</div></div>';
 }
 
 function pendingRow(j){
@@ -892,6 +1048,13 @@ $('#ac-list').addEventListener('click', async e => {
     const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
     if (ALL.length < SHOWN && MORE) await fetchMore(me, render);
     render();
+    return;
+  }
+  const head = e.target.closest('.ac-fold-head');
+  if (head) {
+    const f = head.parentNode, id = f.getAttribute('data-fold');
+    FOLD_OPEN[id] = !FOLD_OPEN[id];
+    f.classList.toggle('open', FOLD_OPEN[id]);
     return;
   }
   const row = e.target.closest('.ac-row');
