@@ -54,6 +54,7 @@ const body = [
   liftLine(swap, 'const keyOf ='),
   lift(swap, 'async function bestPool('),
   lift(swap, 'const legCost ='),
+  lift(swap, 'const scaleRaw = (raw, f) =>'),
   lift(swap, 'async function quoteHop('),
   'return { quoteHop, bestPool };'
 ].join('\n');

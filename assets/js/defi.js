@@ -20,14 +20,14 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=5c069a96';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=5c069a96';
-import { $, buzz, go, tap } from './shell.js?v=5c069a96';
-import { S } from './state.js?v=5c069a96';
-import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=5c069a96';
-import * as P from './defi-parse.js?v=5c069a96';
-import { dryRunSwap, sendSwap } from './tx.js?v=5c069a96';
-import { notify } from './notify.js?v=5c069a96';
+import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=b691dfb9';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=b691dfb9';
+import { $, buzz, go, tap } from './shell.js?v=b691dfb9';
+import { S } from './state.js?v=b691dfb9';
+import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=b691dfb9';
+import * as P from './defi-parse.js?v=b691dfb9';
+import { dryRunSwap, sendSwap } from './tx.js?v=b691dfb9';
+import { notify } from './notify.js?v=b691dfb9';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -62,6 +62,16 @@ function sweepDue(was, full){ return !!full || !(was && was.swept); }
 const me = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+// raw * f, rounded down, in BigInt: Number turns an 18-decimal amount of a
+// thousand tokens or more into "1e+21", which no contract takes as a Uint128
+const scaleRaw = (raw, f) => {
+  const t = String(raw == null ? '0' : raw).trim();
+  const n = Number(t);
+  const r = /^\d+$/.test(t) ? BigInt(t) : BigInt(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+  if (!(f < 1)) return r.toString();
+  if (!(f > 0)) return '0';
+  return (r * BigInt(Math.round(f * 1e9)) / 1000000000n).toString();
+};
 const cut = a => !a ? '' : a.slice(0, 10) + '\u2026' + a.slice(-4);
 // in the interface language (the translator sets the page's lang); English as before
 const dayLoc = () => { const l = document.documentElement.lang; return l && l !== 'en' ? l : 'en-GB'; };
@@ -218,7 +228,7 @@ async function lpSides(lp, lpRaw){
   const total = Number(d.total_supply || d.total_share);
   if (!total || !sides) { console.warn('[earn] pool answer not understood', pair, d); return null; }
   const f = Number(lpRaw) / total;
-  return { pair: pair, share: f, sides: sides.map(r => ({ key: r.key, raw: String(Math.floor(Number(r.raw) * f)) })) };
+  return { pair: pair, share: f, sides: sides.map(r => ({ key: r.key, raw: scaleRaw(r.raw, f) })) };
 }
 
 /* ---------------- reading one contract for this address ----------------
@@ -651,7 +661,7 @@ function card(p){
    pick asks how much (a share of the position, 25/50/75/100%); steps builds
    the messages for that share. */
 const assetObj = k => ({ asset_type: k.slice(0, 5) === 'cw20:' ? 'cw20' : 'native', address: k.slice(k.indexOf(':') + 1) });
-const part = (r, f) => String(f >= 1 ? r : Math.floor(Number(r) * f));
+const part = (r, f) => scaleRaw(r, f);
 
 function actionsOf(p){
   const c = p.contract, d = p.data || {}, out = [];
@@ -700,8 +710,8 @@ function actionsOf(p){
       steps: f => [
         { contract: d.lpToken, msg: { increase_allowance: { spender: c, amount: part(d.lp, f) } } },
         { contract: c, msg: { withdraw_liquidity: { lp_amount: part(d.lp, f),
-          min_asset1: String(Math.floor(Number(part(d.sides[0].raw, f)) * 0.98)),
-          min_asset2: String(Math.floor(Number(part(d.sides[1].raw, f)) * 0.98)) } } }] });
+          min_asset1: scaleRaw(part(d.sides[0].raw, f), 0.98),
+          min_asset2: scaleRaw(part(d.sides[1].raw, f), 0.98) } } }] });
   }
   return out;
 }

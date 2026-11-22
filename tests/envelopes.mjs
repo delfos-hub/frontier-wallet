@@ -47,6 +47,7 @@ const { mod } = await loadMarket();
 const src = [
   'const SLIP = ' + SLIP + ';',
   liftLine(swap, 'const keyOf ='),
+  lift(swap, 'const scaleRaw = (raw, f) =>'),
   lift(swap, 'function envelope('),
   lift(swap, 'function steps()'),
   'return { envelope, keyOf, steps };'
@@ -153,7 +154,8 @@ group('the tolerance is a setting, and the guard follows it');
     const src = [
       'const SLIP = ' + slip + ';',
       liftLine(swap, 'const keyOf ='),
-      lift(swap, 'function envelope(')
+      lift(swap, 'const scaleRaw = (raw, f) =>'),
+  lift(swap, 'function envelope(')
     ].join('\n') + '\nreturn { envelope };';
     const q = { pair: 'terra1pool', dialect: 'gd', offerRaw: OFFER, returnRaw: RETURN };
     const api = new Function('gdInfo', 'btoa', 'FROM', 'QUOTE', src)(mod.gdInfo, b64, TOK, q);
@@ -177,7 +179,8 @@ group('the tolerance is a setting, and the guard follows it');
     const src = [
       'const SLIP = ' + slip + ';',
       liftLine(swap, 'const keyOf ='),
-      lift(swap, 'function envelope(')
+      lift(swap, 'const scaleRaw = (raw, f) =>'),
+  lift(swap, 'function envelope(')
     ].join('\n') + '\nreturn { envelope };';
     const q = { pair: 'terra1pool', dialect: 'ts', offerRaw: OFFER, returnRaw: RETURN };
     const api = new Function('gdInfo', 'btoa', 'FROM', 'QUOTE', src)(mod.gdInfo, b64, TOK, q);

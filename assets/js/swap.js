@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=5c069a96';
-import { $, go, tap } from './shell.js?v=5c069a96';
-import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=5c069a96';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=5c069a96';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=5c069a96';
-import { S } from './state.js?v=5c069a96';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=b691dfb9';
+import { $, go, tap } from './shell.js?v=b691dfb9';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=b691dfb9';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=b691dfb9';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=b691dfb9';
+import { S } from './state.js?v=b691dfb9';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -36,6 +36,16 @@ function savedSlip(read){
 }
 let SLIP = savedSlip(function (k) { return localStorage.getItem(k); });
 
+// raw * f, rounded down, in BigInt: Number turns an 18-decimal amount of a
+// thousand tokens or more into "1e+21", which no contract takes as a Uint128
+const scaleRaw = (raw, f) => {
+  const t = String(raw == null ? '0' : raw).trim();
+  const n = Number(t);
+  const r = /^\d+$/.test(t) ? BigInt(t) : BigInt(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+  if (!(f < 1)) return r.toString();
+  if (!(f > 0)) return '0';
+  return (r * BigInt(Math.round(f * 1e9)) / 1000000000n).toString();
+};
 const slipText = s => String(Number((s * 100).toFixed(3))) + '%';
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 function armGo(text, on){
@@ -720,7 +730,7 @@ async function quoteHop(mids, raw, refused){
     asked += one.tried;
     if (!one.best) { trace.push(mid.sym + ':leg1 none of ' + one.tried); continue; }
 
-    const min1 = String(Math.floor(Number(one.best.d.return_amount) * (1 - SLIP)));
+    const min1 = scaleRaw(one.best.d.return_amount, 1 - SLIP);
     if (!(Number(min1) > 0)) {
       trace.push(mid.sym + ':leg1 returned ' + one.best.d.return_amount); continue;
     }
@@ -1072,7 +1082,7 @@ function envelope(from, q){
   const gd = q.dialect === 'gd';
   const cl = q.dialect === 'cl';
   // a floor, so rounding never pushes the guard above what was quoted
-  const floor = String(Math.floor(Number(q.returnRaw) * (1 - SLIP)));
+  const floor = scaleRaw(q.returnRaw, 1 - SLIP);
   const guard = gd
     ? { offer_amount: q.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
     : cl
