@@ -24,8 +24,14 @@
    plan, apart from the account's KV write quota that relayer-watchdog relies
    on. Writes are rate limited per client (WRITES, reads by READS), a PUT that
    would change nothing is answered without writing, and the revision check is
-   part of the UPDATE, so two writes can never both pass it. A daily cron
-   removes records not written for 400 days. */
+   part of the UPDATE, so two writes can never both pass it.
+
+   Records not written for 400 days are removed once a day, without a cron
+   (the account's free cron slots are taken): any request, a read or a write,
+   may start the purge in the background (ctx.waitUntil), so it never delays
+   or fails the request itself, and the promise holds on days with no writes.
+   Each isolate looks at most once an hour; the day's purge is claimed in
+   the meta table (schema.sql), so across isolates it runs once a day. */
 
 const ORIGINS = [
   'https://wallet.delfos-hub.net',
@@ -35,7 +41,9 @@ const ORIGINS = [
 const HEX64 = /^[0-9a-f]{64}$/;
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_DOC = 8192;                    // base64 characters
-const TTL_MS = 400 * 24 * 3600 * 1000;   // a record nobody writes for 400 days goes (daily cron)
+const TTL_MS = 400 * 24 * 3600 * 1000;   // a record nobody writes for 400 days goes (purge, below)
+const PURGE_EVERY_MS = 24 * 3600 * 1000;  // the purge runs once a day across the Worker
+const LOOK_EVERY_MS = 3600 * 1000;        // each isolate checks at most once an hour
 
 function cors(origin){
   const h = { 'Vary': 'Origin', 'Cache-Control': 'no-store' };
@@ -76,8 +84,29 @@ async function limited(binding, request){
   try { const r = await binding.limit({ key: clientKey(request) }); return !r.success; } catch (e) { return false; }
 }
 
+/* The daily purge. The claim is one statement: it sets the meta row to now
+   only if the last purge is a day old (or there is none), so of any number of
+   requests at once exactly one gets changes = 1 and deletes. */
+let LOOKED = 0;                           // this isolate's last look (ms)
+async function purge(env, now){
+  const claim = await env.DB.prepare(
+    "INSERT INTO meta (k, v) VALUES ('purge', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v WHERE meta.v <= ?"
+  ).bind(now, now - PURGE_EVERY_MS).run();
+  if (!(claim && claim.meta && claim.meta.changes)) return 0;
+  const r = await env.DB.prepare('DELETE FROM docs WHERE t < ?').bind(now - TTL_MS).run();
+  return (r && r.meta && r.meta.changes) || 0;
+}
+function maybePurge(env, ctx){
+  const now = Date.now();
+  if (now - LOOKED < LOOK_EVERY_MS) return;
+  LOOKED = now;
+  // in the background: a slow or failed purge never touches the response
+  const p = purge(env, now).catch(e => { console.error('purge failed', e && e.message || e); });
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(p);
+}
+
 export default {
-  async fetch(request, env){
+  async fetch(request, env, ctx){
     const origin = request.headers.get('Origin') || '';
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
@@ -86,7 +115,8 @@ export default {
     if (!m) return json({ error: 'not found' }, 404, origin);
     const id = m[1];
     if (!HEX64.test(id)) return json({ error: 'bad id' }, 400, origin);
-    const key = 'doc:' + id;
+    // reads and writes both keep the 400-day promise
+    maybePurge(env, ctx);
 
     if (request.method === 'GET') {
       if (await limited(env.READS, request)) return json({ error: 'too many requests' }, 429, origin);
@@ -136,10 +166,5 @@ export default {
     }
 
     return json({ error: 'method not allowed' }, 405, origin);
-  },
-
-  // daily: records not written for 400 days go
-  async scheduled(event, env, ctx){
-    ctx.waitUntil(env.DB.prepare('DELETE FROM docs WHERE t < ?').bind(Date.now() - TTL_MS).run());
   }
 };
