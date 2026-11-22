@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=91e77150';
-import { $, go, tap } from './shell.js?v=91e77150';
-import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=91e77150';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=91e77150';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=91e77150';
-import { S } from './state.js?v=91e77150';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=e508b1b8';
+import { $, go, tap } from './shell.js?v=e508b1b8';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=e508b1b8';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=e508b1b8';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=e508b1b8';
+import { S } from './state.js?v=e508b1b8';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -1069,8 +1069,12 @@ function envelope(from, q){
     ? { offer_amount: q.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
     : cl
     // seconds, not milliseconds - and no belief_price, which appears in none of
-    // the trades this contract has taken
-    ? { max_spread: String(SLIP), deadline: Math.floor(Date.now() / 1000) + 120 }
+    // the trades this contract has taken; min_return does the work instead
+    // and min_return, a hard floor on what arrives (cl8y-dex-pair 1.21, code
+    // 11715, every pair of the factory): the pool fails the swap below it, so
+    // the minimum shown is the minimum signed. A pair with hooks refuses a
+    // swap that has none.
+    ? { max_spread: String(SLIP), min_return: floor, deadline: Math.floor(Date.now() / 1000) + 120 }
     // TerraSwap checks max_spread against the return before its commission,
     // so a price taken from the net return let the trade land about one pool
     // fee under the minimum shown. Taken from the gross return, the floor it
@@ -1111,12 +1115,9 @@ function envelope(from, q){
    back at worst, and a way out that is the same size as the way in. */
 function confirmLines(est){
   const min = QUOTE.got * (1 - SLIP);
-  // CL8Y's swap message carries only a spread limit, no minimum: the floor is
-  // checked here against a fresh quote just before signing instead (cf-go)
-  const noFloor = QUOTE.legs.some(l => l.dialect === 'cl');
+  // every dialect now carries the floor in the message itself
   const lines = [
-    { k: noFloor ? 'You should receive at least' : 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true,
-      note: noFloor ? 'This pool takes a price limit rather than a minimum. Frontier checks the price again just before signing and stops if it has moved past your tolerance.' : undefined },
+    { k: 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true },
     { k: 'Expected, if the pool holds',
       v: fmt(QUOTE.got) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance' }
   ];
@@ -1216,7 +1217,8 @@ $('#cf-go').addEventListener('click', async () => {
       await checkPool(leg.pair, true);
       await poolHolds(leg.pair, leg.offerKey, leg.askKey, true);
     }
-    // the price now, against the floor shown (the only floor CL8Y gets)
+    // the price now, against the floor shown: the pool enforces the floor
+    // anyway, this only saves a fee on a swap that would fail
     for (const leg of QUOTE.legs) {
       const now = await simulateSwap(leg.pair, leg.offerKey, leg.offerRaw, leg.dialect, leg.askKey);
       if (Number(now.return_amount) < Math.floor(Number(leg.returnRaw) * (1 - SLIP))) {

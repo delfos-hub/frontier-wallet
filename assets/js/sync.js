@@ -24,7 +24,7 @@
    when this device last changed it). A device that has a list from before
    this module existed has no such time: its list is joined with the kept
    one once, instead of one silently replacing the other. */
-import { S } from './state.js?v=91e77150';
+import { S } from './state.js?v=e508b1b8';
 
 const HOST = 'https://frontier-sync.delfoshub-team.workers.dev';
 const SALT = 'frontier-sync-v1';

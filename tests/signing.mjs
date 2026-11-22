@@ -118,7 +118,7 @@ group('the floor TerraSwap enforces is the one shown');
   ok('so the net floor equals the minimum shown', Math.abs(netFloor - 997 * 0.99) < 1e-6, netFloor);
   const old = env({ pair: 'p', dialect: 'ts', offerRaw: '1000', returnRaw: '997' }).msg.swap;
   ok('with no commission reported it is what it was', Math.abs(1000 / Number(old.belief_price) - 997) < 1e-9);
-  ok('CL8Y, which takes no minimum, is said so in the review', /This pool takes a price limit rather than a minimum/.test(swap));
+  ok('CL8Y signs the minimum shown (min_return), so the review no longer hedges it', /min_return: floor/.test(swap) && !/takes a price limit rather than a minimum/.test(swap));
 }
 
 group('a send review belongs to its form and names the recipient');

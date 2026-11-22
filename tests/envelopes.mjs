@@ -117,6 +117,7 @@ group('envelopes: the guard against a bad fill');
   ok('cl8y guards with a spread, like terraswap', cl.max_spread === String(SLIP));
   ok('and carries no belief price, which its trades never contain',
      cl.belief_price === undefined);
+  ok('and a hard minimum on what arrives, the same floor as garuda', cl.min_return === gd.min_receive, cl.min_return + ' / ' + gd.min_receive);
   ok('and no offer_asset in the hook either',
      cl.offer_asset === undefined && cl.offer_amount === undefined,
      JSON.stringify(cl));
@@ -326,10 +327,11 @@ group('two steps, one transaction');
 
 group('envelopes: against the transactions these were read from');
 {
-  // {"swap":{"max_spread":"0.05","deadline":1786652194}} - a real CL8Y trade
+  // {"swap":{"max_spread":"0.05","deadline":1786652194}} - a real CL8Y trade,
+  // plus min_return (cl8y-dex-pair 1.21, Cw20HookMsg::Swap)
   const cl = build(TOK, 'cl').msg.send.msg.swap;
-  ok('cl8y hook has exactly the two fields those trades carry',
-     Object.keys(cl).sort().join(',') === 'deadline,max_spread',
+  ok('cl8y hook has those two fields and min_return',
+     Object.keys(cl).sort().join(',') === 'deadline,max_spread,min_return',
      Object.keys(cl).sort().join(','));
 
   // {"swap":{"min_receive":"...","offer_amount":"...","offer_asset":{"cw20":"..."},"deadline":...}}
