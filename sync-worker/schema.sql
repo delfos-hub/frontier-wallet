@@ -7,3 +7,8 @@ CREATE TABLE IF NOT EXISTS docs (
   t   INTEGER NOT NULL       -- revision: ms of the last write
 );
 CREATE INDEX IF NOT EXISTS docs_t ON docs (t);
+-- k = 'purge': ms of the last daily purge (worker.js purge; no cron)
+CREATE TABLE IF NOT EXISTS meta (
+  k   TEXT PRIMARY KEY,
+  v   INTEGER NOT NULL
+);

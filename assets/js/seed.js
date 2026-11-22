@@ -9,9 +9,10 @@
    owns sd-sheet and sd-x, and sharing them opened that hidden picker instead.
    There is no copy button: a phrase on the clipboard can be read by any app
    that looks. A watched address has no phrase, so the row is hidden there. */
-import { $, buzz, libs, tap } from './shell.js?v=decadaba';
-import { S } from './state.js?v=decadaba';
-import { decryptSeed } from './storage.js?v=decadaba';
+import { $, buzz, libs, tap } from './shell.js?v=bb415887';
+import { S } from './state.js?v=bb415887';
+import { decryptSeed } from './storage.js?v=bb415887';
+import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=bb415887';
 
 const PIN_LEN = 8;
 let TIMER = null;
@@ -26,10 +27,14 @@ function wipe(){
   const pin = $('#rp-pin'); if (pin) pin.value = '';
   const m = $('#rp-msg'); if (m) m.textContent = '';
 }
-function close(){ wipe(); $('#rp-sheet').hidden = true; }
+// which opening of the sheet this is: a PIN check that finishes after the
+// sheet was closed (or the wallet locked or switched) belongs to no sheet
+let GEN = 0;
+function close(){ GEN++; wipe(); $('#rp-sheet').hidden = true; }
 function open(){
   if (!S.SAVED || S.SAVED.watch || !S.SAVED.blob) return;
   tap();
+  GEN++;
   wipe();
   $('#rp-sheet').hidden = false;
   setTimeout(() => $('#rp-pin').focus(), 60);
@@ -40,6 +45,14 @@ async function check(){
   $('#rp-pin').value = pin;
   if (pin.length < PIN_LEN) return;
   const m = $('#rp-msg');
+  const wait = pinWait();
+  if (wait > 0) {
+    m.textContent = 'Too many wrong PINs. Try again in ' + waitText(wait) + '.';
+    m.style.color = 'var(--red)';
+    setTimeout(() => { $('#rp-pin').value = ''; }, 500);
+    return;
+  }
+  const gen = GEN, addr = S.SAVED && S.SAVED.addr;
   m.textContent = 'Checking';
   m.style.color = 'var(--muted)';
   let words;
@@ -47,12 +60,26 @@ async function check(){
     await libs();
     words = (await decryptSeed(S.SAVED.blob, pin)).trim().split(/\s+/);
   } catch (e) {
+    // only what AES-GCM throws on a bad key is a wrong PIN; anything else (the
+    // libraries failing to load) is shown as itself and costs no try
+    const badPin = e && (e.name === 'OperationError' || e.name === 'InvalidAccessError');
+    if (!badPin) {
+      if (gen !== GEN) return;
+      m.textContent = 'Could not check the PIN: ' + ((e && e.message) || e) + '. Try again.';
+      m.style.color = 'var(--red)';
+      return;
+    }
+    const f = pinFail();                 // a wrong guess counts, sheet open or not
+    if (gen !== GEN) return;
     buzz('error');
-    m.textContent = 'Wrong PIN';
+    m.textContent = 'Wrong PIN' + (f.until > Date.now() ? '. Next try in ' + waitText(f.until - Date.now()) : '');
     m.style.color = 'var(--red)';
     setTimeout(() => { $('#rp-pin').value = ''; }, 500);
     return;
   }
+  pinOk();
+  // closed, locked or switched while the PIN was checked: nothing is drawn
+  if (gen !== GEN || $('#rp-sheet').hidden || !S.SAVED || S.SAVED.addr !== addr) { words = null; return; }
   buzz('success');
   $('#rp-step-pin').hidden = true;
   $('#rp-step-words').hidden = false;

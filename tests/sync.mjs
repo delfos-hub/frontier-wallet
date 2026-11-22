@@ -24,7 +24,7 @@ const ORIGIN = 'https://wallet.delfos-hub.net';
 // the Worker's storage
 function fakeD1(){
   // a D1 that knows the Worker's statements; rows kept as data['doc:'+id] = JSON
-  const data = {}; let puts = 0;
+  const data = {}, meta = {}; let puts = 0;
   const row = id => (data['doc:' + id] ? JSON.parse(data['doc:' + id]) : null);
   const prepare = sql => ({ bind: (...a) => ({
     first: async () => {
@@ -39,12 +39,18 @@ function fakeD1(){
       if (/^UPDATE docs/.test(sql)) { const [d, t, id, aa, old] = a; const r = row(id); if (r && r.a === aa && r.t === old) { data['doc:' + id] = JSON.stringify({ a: r.a, d, t }); changes = 1; } }
       else if (/^INSERT INTO docs/.test(sql)) { const [id, aa, d, t] = a; if (!row(id)) { data['doc:' + id] = JSON.stringify({ a: aa, d, t }); changes = 1; } }
       else if (/^DELETE FROM docs WHERE id/.test(sql)) { const r = row(a[0]); if (r && r.a === a[1]) { delete data['doc:' + a[0]]; changes = 1; } }
-      else if (/^DELETE FROM docs WHERE t </.test(sql)) { for (const k of Object.keys(data)) if (JSON.parse(data[k]).t < a[0]) { delete data[k]; changes++; } }
+      else if (/^DELETE FROM docs WHERE t </.test(sql)) { if (fakeD1.slow) await fakeD1.slow; for (const k of Object.keys(data)) if (k.startsWith('doc:') && JSON.parse(data[k]).t < a[0]) { delete data[k]; changes++; } }
+      else if (/^INSERT INTO meta .* WHERE meta\.v <= \?$/.test(sql)) {
+        // the day's claim: set to now only when the last purge is a day old
+        if (fakeD1.broken) throw new Error('no such table: meta');
+        const [now, cutoff] = a;
+        if (!('purge' in meta) || meta.purge <= cutoff) { meta.purge = now; changes = 1; }
+      }
       else throw new Error('fake D1: ' + sql);
-      if (changes) puts += 1;
+      if (changes && !/^INSERT INTO meta|^DELETE FROM docs WHERE t/.test(sql)) puts += 1;
       return { meta: { changes } };
     } }) });
-  return { data, get puts(){ return puts; }, prepare };
+  return { data, meta, get puts(){ return puts; }, prepare };
 }
 let KV = fakeD1(), DOWN = false, CALLS = 0, LIMIT = null, LASTURL = '';
 const call = (url, init = {}, origin = ORIGIN) => worker.fetch(
@@ -294,15 +300,67 @@ group('second review (Pablo, #56): picked while Off, a failed delete, the daily 
   DOWN = false;
   await a.m.retryDelete();
   ok('and done at the next unlock', !a.m.pendingDelete(ADDR_A) && Object.keys(KV.data).length === 0);
-  KV = fakeD1();
-  const id = 'aa'.repeat(32);
-  KV.data['doc:' + id] = JSON.stringify({ a: 'x', d: 'AAAA', t: Date.now() - 401 * 86400 * 1000 });
-  KV.data['doc:' + 'bb'.repeat(32)] = JSON.stringify({ a: 'x', d: 'AAAA', t: Date.now() });
-  let waited = null;
-  await worker.scheduled({}, { DB: KV }, { waitUntil: p => { waited = p; } }); await waited;
-  ok('the daily cron removes a record not written for 400 days, and keeps the others', !KV.data['doc:' + id] && KV.data['doc:' + 'bb'.repeat(32)]);
   const sync = fs.readFileSync(path.join(SRC, 'sync.js'), 'utf8');
   ok('the dialog says sync is turned off on each device', /turn sync off in Settings on each device/.test(sync));
+}
+
+
+group('the daily purge without a cron (Pablo: in the background, on reads too)');
+{
+  const REAL_NOW = Date.now;
+  let NOW = REAL_NOW() + 10 * 86400 * 1000;           // after anything earlier cases did
+  Date.now = () => NOW;
+  const old = 'aa'.repeat(32), young = 'bb'.repeat(32);
+  const seed = () => {
+    KV.data['doc:' + old] = JSON.stringify({ a: 'x', d: 'AAAA', t: NOW - 401 * 86400 * 1000 });
+    KV.data['doc:' + young] = JSON.stringify({ a: 'x', d: 'AAAA', t: NOW - 399 * 86400 * 1000 });
+  };
+  const ctx = () => { const c = { jobs: [], waitUntil: p => { c.jobs.push(p); } }; return c; };
+  const get = (id, c) => worker.fetch(new Request('https://sync.test/v1/doc/' + id, { headers: { Origin: ORIGIN } }), { DB: KV, READS: null }, c);
+  try {
+    KV = fakeD1(); seed();
+    // a slow purge: the read answers before it is done
+    let release; fakeD1.slow = new Promise(r => { release = r; });
+    let c = ctx();
+    const r1 = await get(young, c);
+    ok('a read is answered at once while the purge runs behind it', r1.status === 200 && c.jobs.length === 1 && KV.data['doc:' + old]);
+    release(); await Promise.all(c.jobs); fakeD1.slow = null;
+    ok('a read starts the purge: a record not written for 400 days goes, a younger one stays',
+       !KV.data['doc:' + old] && KV.data['doc:' + young]);
+
+    seed(); NOW += 30 * 60 * 1000;
+    c = ctx(); await get(young, c); await Promise.all(c.jobs);
+    ok('the same isolate does not look again within the hour', c.jobs.length === 0 && KV.data['doc:' + old]);
+    NOW += 2 * 3600 * 1000;
+    c = ctx(); await get(young, c); await Promise.all(c.jobs);
+    ok('an hour later it looks, but the day is already claimed', c.jobs.length === 1 && KV.data['doc:' + old]);
+    NOW += 24 * 3600 * 1000;
+    // a write starts it too; the purge never touches the write's answer
+    const a = await device(PHRASE_A, ADDR_A);
+    c = ctx();
+    const realCall = globalThis.fetch;
+    globalThis.fetch = async (url, init) => worker.fetch(new Request(String(url), Object.assign({}, init,
+      { headers: Object.assign({}, init && init.headers || {}, { Origin: ORIGIN }) })), { DB: KV, WRITES: null, READS: null }, c);
+    a.set([tok('JURIS')]); await a.sync();
+    globalThis.fetch = realCall;
+    await Promise.all(c.jobs);
+    ok('a day later a write starts it, and the record still lands', c.jobs.length === 1 && !KV.data['doc:' + old] && a.m && Object.keys(KV.data).some(k => k.startsWith('doc:') && k !== 'doc:' + young));
+
+    seed(); NOW += 25 * 3600 * 1000; fakeD1.broken = true;
+    const errs = []; const realErr = console.error; console.error = (...x) => errs.push(x.join(' '));
+    c = ctx();
+    const r2 = await get(young, c); await Promise.all(c.jobs);
+    console.error = realErr; fakeD1.broken = false;
+    ok('a purge that fails leaves the read untouched and is logged', r2.status === 200 && (await r2.json()).d === 'AAAA' && errs.length === 1 && /purge failed/.test(errs[0]));
+
+    NOW += 25 * 3600 * 1000; seed();
+    const r3 = await worker.fetch(new Request('https://sync.test/v1/doc/' + young, { headers: { Origin: ORIGIN } }), { DB: KV });
+    ok('without a ctx (a test, a tool) the request still works', r3.status === 200, r3.status + ' ' + await r3.clone().text());
+    const src = fs.readFileSync(path.join(SRC, '..', '..', 'sync-worker', 'wrangler.jsonc'), 'utf8');
+    ok('no cron is asked of the account', /"crons": \[\]/.test(src) && !/async scheduled/.test(fs.readFileSync(path.join(SRC, '..', '..', 'sync-worker', 'worker.js'), 'utf8')));
+    const schema = fs.readFileSync(path.join(SRC, '..', '..', 'sync-worker', 'schema.sql'), 'utf8');
+    ok('the schema has the meta table the claim needs', /CREATE TABLE IF NOT EXISTS meta/.test(schema));
+  } finally { Date.now = REAL_NOW; fakeD1.slow = null; fakeD1.broken = false; }
 }
 
 
