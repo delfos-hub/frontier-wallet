@@ -86,6 +86,8 @@ group('amounts');
   ok('"1,000" is refused, not read as 1', /could mean either/.test(bad('1,000') || ''), bad('1,000'));
   ok('"12,345,678" too', /could mean either/.test(bad('12,345,678') || ''));
   ok('"1,0001" is still a decimal comma', toRaw('1,0001', 6) === '1000100');
+  ok('"0,001" cannot be a thousand, so it is a decimal', toRaw('0,001', 6) === '1000');
+  ok('swap says a refused amount instead of staying on "quoting"', /try \{ raw = toRaw\(\$\('#sw-amt'\)\.value, dFrom\); \}\s*catch/.test(swap));
   ok('junk is refused', !!bad('1e5') && !!bad('abc') && !!bad(''));
   ok('decimals past the token are cut', toRaw('0.1234567', 6) === '123456');
   ok('0 decimals', toRaw('7', 0) === '7');
@@ -129,11 +131,17 @@ group('the backup check');
 group('Telegram storage only inside Telegram');
 {
   const st = read('storage.js');
-  const gate = new Function('tg', liftLine(st, 'const inTelegram =') + '\nreturn inTelegram;');
-  ok('no Telegram object: no', gate(null) === false);
-  ok('the script loaded on the web (initData empty): no', gate({ initData: '' }) === false);
-  ok('a made-up initData without a hash: no', gate({ initData: 'user=1&auth_date=1' }) === false);
-  ok('a signed initData: yes', gate({ initData: 'user=%7B%7D&auth_date=1&hash=' + 'a'.repeat(64) }) === true);
+  const src = liftLine(st, 'const W = globalThis;') + '\n' + liftLine(st, 'const tgHost =') + '\n' + liftLine(st, 'const inTelegram =') + '\nreturn inTelegram;';
+  const gate = (tg, host) => {
+    if (host) globalThis.TelegramWebviewProxy = {}; else delete globalThis.TelegramWebviewProxy;
+    try { return new Function('tg', src)(tg); } finally { delete globalThis.TelegramWebviewProxy; }
+  };
+  const SIGNED = { initData: 'user=%7B%7D&auth_date=1&hash=' + 'a'.repeat(64) };
+  ok('no Telegram object: no', gate(null, true) === false);
+  ok('the script loaded on the web (initData empty): no', gate({ initData: '' }, true) === false);
+  ok('a made-up initData without a hash: no', gate({ initData: 'user=1&auth_date=1' }, true) === false);
+  ok('a signed initData in a Telegram client: yes', gate(SIGNED, true) === true);
+  ok('the same initData from a link (#tgWebAppData=) in a plain tab: no', gate(SIGNED, false) === false);
   ok('each Telegram store requires it', /const atLeast = v => inTelegram &&/.test(st));
 }
 
@@ -153,7 +161,7 @@ group('removing a wallet');
 {
   const A1 = 'terra1aaaa', A2 = 'terra1bbbb';
   localStorage.clear();
-  for (const k of ['fw:fav:' + A1, 'fw:tot:' + A1, 'fw:earn:pos:' + A1, 'fw:sync:j:fav:' + A1,
+  for (const k of ['fw:fav:' + A1, 'fw:tot:' + A1, 'fw:earn:pos:' + A1, 'fw:sync:j:fav:' + A1, 'fw:gram:buys:' + A1, 'fw:gram:locks:' + A1,
     'fw:fav:' + A2, 'fw:sync', 'fw:labs']) localStorage.setItem(k, '1');
   const forgot = [];
   const drop = new Function('localStorage', 'forget', 'K',
@@ -161,8 +169,9 @@ group('removing a wallet');
   const r = await drop(A1);
   const left = Array.from(localStorage._m.keys()).sort();
   ok('a synced wallet has its server copy deleted', r === 'deleted' && forgot[0] === A1);
-  ok('its entries here are gone', !left.some(k => k.indexOf(A1) >= 0), left.join(' '));
-  ok('other wallets and device settings stay', left.join(' ') === ['fw:fav:' + A2, 'fw:labs', 'fw:sync'].sort().join(' '), left.join(' '));
+  ok('its entries here are gone, except GRAM trades', !left.some(k => k.indexOf(A1) >= 0 && !k.startsWith('fw:gram:')), left.join(' '));
+  ok('a GRAM trade in flight keeps its secret and refund record', left.includes('fw:gram:buys:' + A1) && left.includes('fw:gram:locks:' + A1));
+  ok('other wallets and device settings stay', left.join(' ') === ['fw:fav:' + A2, 'fw:gram:buys:' + A1, 'fw:gram:locks:' + A1, 'fw:labs', 'fw:sync'].sort().join(' '), left.join(' '));
   forgot.length = 0;
   await drop(A2);
   ok('a wallet that never synced makes no server call', forgot.length === 0);
@@ -185,6 +194,7 @@ group('markup from outside is escaped');
   ok('wallet ids', /data-id="' \+ esc\(w\.id\)/.test(wl) && /data-remove="' \+ esc\(w\.id\)/.test(wl));
   ok('denoms are checked where balances are read', /\^\[a-zA-Z\]\[a-zA-Z0-9\/:\._-\]\{2,127\}\$/.test(read('tokens.js')));
   ok('the seed sheet drops a decrypt that finished after it closed', /gen !== GEN/.test(read('seed.js')));
+  ok('only a bad key counts as a wrong PIN there', /const badPin = e && \(e\.name === 'OperationError'[\s\S]{0,300}if \(!badPin\)[\s\S]{0,300}pinFail\(\)/.test(read('seed.js')));
 }
 
 report();

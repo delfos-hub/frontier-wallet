@@ -24,7 +24,7 @@
    when this device last changed it). A device that has a list from before
    this module existed has no such time: its list is joined with the kept
    one once, instead of one silently replacing the other. */
-import { S } from './state.js?v=17acb6df';
+import { S } from './state.js?v=5c069a96';
 
 const HOST = 'https://frontier-sync.delfoshub-team.workers.dev';
 const SALT = 'frontier-sync-v1';
@@ -219,7 +219,8 @@ async function forget(addr){
 }
 // A wallet removed from this device takes its data with it: the server copy
 // when its key is at hand (the open wallet), and every per-address entry kept
-// here. A server copy left behind is sealed and is purged once it goes stale.
+// here, except GRAM trades. A server copy left behind is sealed and is purged
+// once it goes stale.
 async function dropWallet(addr){
   if (!addr) return 'none';
   let synced = false;
@@ -235,7 +236,9 @@ async function dropWallet(addr){
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i) || '';
-      if (k.startsWith('fw:') && k.indexOf(addr) !== -1) gone.push(k);
+      // GRAM trades stay: a buy in flight keeps its HTLC secret and its
+      // refund screen there, and importing the phrase again brings it back
+      if (k.startsWith('fw:') && !k.startsWith('fw:gram:') && k.indexOf(addr) !== -1) gone.push(k);
     }
     gone.forEach(k => localStorage.removeItem(k));
   } catch (e) {}

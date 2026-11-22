@@ -9,10 +9,10 @@
    owns sd-sheet and sd-x, and sharing them opened that hidden picker instead.
    There is no copy button: a phrase on the clipboard can be read by any app
    that looks. A watched address has no phrase, so the row is hidden there. */
-import { $, buzz, libs, tap } from './shell.js?v=17acb6df';
-import { S } from './state.js?v=17acb6df';
-import { decryptSeed } from './storage.js?v=17acb6df';
-import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=17acb6df';
+import { $, buzz, libs, tap } from './shell.js?v=5c069a96';
+import { S } from './state.js?v=5c069a96';
+import { decryptSeed } from './storage.js?v=5c069a96';
+import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=5c069a96';
 
 const PIN_LEN = 8;
 let TIMER = null;
@@ -60,6 +60,15 @@ async function check(){
     await libs();
     words = (await decryptSeed(S.SAVED.blob, pin)).trim().split(/\s+/);
   } catch (e) {
+    // only what AES-GCM throws on a bad key is a wrong PIN; anything else (the
+    // libraries failing to load) is shown as itself and costs no try
+    const badPin = e && (e.name === 'OperationError' || e.name === 'InvalidAccessError');
+    if (!badPin) {
+      if (gen !== GEN) return;
+      m.textContent = 'Could not check the PIN: ' + ((e && e.message) || e) + '. Try again.';
+      m.style.color = 'var(--red)';
+      return;
+    }
     const f = pinFail();                 // a wrong guess counts, sheet open or not
     if (gen !== GEN) return;
     buzz('error');

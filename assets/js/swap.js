@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=17acb6df';
-import { $, go, tap } from './shell.js?v=17acb6df';
-import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=17acb6df';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=17acb6df';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=17acb6df';
-import { S } from './state.js?v=17acb6df';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=5c069a96';
+import { $, go, tap } from './shell.js?v=5c069a96';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=5c069a96';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=5c069a96';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=5c069a96';
+import { S } from './state.js?v=5c069a96';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -794,7 +794,14 @@ async function quote(){
   }
   if (my !== SEQ) return;
   const dFrom = decOf(FROM), dTo = decOf(TO);
-  const raw = toRaw($('#sw-amt').value, dFrom);
+  let raw;
+  // an amount toRaw refuses ("1,000") is said on screen, not left on "quoting"
+  try { raw = toRaw($('#sw-amt').value, dFrom); }
+  catch (e) {
+    out.textContent = '-'; out.classList.add('dim');
+    detail([{ k: 'Amount', v: String(e && e.message ? e.message : e).slice(0, 90), tone: 'bad' }]);
+    return;
+  }
 
   try {
     // A pool that will not answer is one fewer option, not an error - but when

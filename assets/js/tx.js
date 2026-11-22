@@ -1,8 +1,8 @@
-import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=17acb6df';
-import { $, buzz, go, sha, tap } from './shell.js?v=17acb6df';
-import { S } from './state.js?v=17acb6df';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=17acb6df';
-import { notify } from './notify.js?v=17acb6df';
+import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=5c069a96';
+import { $, buzz, go, sha, tap } from './shell.js?v=5c069a96';
+import { S } from './state.js?v=5c069a96';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=5c069a96';
+import { notify } from './notify.js?v=5c069a96';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -141,9 +141,9 @@ function toRaw(human, dec){
   // "1,000.5": the comma groups thousands. "1,5": the comma is the decimal
   // point. "1,000" could be either (a thousand, or one with three decimals
   // written the European way) and used to be read as 1, so it is refused
-  // rather than guessed.
+  // rather than guessed. "0,001" cannot be a thousands group, so it is not.
   if (s.indexOf('.') >= 0) s = s.replace(/,(?=\d{3}(\D|$))/g, '');
-  else if (/^\d{1,3}(,\d{3})+$/.test(s)) throw new Error('write it as 1000 or 1.5: a comma there could mean either');
+  else if (/^[1-9]\d{0,2}(,\d{3})+$/.test(s)) throw new Error('write it as 1000 or 1.5: a comma there could mean either');
   else s = s.replace(',', '.');
   if (s === '' || s === '.' || !/^\d*\.?\d*$/.test(s))
     throw new Error('that is not an amount');

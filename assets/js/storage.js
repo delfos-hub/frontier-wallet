@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=17acb6df';
-import { S } from './state.js?v=17acb6df';
+import { $, report, tg } from './shell.js?v=5c069a96';
+import { S } from './state.js?v=5c069a96';
 
 /* ---------------- storage ----------------
    The encrypted key is kept on this device only, in the best place the client
@@ -21,7 +21,15 @@ const Store = (() => {
   // can write; signed launch data (initData with its hash) comes only from a
   // real Telegram client. Outside one, a Telegram store never answers and the
   // wallet would hang on load, so this page's own storage is used instead.
-  const inTelegram = !!(tg && typeof tg.initData === 'string' && /(^|&)hash=[0-9a-f]{64}(&|$)/.test(tg.initData));
+  // initData can be put in the address too (#tgWebAppData=), and its hash can
+  // only be checked by the bot's server, so what decides is the host: a
+  // Telegram client gives the page a bridge to post to (TelegramWebviewProxy
+  // on mobile, external.notify on desktop) or frames it (Telegram Web). A
+  // plain browser tab has none of these, whatever its address says.
+  const W = globalThis;
+  const tgHost = !!(W.TelegramWebviewProxy || (W.external && typeof W.external === 'object' && 'notify' in W.external) ||
+    (W.parent && W.parent !== W));
+  const inTelegram = tgHost && !!(tg && typeof tg.initData === 'string' && /(^|&)hash=[0-9a-f]{64}(&|$)/.test(tg.initData));
   const atLeast = v => inTelegram && !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
   // best first; each entry gives the store or null when this client has none
   const LADDER = [
@@ -36,9 +44,16 @@ const Store = (() => {
     rung = LADDER.length; kind = 'local'; api = null;
   }
   pick(0);
+  // A Telegram store that never answers would leave the wallet looking empty,
+  // which invites making a new one over the real one. After WAIT it is an
+  // error the screen shows instead, and no lower store is tried in its place.
+  const WAIT = 10000;
+  const timedOut = e => !!(e && e.timedOut);
   const callOn = (target, fn, ...args) => new Promise((res, rej) => {
-    try { fn.call(target, ...args, (err, val) => err ? rej(err) : res(val)); }
-    catch (e) { rej(e); }
+    const t = setTimeout(() => rej(Object.assign(new Error('Telegram storage did not answer. Close the app and open it again; your wallets are not lost.'), { timedOut: true })), WAIT);
+    const done = (f, x) => { clearTimeout(t); f(x); };
+    try { fn.call(target, ...args, (err, val) => err ? done(rej, err) : done(res, val)); }
+    catch (e) { done(rej, e); }
   });
 
   // Presence is not support. Telegram Desktop hands out a SecureStorage object
@@ -60,7 +75,7 @@ const Store = (() => {
         const v = await callOn(api, api.getItem, KEY);
         if (v) return v;
         return mem;
-      } catch (e) { stepDown(); return readHere(); }
+      } catch (e) { if (timedOut(e)) throw e; stepDown(); return readHere(); }
     }
     if (kind === 'local') {
       try {
@@ -103,7 +118,7 @@ const Store = (() => {
       for (let i = 0; i <= LADDER.length; i++) {
         if (api) {
           try { await callOn(api, api.setItem, KEY, v); return true; }
-          catch (e) { if (!stepDown()) break; continue; }
+          catch (e) { if (timedOut(e)) throw e; if (!stepDown()) break; continue; }
         }
         if (kind === 'local') {
           try { localStorage.setItem(KEY, v); return true; }
