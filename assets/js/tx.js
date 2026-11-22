@@ -1,9 +1,8 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=d7966255';
-import { $, buzz, go, tap } from './shell.js?v=d7966255';
-import { S } from './state.js?v=d7966255';
-import { iconHTML, paintIcons } from './chain.js?v=d7966255';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=d7966255';
-import { notify } from './notify.js?v=d7966255';
+import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=91e77150';
+import { $, buzz, go, sha, tap } from './shell.js?v=91e77150';
+import { S } from './state.js?v=91e77150';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=91e77150';
+import { notify } from './notify.js?v=91e77150';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -138,7 +137,14 @@ async function keyOf(mnemonic){
    more than what was typed.
 */
 function toRaw(human, dec){
-  const s = String(human == null ? '' : human).trim().replace(',', '.');
+  let s = String(human == null ? '' : human).trim().replace(/[\s\u00a0\u202f']/g, '');
+  // "1,000.5": the comma groups thousands. "1,5": the comma is the decimal
+  // point. "1,000" could be either (a thousand, or one with three decimals
+  // written the European way) and used to be read as 1, so it is refused
+  // rather than guessed.
+  if (s.indexOf('.') >= 0) s = s.replace(/,(?=\d{3}(\D|$))/g, '');
+  else if (/^\d{1,3}(,\d{3})+$/.test(s)) throw new Error('write it as 1000 or 1.5: a comma there could mean either');
+  else s = s.replace(',', '.');
   if (s === '' || s === '.' || !/^\d*\.?\d*$/.test(s))
     throw new Error('that is not an amount');
   const cut = s.split('.');
@@ -169,8 +175,14 @@ async function simulateGas(body, auth, net = MAINNET){
   if (!r.ok) throw new Error(d.message || ('simulate -> ' + r.status));
   const used = Number((d.gas_info || {}).gas_used);
   if (!Number.isSafeInteger(used) || used <= 0) throw new Error('the node gave no usable gas figure');
+  // An absolute ceiling on top of the review: the fee is gas x a fixed price,
+  // and the gas comes from the node. A send uses about 330k, a two-pool swap
+  // about 1M; a node reporting more than MAX_GAS is not believed, whatever the
+  // review would have said (MAX_GAS is about 113 LUNC).
+  if (used > MAX_GAS) throw new Error('the node reports ' + used.toLocaleString() + ' gas for this, far more than any normal transaction. Nothing was signed; try again later.');
   return used;
 }
+const MAX_GAS = 4000000;
 
 /* The fee shown in a review is what the user agreed to. Signing simulates
    again (the sequence may have moved), and that second answer used to be
@@ -242,14 +254,18 @@ async function broadcast(raw, net = MAINNET){
   const res = d.tx_response || {};
   if (!r.ok) throw new Error(d.message || ('broadcast -> ' + r.status));
   if (res.code) throw new Error('rejected (code ' + res.code + '): ' + (res.raw_log || ''));
+  // The hash is the sha256 of the signed bytes, so it is computed here rather
+  // than taken from the node: what the screen links to and what goes into
+  // markup is always 64 hex characters, whatever the node answered.
+  const hash = Array.from(sha.sha256(raw), x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
   // remembered so incoming.js does not announce what this wallet sent itself;
   // its own screen does that
   try {
     const l = JSON.parse(localStorage.getItem('fw:mine') || '[]');
-    l.push(res.txhash);
+    l.push(hash);
     localStorage.setItem('fw:mine', JSON.stringify(l.slice(-100)));
   } catch (e) {}
-  return res.txhash;
+  return hash;
 }
 
 async function waitFor(hash, tries = 30, net = MAINNET){
@@ -360,11 +376,11 @@ function drawSendList(){
       (q.length > 8 && String(t.contract || t.denom || '').toUpperCase().indexOf(q) >= 0);
   });
   $('#sd-list').innerHTML = rows.length ? rows.map(function (t) {
-    return '<button class="sw-item" type="button" data-k="' + sendKey(t) + '">' +
-      iconHTML(t) + '<span class="sw-item-s">' + t.sym + '</span>' +
+    return '<button class="sw-item" type="button" data-k="' + esc(sendKey(t)) + '">' +
+      iconHTML(t) + '<span class="sw-item-s">' + esc(t.sym) + '</span>' +
       '<span class="sw-item-r"><span class="sw-item-v">' + fmt(t.v || 0) + '</span></span>' +
       '</button>';
-  }).join('') : '<div class="sw-none">Nothing here matches ' + q + '.</div>';
+  }).join('') : '<div class="sw-none">Nothing here matches ' + esc(q) + '.</div>';
   paintIcons($('#sd-list'));
 }
 
@@ -452,11 +468,16 @@ async function review(){
     out.innerHTML = '<div class="sbad">Unlock the wallet first.</div>';
     return;
   }
-  if (!(Number(toRaw(human || '0', dec)) > 0)) {
+  let rawAmt;
+  try { rawAmt = toRaw(human || '0', dec); }
+  catch (e) { out.innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>'; return; }
+  if (!(Number(rawAmt) > 0)) {
     out.innerHTML = '<div class="sbad">Enter an amount first.</div>';
     return;
   }
 
+  // a 32-byte address is a contract, not a person: allowed, but said
+  const toContract = to.length > 44 ? '<div class="swarn">This is a contract address, not a wallet. What is sent to a contract is handled by its code, and most contracts cannot send it back.</div>' : '';
   out.innerHTML = '<div class="tiny">Asking the chain what this would cost...</div>';
   try {
     const sending = Number(toRaw(human, dec)) / Math.pow(10, dec);
@@ -477,7 +498,7 @@ async function review(){
                 ' LUNC and this address has ' + fmt(lunc) + '.</div>';
       }
       out.innerHTML =
-        line('To', '<code class="saddr">' + esc(to) + '</code>') +
+        line('To', '<code class="saddr">' + esc(to) + '</code>') + toContract +
         line('Amount', fmt(sending) + ' ' + t.sym) +
         line('Fee \u00b7 ' + gas.toLocaleString() + ' gas', fmt(gasFee / 1e6) + ' LUNC') +
         line('Leaves your wallet', fmt(sending) + ' ' + t.sym + ' and ' +
@@ -501,7 +522,7 @@ async function review(){
       const total = same ? d.total : Number(d.amount);
       const over = same ? d.total > avail : Number(d.amount) > avail;
       out.innerHTML =
-        line('To', '<code class="saddr">' + esc(to) + '</code>') +
+        line('To', '<code class="saddr">' + esc(to) + '</code>') + toContract +
         line('Amount', fmt(amt(d.amount, 6)) + ' ' + t.sym) +
         line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE,
              fmt(amt(d.gasFee, 6)) + ' LUNC') +
@@ -618,7 +639,7 @@ function drawJobs(){
       : j.state === 'slow' ? 'to ' + cut(j.to) + ' \u00b7 not in a block yet'
       : j.state === 'done' ? 'Delivered \u00b7 block ' + esc(j.note)
       : esc(j.note);
-    return '<button class="txq-row ' + j.state + '" type="button" data-hash="' + j.hash + '">' +
+    return '<button class="txq-row ' + esc(j.state) + '" type="button" data-hash="' + esc(j.hash) + '">' +
       '<span class="txq-ico">' + iconHTML(j.tok) + '</span>' +
       '<span class="txq-mid"><b>' + title + '</b><span>' + sub + '</span></span>' +
       '<span class="txq-st"></span></button>';

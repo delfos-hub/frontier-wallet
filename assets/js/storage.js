@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=d7966255';
-import { S } from './state.js?v=d7966255';
+import { $, report, tg } from './shell.js?v=91e77150';
+import { S } from './state.js?v=91e77150';
 
 /* ---------------- storage ----------------
    The encrypted key is kept on this device only, in the best place the client
@@ -17,7 +17,12 @@ import { S } from './state.js?v=d7966255';
 const KEY = 'frontier_wallet_v1';
 const Store = (() => {
   let mem = null, kind = 'memory', api = null, rung = 0;
-  const atLeast = v => !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
+  // The version comes from the page address (#tgWebAppVersion), which anyone
+  // can write; signed launch data (initData with its hash) comes only from a
+  // real Telegram client. Outside one, a Telegram store never answers and the
+  // wallet would hang on load, so this page's own storage is used instead.
+  const inTelegram = !!(tg && typeof tg.initData === 'string' && /(^|&)hash=[0-9a-f]{64}(&|$)/.test(tg.initData));
+  const atLeast = v => inTelegram && !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
   // best first; each entry gives the store or null when this client has none
   const LADDER = [
     ['secure', () => (tg && tg.SecureStorage && atLeast('8.0')) ? tg.SecureStorage : null],

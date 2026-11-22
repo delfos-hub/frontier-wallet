@@ -20,16 +20,14 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=d7966255';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=d7966255';
-import { $, go, tap } from './shell.js?v=d7966255';
-import { S } from './state.js?v=d7966255';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=d7966255';
-import * as P from './defi-parse.js?v=d7966255';
-import { dryRunSwap, sendSwap } from './tx.js?v=d7966255';
-import { notify } from './notify.js?v=d7966255';
-import { buzz } from './shell.js?v=d7966255';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=d7966255';
+import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=91e77150';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=91e77150';
+import { $, buzz, go, tap } from './shell.js?v=91e77150';
+import { S } from './state.js?v=91e77150';
+import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=91e77150';
+import * as P from './defi-parse.js?v=91e77150';
+import { dryRunSwap, sendSwap } from './tx.js?v=91e77150';
+import { notify } from './notify.js?v=91e77150';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -376,6 +374,24 @@ async function codeOf(c){
   return code;
 }
 
+/* Before signing, the code of the contract the action goes to is read again,
+   from two LCDs, and must still be a code the wallet knows for this kind of
+   position. The cached code (codeOf) only decides which contracts are shown;
+   it is never what an action is signed on. */
+async function codeNow(lcd, c){
+  const r = await getJSON(lcd + '/cosmwasm/wasm/v1/contract/' + c, 12000, 1);
+  return String(((r && r.contract_info) || {}).code_id || '');
+}
+async function confirmCode(c, kind){
+  // the contracts pinned by address above are trusted on their address
+  if (FIXED.some(j => j.contract === c && j.kind === kind)) return;
+  const [a, b] = await Promise.all([codeNow(LCD, c), codeNow(LCD2, c).catch(() => null)]);
+  if (b === null) throw new Error('could not confirm this contract on a second LCD. Nothing was signed.');
+  if (a !== b) throw new Error('the two LCDs disagree on this contract. Nothing was signed.');
+  if (KIND_OF_CODE[a] !== kind) throw new Error('this contract is no longer a known ' + kind + ' contract. Nothing was signed.');
+  permSet('code:' + c, a);
+}
+
 // contracts this address has called, including the target inside a cw20 send
 async function called(addr){
   try {
@@ -612,7 +628,7 @@ function card(p){
     '<b>' + fmt(human(x)) + ' ' + esc((META[x.key] || {}).sym) + '</b>').join(' + ') + '</div>' : '';
   const tag = (p.ready ? '<span class="ea-tag">ready to withdraw</span>' : '') +
     (p.stale ? '<span class="ea-stale">updating\u2026</span>' : '');
-  return '<div class="ea-pos" data-pos="' + p.contract + '">' +
+  return '<div class="ea-pos" data-pos="' + esc(p.contract) + '">' +
     '<div class="ea-top">' + logos(p) +
       '<div class="ea-mid"><b>' + esc(titleOf(p)) + '</b><span>' + esc(p.label) +
         (p.share ? ' \u00b7 ' + pct(p.share) + ' of pool' : '') + tag + '</span></div>' +
@@ -674,7 +690,11 @@ function actionsOf(p){
   }
   if (p.src === 'pool' && d.lpToken) {
     out.push({ id: 'withdraw', label: 'Withdraw liquidity', pick: true,
-      describe: f => d.sides.map(x => fmt(human({ key: x.key, raw: part(x.raw, f) })) + ' ' + ((META[x.key] || {}).sym || '')).join(' + '),
+      // what comes back, and the allowance it takes: the LP token and how much
+      // of it the pool may pull, shown before anything is signed
+      describe: f => d.sides.map(x => fmt(human({ key: x.key, raw: part(x.raw, f) })) + ' ' + ((META[x.key] || {}).sym || '')).join(' + ') +
+        '. To do it, the pool ' + String(c).slice(0, 12) + '\u2026' + String(c).slice(-6) + ' is allowed to take ' +
+        fmt(amt(part(d.lp, f), 6)) + ' LP tokens (' + String(d.lpToken).slice(0, 12) + '\u2026' + String(d.lpToken).slice(-6) + ') from this wallet.',
       // the pool takes the LP through an allowance, then pays both sides; 2%
       // under the current split is the least it may pay back
       steps: f => [
@@ -750,6 +770,8 @@ async function confirm(){
   const a = ACT.a, p = FOUND[OPEN_POS], title = titleOf(p) + ' \u00b7 ' + a.label;
   ACT.sending = 'Signing and sending\u2026'; drawPanel();
   let sent;
+  try { await confirmCode(p.contract, p.src); }
+  catch (e) { ACT.sending = ''; ACT.armed = false; ACT.plan = null; ACT.err = String(e.message || e); buzz('error'); drawPanel(); return; }
   try { sent = await sendSwap(me(), ACT.steps, S.MNEMONIC, undefined, '', ACT.plan && ACT.plan.gasFee); }
   catch (e) { ACT.sending = ''; ACT.armed = false; ACT.plan = null; ACT.err = String(e.message || e); buzz('error'); drawPanel(); return; }
   buzz('success');

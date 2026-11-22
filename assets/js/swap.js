@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=d7966255';
-import { $, go, tap } from './shell.js?v=d7966255';
-import { DEC, assetOf, checkPool, confirmDec, poolHolds, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=d7966255';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=d7966255';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=d7966255';
-import { S } from './state.js?v=d7966255';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=91e77150';
+import { $, go, tap } from './shell.js?v=91e77150';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=91e77150';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=91e77150';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=91e77150';
+import { S } from './state.js?v=91e77150';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -216,14 +216,14 @@ const LUNC_RESERVE = 2;
 
 function balOf(t){
   if (!t) return 0;
-  const row = heldTokens().find(x => x.sym === t.sym);
+  const row = heldTokens().find(x => keyOf(x) === keyOf(t));
   return row ? (row.v || 0) : (t.v || 0);
 }
 
 // The picker draws the same icon the token list draws, which is why the rows
 // come from heldTokens rather than being rebuilt here.
 function face(el, t){
-  const row = heldTokens().find(x => x.sym === (t && t.sym)) || t;
+  const row = (t && heldTokens().find(x => keyOf(x) === keyOf(t))) || t;
   el.innerHTML = (row ? iconHTML(row) : '') +
     '<span>' + ((t && t.sym) || 'LUNC') + '</span>' +
     '<svg class="sw-caret" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
@@ -499,15 +499,15 @@ function drawSheet(){
   list.innerHTML = all.some(t => !t.head) ? all.map(function (t) {
     if (t.head) return '<div class="sw-sec">' + t.head + '</div>';
     const f = fiatOf(t);
-    return '<button class="sw-item" type="button" data-k="' + keyOf(t) + '">' +
-      iconHTML(t) + '<span class="sw-item-s">' + t.sym +
+    return '<button class="sw-item" type="button" data-k="' + esc(keyOf(t)) + '">' +
+      iconHTML(t) + '<span class="sw-item-s">' + esc(t.sym) +
       (t.hops === 2 ? '<b class="sw-hop">2 steps</b>' : '') + '</span>' +
       '<span class="sw-item-r">' +
         '<span class="sw-item-v">' + ((t.v || 0) > 0 ? fmt(t.v) : '') + '</span>' +
         '<span class="sw-item-u">' + (f !== null && f > 0 ? usd(f) : '') + '</span>' +
       '</span></button>';
   }).join('') : '<div class="sw-none">' + (q
-    ? 'Nothing here matches ' + q + '.'
+    ? 'Nothing here matches ' + esc(q) + '.'
     : 'Nothing shares a pool with ' + FROM.sym + '.') + '</div>';
   paintIcons(list);
 }
@@ -582,21 +582,23 @@ function result(state, title, note, hash){
         (state === 'done'
           ? '<svg viewBox="0 0 24 24" class="sw-tick"><path d="m4 12 5.5 5.5L20 7"/></svg>'
           : '<span class="spin"></span>') +
-        '<b>' + title + '</b>' +
+        '<b>' + esc(title) + '</b>' +
       '</div>' +
-      '<p>' + note + '</p>' +
-      '<a href="' + link + '" target="_blank" rel="noopener">' +
-        hash.slice(0, 8) + '\u2026' + hash.slice(-6) + ' \u2197</a>' +
+      '<p>' + esc(note) + '</p>' +
+      (/^[0-9A-F]{64}$/i.test(String(hash || '')) ? '<a href="' + link + '" target="_blank" rel="noopener">' +
+        hash.slice(0, 8) + '\u2026' + hash.slice(-6) + ' \u2197</a>' : '') +
     '</div>';
 }
 
 // the same rows are wanted in two places now, so the markup is one function
+// Every line is text: a refusal can carry a node's or a contract's own words
+// (raw_log), and a symbol comes from a token, so nothing here is markup.
 function lineHTML(lines){
   return lines.map(function (l) {
-    return '<div class="sw-line' + (l.tone ? ' ' + l.tone : '') +
+    return '<div class="sw-line' + (l.tone ? ' ' + esc(l.tone) : '') +
       (l.big ? ' big' : '') + '">' +
-      '<span>' + l.k + '</span><b>' + l.v + '</b></div>' +
-      (l.note ? '<p class="sw-note">' + l.note + '</p>' : '');
+      '<span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>' +
+      (l.note ? '<p class="sw-note">' + esc(l.note) + '</p>' : '');
   }).join('');
 }
 

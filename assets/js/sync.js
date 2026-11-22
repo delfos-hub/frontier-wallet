@@ -24,7 +24,7 @@
    when this device last changed it). A device that has a list from before
    this module existed has no such time: its list is joined with the kept
    one once, instead of one silently replacing the other. */
-import { S } from './state.js?v=d7966255';
+import { S } from './state.js?v=91e77150';
 
 const HOST = 'https://frontier-sync.delfoshub-team.workers.dev';
 const SALT = 'frontier-sync-v1';
@@ -217,6 +217,30 @@ async function forget(addr){
   try { localStorage.removeItem(delKey(addr)); } catch (e) {}
   return 'deleted';
 }
+// A wallet removed from this device takes its data with it: the server copy
+// when its key is at hand (the open wallet), and every per-address entry kept
+// here. A server copy left behind is sealed and is purged once it goes stale.
+async function dropWallet(addr){
+  if (!addr) return 'none';
+  let synced = false;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || '';
+      if (k.startsWith('fw:sync:j:') && k.endsWith(':' + addr)) { synced = true; break; }
+    }
+  } catch (e) {}
+  const r = synced ? await forget(addr) : 'none';
+  if (K && K.addr === addr) K = null;
+  const gone = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || '';
+      if (k.startsWith('fw:') && k.indexOf(addr) !== -1) gone.push(k);
+    }
+    gone.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+  return r;
+}
 function unjoin(addr){
   for (const n in SECTIONS) { try { localStorage.removeItem(jKey(n, addr)); } catch (e) {} }
 }
@@ -312,4 +336,4 @@ function paint(){
   if (cur) cur.textContent = enabled() ? 'On' : 'Off';
 }
 
-export { changed, deriveKeys, enabled as syncOn, forget, offAll, offer, pendingDelete, retryDelete, seal, section, syncNow, unseal };
+export { changed, deriveKeys, dropWallet, enabled as syncOn, forget, offAll, offer, pendingDelete, retryDelete, seal, section, syncNow, unseal };

@@ -28,7 +28,7 @@ function fakeStore(name, opts = {}){
 }
 async function loadStore({ version = '9.1', secure, device, cloud, local = {}, localBroken = false }){
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ks-'));
-  const tg = { isVersionAtLeast: v => parseFloat(version) >= parseFloat(v) };
+  const tg = { initData: 'auth_date=1&hash=' + '0'.repeat(64), isVersionAtLeast: v => parseFloat(version) >= parseFloat(v) };
   if (secure) tg.SecureStorage = secure;
   if (device) tg.DeviceStorage = device;
   if (cloud) tg.CloudStorage = cloud;

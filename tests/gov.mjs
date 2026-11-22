@@ -22,7 +22,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gov-'));
 const stubs = {
   'chain.js': `export const LCD=''; export const amt=()=>0; export const fmt=String; export const getJSON=async()=>({});
 export const iconHTML=()=>''; export const paintIcons=()=>{};`,
-  'shell.js': `export const $=()=>null; export const buzz=()=>{}; export const go=()=>{}; export const tap=()=>{};`,
+  'shell.js': `export const $=()=>null; export const buzz=()=>{}; export const go=()=>{}; export const tap=()=>{}; export const sha={};`,
   'state.js': `export const S={};`,
   'tokens.js': `export const heldTokens=()=>[]; export const refreshBalances=()=>{}; export const sortHeld=a=>a;`,
   'notify.js': `export const notify=()=>{}; export const chime=()=>{};`,
