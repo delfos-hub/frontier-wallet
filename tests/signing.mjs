@@ -83,6 +83,16 @@ group('decimals from the token itself, and 0 is a real answer');
   const ZERO = 'cw20:terra1zero';
   META[ZERO] = { sym: 'ZERO', dec: 0 };
   ok('a token with 0 decimals is 0', (await mod.confirmDec(ZERO)) === 0 && mod.DEC[ZERO] === 0);
+  const ODD = 'cw20:terra1odd';
+  META[ODD] = { sym: 'ODD', dec: 99 };
+  const seen = await mod.learnAsset(ODD);
+  ok('a token giving invalid decimals is shown with 6', seen && seen.dec === 6);
+  ok('but that 6 is not kept as its answer', !mod.cacheGetStale('as:' + ODD));
+  let oddErr = null;
+  try { await mod.confirmDec(ODD); } catch (e) { oddErr = e; }
+  ok('so signing asks again and refuses it', oddErr && /does not say its decimals/.test(oddErr.message), oddErr && oddErr.message);
+  ok('the price-impact probe names the side it asks for', /simulateSwap\(leg\.pair, keyOf\(FROM\), raw, leg\.dex, leg\.ask\)/.test(swap));
+  ok('changing the send token drops a review on its way', /function paintSendTok\(\)\{[\s\S]{0,120}REV\+\+/.test(tx));
   ok('a quote waits for both tokens’ own decimals', /await Promise\.all\(\[confirmDec\(keyOf\(FROM\)\), confirmDec\(keyOf\(TO\)\)\]\)/.test(swap));
   const swapDec = new Function('DEC', 'keyOf', lift(swap, 'function decOf(') + '; return decOf;')({ 'cw20:z': 0 }, t => t && t.key);
   ok('swap: 0 decimals stay 0', swapDec({ key: 'cw20:z', dec: 6 }) === 0 && swapDec({ dec: 0 }) === 0);

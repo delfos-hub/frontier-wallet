@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=e508b1b8';
-import { $, go, tap } from './shell.js?v=e508b1b8';
-import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=e508b1b8';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=e508b1b8';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=e508b1b8';
-import { S } from './state.js?v=e508b1b8';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=17acb6df';
+import { $, go, tap } from './shell.js?v=17acb6df';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=17acb6df';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=17acb6df';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=17acb6df';
+import { S } from './state.js?v=17acb6df';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -244,9 +244,9 @@ const DEPTH = {};
 // definition.
 function firstCandidates(){
   const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (pools.length) return pools;
+  if (pools.length) return pools.map(p => Object.assign({ ask: keyOf(TO) }, p));
   const mids = midsBetween(keyOf(FROM), keyOf(TO));
-  return (mids[0] && mids[0].first) || [];
+  return ((mids[0] && mids[0].first) || []).map(p => Object.assign({ ask: mids[0].key }, p));
 }
 /* Which of them is the deep one, by what it actually holds.
    The list is ordered by the feed's liquidity, and a pool the feed does not
@@ -313,7 +313,8 @@ async function learnComfort(){
   const raw = toRaw(String(bal), decOf(FROM));
   const leg = firstCandidates().filter(p => p.pair === pair)[0];
   if (!leg) { delete COMFORT[pair]; return; }
-  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex).catch(() => null);
+  // with the side it asks for, so the pool is checked for what it holds here too
+  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex, leg.ask).catch(() => null);
   if (!q) { delete COMFORT[pair]; return; }
   const out = Number(q.return_amount), spread = Number(q.spread_amount);
   const fee = Number(q.commission_amount);

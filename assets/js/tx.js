@@ -1,8 +1,8 @@
-import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=e508b1b8';
-import { $, buzz, go, sha, tap } from './shell.js?v=e508b1b8';
-import { S } from './state.js?v=e508b1b8';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=e508b1b8';
-import { notify } from './notify.js?v=e508b1b8';
+import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=17acb6df';
+import { $, buzz, go, sha, tap } from './shell.js?v=17acb6df';
+import { S } from './state.js?v=17acb6df';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=17acb6df';
+import { notify } from './notify.js?v=17acb6df';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -352,6 +352,7 @@ function balanceOf(t){
 function paintSendTok(){
   const t = SEND_TOK;
   if (!$('#sd-sym')) return;
+  REV++;                                   // a review still on its way is for the old token
   $('#sd-sym').textContent = t.sym;
   $('#sd-ico').innerHTML = iconHTML(t);
   paintIcons($('#sd-token'));

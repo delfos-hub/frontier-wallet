@@ -20,14 +20,14 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=e508b1b8';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=e508b1b8';
-import { $, buzz, go, tap } from './shell.js?v=e508b1b8';
-import { S } from './state.js?v=e508b1b8';
-import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=e508b1b8';
-import * as P from './defi-parse.js?v=e508b1b8';
-import { dryRunSwap, sendSwap } from './tx.js?v=e508b1b8';
-import { notify } from './notify.js?v=e508b1b8';
+import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=17acb6df';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=17acb6df';
+import { $, buzz, go, tap } from './shell.js?v=17acb6df';
+import { S } from './state.js?v=17acb6df';
+import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=17acb6df';
+import * as P from './defi-parse.js?v=17acb6df';
+import { dryRunSwap, sendSwap } from './tx.js?v=17acb6df';
+import { notify } from './notify.js?v=17acb6df';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
