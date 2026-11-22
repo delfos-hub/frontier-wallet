@@ -20,16 +20,14 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { LCD, amt, clean, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=dfec9205';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=dfec9205';
-import { $, go, tap } from './shell.js?v=dfec9205';
-import { S } from './state.js?v=dfec9205';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=dfec9205';
-import * as P from './defi-parse.js?v=dfec9205';
-import { dryRunSwap, sendSwap } from './tx.js?v=dfec9205';
-import { notify } from './notify.js?v=dfec9205';
-import { buzz } from './shell.js?v=dfec9205';
-import { refreshBalances, setExtraUsd } from './tokens.js?v=dfec9205';
+import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=62ee34a3';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=62ee34a3';
+import { $, buzz, go, tap } from './shell.js?v=62ee34a3';
+import { S } from './state.js?v=62ee34a3';
+import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=62ee34a3';
+import * as P from './defi-parse.js?v=62ee34a3';
+import { dryRunSwap, sendSwap } from './tx.js?v=62ee34a3';
+import { notify } from './notify.js?v=62ee34a3';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -64,6 +62,16 @@ function sweepDue(was, full){ return !!full || !(was && was.swept); }
 const me = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+// raw * f, rounded down, in BigInt: Number turns an 18-decimal amount of a
+// thousand tokens or more into "1e+21", which no contract takes as a Uint128
+const scaleRaw = (raw, f) => {
+  const t = String(raw == null ? '0' : raw).trim();
+  const n = Number(t);
+  const r = /^\d+$/.test(t) ? BigInt(t) : BigInt(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+  if (!(f < 1)) return r.toString();
+  if (!(f > 0)) return '0';
+  return (r * BigInt(Math.round(f * 1e9)) / 1000000000n).toString();
+};
 const cut = a => !a ? '' : a.slice(0, 10) + '\u2026' + a.slice(-4);
 // in the interface language (the translator sets the page's lang); English as before
 const dayLoc = () => { const l = document.documentElement.lang; return l && l !== 'en' ? l : 'en-GB'; };
@@ -220,7 +228,7 @@ async function lpSides(lp, lpRaw){
   const total = Number(d.total_supply || d.total_share);
   if (!total || !sides) { console.warn('[earn] pool answer not understood', pair, d); return null; }
   const f = Number(lpRaw) / total;
-  return { pair: pair, share: f, sides: sides.map(r => ({ key: r.key, raw: String(Math.floor(Number(r.raw) * f)) })) };
+  return { pair: pair, share: f, sides: sides.map(r => ({ key: r.key, raw: scaleRaw(r.raw, f) })) };
 }
 
 /* ---------------- reading one contract for this address ----------------
@@ -374,6 +382,24 @@ async function codeOf(c){
     permSet('code:' + c, code);
   }
   return code;
+}
+
+/* Before signing, the code of the contract the action goes to is read again,
+   from two LCDs, and must still be a code the wallet knows for this kind of
+   position. The cached code (codeOf) only decides which contracts are shown;
+   it is never what an action is signed on. */
+async function codeNow(lcd, c){
+  const r = await getJSON(lcd + '/cosmwasm/wasm/v1/contract/' + c, 12000, 1);
+  return String(((r && r.contract_info) || {}).code_id || '');
+}
+async function confirmCode(c, kind){
+  // the contracts pinned by address above are trusted on their address
+  if (FIXED.some(j => j.contract === c && j.kind === kind)) return;
+  const [a, b] = await Promise.all([codeNow(LCD, c), codeNow(LCD2, c).catch(() => null)]);
+  if (b === null) throw new Error('could not confirm this contract on a second LCD. Nothing was signed.');
+  if (a !== b) throw new Error('the two LCDs disagree on this contract. Nothing was signed.');
+  if (KIND_OF_CODE[a] !== kind) throw new Error('this contract is no longer a known ' + kind + ' contract. Nothing was signed.');
+  permSet('code:' + c, a);
 }
 
 // contracts this address has called, including the target inside a cw20 send
@@ -612,7 +638,7 @@ function card(p){
     '<b>' + fmt(human(x)) + ' ' + esc((META[x.key] || {}).sym) + '</b>').join(' + ') + '</div>' : '';
   const tag = (p.ready ? '<span class="ea-tag">ready to withdraw</span>' : '') +
     (p.stale ? '<span class="ea-stale">updating\u2026</span>' : '');
-  return '<div class="ea-pos" data-pos="' + p.contract + '">' +
+  return '<div class="ea-pos" data-pos="' + esc(p.contract) + '">' +
     '<div class="ea-top">' + logos(p) +
       '<div class="ea-mid"><b>' + esc(titleOf(p)) + '</b><span>' + esc(p.label) +
         (p.share ? ' \u00b7 ' + pct(p.share) + ' of pool' : '') + tag + '</span></div>' +
@@ -635,7 +661,7 @@ function card(p){
    pick asks how much (a share of the position, 25/50/75/100%); steps builds
    the messages for that share. */
 const assetObj = k => ({ asset_type: k.slice(0, 5) === 'cw20:' ? 'cw20' : 'native', address: k.slice(k.indexOf(':') + 1) });
-const part = (r, f) => String(f >= 1 ? r : Math.floor(Number(r) * f));
+const part = (r, f) => scaleRaw(r, f);
 
 function actionsOf(p){
   const c = p.contract, d = p.data || {}, out = [];
@@ -674,14 +700,18 @@ function actionsOf(p){
   }
   if (p.src === 'pool' && d.lpToken) {
     out.push({ id: 'withdraw', label: 'Withdraw liquidity', pick: true,
-      describe: f => d.sides.map(x => fmt(human({ key: x.key, raw: part(x.raw, f) })) + ' ' + ((META[x.key] || {}).sym || '')).join(' + '),
+      // what comes back, and the allowance it takes: the LP token and how much
+      // of it the pool may pull, shown before anything is signed
+      describe: f => d.sides.map(x => fmt(human({ key: x.key, raw: part(x.raw, f) })) + ' ' + ((META[x.key] || {}).sym || '')).join(' + ') +
+        '. To do it, the pool ' + String(c).slice(0, 12) + '\u2026' + String(c).slice(-6) + ' is allowed to take ' +
+        fmt(amt(part(d.lp, f), 6)) + ' LP tokens (' + String(d.lpToken).slice(0, 12) + '\u2026' + String(d.lpToken).slice(-6) + ') from this wallet.',
       // the pool takes the LP through an allowance, then pays both sides; 2%
       // under the current split is the least it may pay back
       steps: f => [
         { contract: d.lpToken, msg: { increase_allowance: { spender: c, amount: part(d.lp, f) } } },
         { contract: c, msg: { withdraw_liquidity: { lp_amount: part(d.lp, f),
-          min_asset1: String(Math.floor(Number(part(d.sides[0].raw, f)) * 0.98)),
-          min_asset2: String(Math.floor(Number(part(d.sides[1].raw, f)) * 0.98)) } } }] });
+          min_asset1: scaleRaw(part(d.sides[0].raw, f), 0.98),
+          min_asset2: scaleRaw(part(d.sides[1].raw, f), 0.98) } } }] });
   }
   return out;
 }
@@ -750,6 +780,8 @@ async function confirm(){
   const a = ACT.a, p = FOUND[OPEN_POS], title = titleOf(p) + ' \u00b7 ' + a.label;
   ACT.sending = 'Signing and sending\u2026'; drawPanel();
   let sent;
+  try { await confirmCode(p.contract, p.src); }
+  catch (e) { ACT.sending = ''; ACT.armed = false; ACT.plan = null; ACT.err = String(e.message || e); buzz('error'); drawPanel(); return; }
   try { sent = await sendSwap(me(), ACT.steps, S.MNEMONIC, undefined, '', ACT.plan && ACT.plan.gasFee); }
   catch (e) { ACT.sending = ''; ACT.armed = false; ACT.plan = null; ACT.err = String(e.message || e); buzz('error'); drawPanel(); return; }
   buzz('success');

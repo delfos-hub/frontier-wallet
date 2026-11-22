@@ -252,6 +252,9 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .sline.strong{color:var(--text)}
 .sbad{margin-top:12px;padding:10px 12px;border-radius:12px;font-size:13px;
   color:var(--gold);background:rgba(232,200,64,.10);border:1px solid rgba(232,200,64,.28)}
+/* a recipient worth a second look before sending */
+.swarn{margin:8px 0 4px;padding:9px 12px;border-radius:12px;font-size:12.5px;line-height:1.45;
+  color:var(--text);background:rgba(240,150,60,.10);border:1px solid rgba(240,150,60,.32)}
 /* a price carried through a pool too thin to sell into */
 .row-fiat.soft{color:var(--muted);font-weight:600}
 .head-r{display:flex;align-items:center;gap:10px}
@@ -2492,3 +2495,5 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-when{display:block;margin-top:3px;padding-left:2px;font-size:11px;color:var(--muted)}
 .gvd-more{display:block;margin:12px auto 4px}
 @media (max-width:1280px){.gvd-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.gvd-sums{grid-template-columns:1fr}}
+/* the send review names the recipient in full (tx.js review) */
+.sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}

@@ -1,14 +1,16 @@
-import { amt, fmt } from './chain.js?v=dfec9205';
-import { finish } from './crypto.js?v=dfec9205';
-import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=dfec9205';
+import { amt, fmt } from './chain.js?v=62ee34a3';
+import { finish } from './crypto.js?v=62ee34a3';
+import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=62ee34a3';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=dfec9205';
-import { S } from './state.js?v=dfec9205';
-import { Store, activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore } from './storage.js?v=dfec9205';
-import { enter, switchLink } from './wallets.js?v=dfec9205';
-import { paintSendTok } from './tx.js?v=dfec9205';
-import { luncRaw, openWallet } from './tokens.js?v=dfec9205';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=62ee34a3';
+import { S } from './state.js?v=62ee34a3';
+import { activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore, Store, wallets } from './storage.js?v=62ee34a3';
+import { dropWallet } from './sync.js?v=62ee34a3';
+import { enter, switchLink } from './wallets.js?v=62ee34a3';
+import { paintSendTok } from './tx.js?v=62ee34a3';
+import { luncRaw, openWallet } from './tokens.js?v=62ee34a3';
+import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=62ee34a3';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
@@ -19,13 +21,21 @@ $('#pu').addEventListener('input', async () => {
   dots('pinrowU', v.length);
   $('#umsg').textContent = '';
   if (v.length < PIN_LEN) return;
+  // too many wrong PINs: the next try waits (kept across reloads)
+  const wait = pinWait();
+  if (wait > 0) {
+    $('#umsg').textContent = 'Too many wrong PINs. Try again in ' + waitText(wait) + '.';
+    $('#umsg').style.color = 'var(--red)';
+    setTimeout(() => { $('#pu').value = ''; dots('pinrowU', 0); }, 550);
+    return;
+  }
 
   $('#umsg').textContent = 'Checking';
   $('#umsg').style.color = 'var(--muted)';
   try {
     await libs();
     S.MNEMONIC = await decryptSeed(S.SAVED.blob, v);
-    S.PASS = v; tries = 0;
+    S.PASS = v; tries = 0; pinOk();
     saveWallet(S.SAVED.addr, S.SAVED.blob);
     openWallet(S.SAVED.addr);
   } catch (e) {
@@ -35,7 +45,9 @@ $('#pu').addEventListener('input', async () => {
     dots('pinrowU', PIN_LEN, true);
     buzz('error');
     if (badPin) {
-      $('#umsg').textContent = 'Wrong PIN' + (tries > 2 ? ', ' + tries + ' attempts' : '');
+      const f = pinFail();
+      $('#umsg').textContent = 'Wrong PIN' + (f.until > Date.now() ? '. Next try in ' + waitText(f.until - Date.now())
+        : tries > 2 ? ', ' + tries + ' attempts' : '');
     } else {
       $('#umsg').textContent = 'Could not unlock: ' + (e && e.message ? e.message : e);
       report('unlock', e);
@@ -169,6 +181,7 @@ setInterval(() => {
 
 $('#btn-reset').addEventListener('click', async () => {
   if (!confirm('Delete every wallet from this device? Only their recovery phrases can bring them back.')) return;
+  for (const w of wallets()) await dropWallet(w.addr);
   await clearBook();
   S.MNEMONIC = null; S.PASS = null;
   locked();
@@ -178,7 +191,9 @@ $('#btn-reset').addEventListener('click', async () => {
 // the wallet on the unlock screen only; the others stay
 $('#btn-forget').addEventListener('click', async () => {
   if (!confirm('Forget this wallet? Only its recovery phrase can bring it back.')) return;
-  await removeWallet(activeId());
+  const id = activeId(), w = wallets().find(x => x.id === id);
+  if (w && !wallets().some(x => x.id !== id && x.addr === w.addr)) await dropWallet(w.addr);
+  await removeWallet(id);
   enter();
 });
 
@@ -194,7 +209,21 @@ $('#btn-forget').addEventListener('click', async () => {
     $('#st-unlock').classList.add('on');
     dots('pinrowU', 0);
     switchLink();
-  } catch (e) { report('boot', e); }
+  } catch (e) {
+    // the store did not answer: the wallets may well be there, so the screen
+    // says so instead of offering to create one over them
+    if (e && e.timedOut) {
+      const box = $('#st-welcome');
+      box.querySelectorAll('[data-go]').forEach(b => { b.hidden = true; });
+      const p = document.createElement('div');
+      p.className = 'sbad';
+      p.textContent = e.message;
+      const at = box.querySelector('[data-go]');
+      if (at && at.parentNode) at.parentNode.insertBefore(p, at); else box.appendChild(p);
+      return;
+    }
+    report('boot', e);
+  }
 })();
 
 /* ---------------- import ---------------- */

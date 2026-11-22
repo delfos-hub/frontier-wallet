@@ -1,6 +1,6 @@
-import { finish } from './crypto.js?v=dfec9205';
-import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=dfec9205';
-import { S } from './state.js?v=dfec9205';
+import { finish } from './crypto.js?v=62ee34a3';
+import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=62ee34a3';
+import { S } from './state.js?v=62ee34a3';
 
 /* ---------------- length toggle ---------------- */
 $('#seg').addEventListener('click', e => {
@@ -131,12 +131,13 @@ function buildVerify(){
   const words = S.MNEMONIC.split(' ');
   const n = words.length;
 
-  // two distinct positions, kept apart so they are not adjacent
-  let a = 1 + Math.floor(Math.random() * (n - 1));
-  let b = 1 + Math.floor(Math.random() * (n - 1));
+  // two distinct positions, kept apart so they are not adjacent; any of the n
+  // words can be asked, the last one too (it carries the checksum)
+  let a = 1 + Math.floor(Math.random() * n);
+  let b = 1 + Math.floor(Math.random() * n);
   let guard = 0;
   while (Math.abs(a - b) < Math.max(2, Math.floor(n / 4)) && guard++ < 60) {
-    b = 1 + Math.floor(Math.random() * (n - 1));
+    b = 1 + Math.floor(Math.random() * n);
   }
   const pos = [a, b].sort((x, y) => x - y);
   S.SLOTS = pos.map(p => ({ pos: p, answer: words[p - 1], word: null }));

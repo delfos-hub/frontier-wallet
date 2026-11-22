@@ -39,6 +39,9 @@ the `database_id` it prints into `wrangler.jsonc`, and create the table:
     npx wrangler d1 create frontier-sync
     npx wrangler d1 execute frontier-sync --remote --yes --file schema.sql
 
+`schema.sql` only adds what is missing, so running it again after a change to
+it is safe (the `meta` table for the daily purge came this way).
+
 Then, and on every change:
 
     npx wrangler deploy
@@ -59,7 +62,8 @@ favorite, and it can be changed in Settings). When it is on:
   that name. Never the wallet address, the keys, or which tokens are listed.
 - How long: until sync is turned off (Frontier deletes the record; it is
   turned off on each device, or another one with sync on writes it back), or
-  400 days after the last write (a daily cron removes it).
+  400 days after the last write (removed once a day: the first read or write
+  of the day starts the purge in the background, so no cron is needed).
 - Watched addresses are never synced.
 
 ## Limits
@@ -73,4 +77,4 @@ the wallet is a read.
 
     node tests/sync.mjs
 
-Runs the shipped `sync.js` against the shipped `worker.js` with a fake KV.
+Runs the shipped `sync.js` against the shipped `worker.js` with a fake D1.
