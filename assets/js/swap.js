@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=47b6e663';
-import { $, go, tap } from './shell.js?v=47b6e663';
-import { DEC, assetOf, checkPool, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=47b6e663';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=47b6e663';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=47b6e663';
-import { S } from './state.js?v=47b6e663';
+import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=d7966255';
+import { $, go, tap } from './shell.js?v=d7966255';
+import { DEC, assetOf, checkPool, confirmDec, poolHolds, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=d7966255';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=d7966255';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=d7966255';
+import { S } from './state.js?v=d7966255';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -201,11 +201,12 @@ function destinations(t){
    unnoticed until it costs a trade. Asked in order - what the row says, then
    what the market map recorded, and only then the guess. */
 function decOf(t){
-  const d = Number(t && t.dec);
-  if (isFinite(d) && d > 0) return d;
+  // 0 is a real answer (a token with no fractions), so it is kept, not replaced
+  const ok = x => x !== null && x !== undefined && x !== '' && Number.isInteger(Number(x)) && Number(x) >= 0 && Number(x) <= 18;
   const k = keyOf(t);
-  const known = k ? Number(DEC[k]) : NaN;
-  if (isFinite(known) && known > 0) return known;
+  // what the contract said, when it has been asked, before the row
+  if (k && ok(DEC[k])) return Number(DEC[k]);
+  if (t && ok(t.dec)) return Number(t.dec);
   return 6;
 }
 
@@ -630,11 +631,12 @@ function valueGap(v, got, costPct){
 /* Ask every pool that holds the pair and keep the best answer.
    Pulled out of quote() because a two step swap asks this twice, once per leg,
    and the second leg is not the pair on screen. */
-async function bestPool(pools, offerKey, raw, refused, label){
+async function bestPool(pools, offerKey, raw, refused, label, askKey){
   // built only when something will read them
   const seen = DEBUG ? [] : null;
   const got = (await Promise.all(pools.slice(0, 3).map(function (p) {
-    return simulateSwap(p.pair, offerKey, raw, p.dex)
+    // askKey: the pool must hold what is offered and what comes back
+    return simulateSwap(p.pair, offerKey, raw, p.dex, askKey)
       .then(function (x) {
         if (seen) seen.push(p.pair.slice(0, 12) + '/' + x.dialect + '=' + x.return_amount);
         return { pair: p.pair, dialect: x.dialect, d: x };
@@ -711,7 +713,7 @@ async function quoteHop(mids, raw, refused){
     if (!mid) { trace.push(m.key.slice(0, 14) + ':unnamed'); continue; }
     const dMid = decOf(mid);
 
-    const one = await bestPool(m.first, keyOf(FROM), raw, refused, 'leg1 to ' + mid.sym);
+    const one = await bestPool(m.first, keyOf(FROM), raw, refused, 'leg1 to ' + mid.sym, m.key);
     asked += one.tried;
     if (!one.best) { trace.push(mid.sym + ':leg1 none of ' + one.tried); continue; }
 
@@ -720,7 +722,7 @@ async function quoteHop(mids, raw, refused){
       trace.push(mid.sym + ':leg1 returned ' + one.best.d.return_amount); continue;
     }
 
-    const two = await bestPool(m.second, m.key, min1, refused, 'leg2 from ' + mid.sym);
+    const two = await bestPool(m.second, m.key, min1, refused, 'leg2 from ' + mid.sym, keyOf(TO));
     asked += two.tried;
     if (!two.best) { trace.push(mid.sym + ':leg2 none of ' + two.tried); continue; }
 
@@ -738,10 +740,10 @@ async function quoteHop(mids, raw, refused){
                    Number(min1) / Math.pow(10, dMid)),
       returnRaw: two.best.d.return_amount,
       legs: [
-        { pair: one.best.pair, dialect: one.best.dialect,
-          offerRaw: raw, returnRaw: one.best.d.return_amount },
-        { pair: two.best.pair, dialect: two.best.dialect,
-          offerRaw: min1, returnRaw: two.best.d.return_amount }
+        { pair: one.best.pair, dialect: one.best.dialect, offerKey: keyOf(FROM), askKey: m.key,
+          offerRaw: raw, returnRaw: one.best.d.return_amount, feeRaw: String(one.best.d.commission_amount || '0') },
+        { pair: two.best.pair, dialect: two.best.dialect, offerKey: m.key, askKey: keyOf(TO),
+          offerRaw: min1, returnRaw: two.best.d.return_amount, feeRaw: String(two.best.d.commission_amount || '0') }
       ]
     };
   }
@@ -754,7 +756,9 @@ async function quoteHop(mids, raw, refused){
 
 async function quote(){
   const my = ++SEQ;
+  // a new quote replaces the old one everywhere, the review panel included
   QUOTE = null; PLAN = null; DETAIL = null; armGo('Enter an amount', false);
+  closeConfirm();
   paintUsd();
   const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
   const out = $('#sw-out');
@@ -776,6 +780,16 @@ async function quote(){
   if (!isFinite(v) || v <= 0) { out.textContent = '-'; out.classList.add('dim'); detail([]); return; }
 
   out.textContent = 'quoting'; out.classList.add('dim');
+  // both tokens' decimals from their own contracts (issuer list aside) before
+  // any amount is turned into base units or shown
+  try { await Promise.all([confirmDec(keyOf(FROM)), confirmDec(keyOf(TO))]); }
+  catch (e) {
+    if (my !== SEQ) return;
+    out.textContent = '-'; out.classList.add('dim');
+    detail([{ k: 'Token', v: String(e && e.message ? e.message : e).slice(0, 90), tone: 'bad' }]);
+    return;
+  }
+  if (my !== SEQ) return;
   const dFrom = decOf(FROM), dTo = decOf(TO);
   const raw = toRaw($('#sw-amt').value, dFrom);
 
@@ -787,7 +801,7 @@ async function quote(){
     let lines, pair, pct, hop = null, direct = null;
 
     if (pools.length) {
-      direct = await bestPool(pools, keyOf(FROM), raw, refused, 'direct');
+      direct = await bestPool(pools, keyOf(FROM), raw, refused, 'direct', keyOf(TO));
       if (my !== SEQ) return;
       if (!direct.best) throw new Error(refused[0] || 'no pool would quote this amount');
       pair = direct.best.pair;
@@ -807,8 +821,9 @@ async function quote(){
       QUOTE = { pair: pair, dialect: direct.best.dialect, offerRaw: raw,
                 returnRaw: String(direct.best.d.return_amount),
                 got: c.out, dTo: dTo, pct: pct, hops: 1,
-                legs: [{ pair: pair, dialect: direct.best.dialect,
-                         offerRaw: raw, returnRaw: String(direct.best.d.return_amount) }] };
+                legs: [{ pair: pair, dialect: direct.best.dialect, offerKey: keyOf(FROM), askKey: keyOf(TO),
+                         offerRaw: raw, returnRaw: String(direct.best.d.return_amount),
+                         feeRaw: String(direct.best.d.commission_amount || '0') }] };
       lines = [
         { k: 'Rate', v: '1 ' + FROM.sym + ' = ' + fmt(c.out / v) + ' ' + TO.sym },
         { k: 'Price impact', v: pct.toFixed(2) + '%',
@@ -1054,7 +1069,11 @@ function envelope(from, q){
     // seconds, not milliseconds - and no belief_price, which appears in none of
     // the trades this contract has taken
     ? { max_spread: String(SLIP), deadline: Math.floor(Date.now() / 1000) + 120 }
-    : { belief_price: (Number(q.offerRaw) / Number(q.returnRaw)).toFixed(18),
+    // TerraSwap checks max_spread against the return before its commission,
+    // so a price taken from the net return let the trade land about one pool
+    // fee under the minimum shown. Taken from the gross return, the floor it
+    // enforces is the net return less the tolerance, which is what is shown.
+    : { belief_price: (Number(q.offerRaw) / (Number(q.returnRaw) + (Number(q.feeRaw) || 0))).toFixed(18),
         max_spread: String(SLIP) };
 
   if (from.denom) {
@@ -1090,8 +1109,12 @@ function envelope(from, q){
    back at worst, and a way out that is the same size as the way in. */
 function confirmLines(est){
   const min = QUOTE.got * (1 - SLIP);
+  // CL8Y's swap message carries only a spread limit, no minimum: the floor is
+  // checked here against a fresh quote just before signing instead (cf-go)
+  const noFloor = QUOTE.legs.some(l => l.dialect === 'cl');
   const lines = [
-    { k: 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true },
+    { k: noFloor ? 'You should receive at least' : 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true,
+      note: noFloor ? 'This pool takes a price limit rather than a minimum. Frontier checks the price again just before signing and stops if it has moved past your tolerance.' : undefined },
     { k: 'Expected, if the pool holds',
       v: fmt(QUOTE.got) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance' }
   ];
@@ -1149,9 +1172,14 @@ $('#sw-go').addEventListener('click', async () => {
     // the node runs the message and prices the gas, which is also what proves
     // the transaction was built correctly
     b.textContent = 'Checking with the node';
+    // the plan belongs to this quote: if the amount, the pair or the tolerance
+    // changes while the node is asked, a new quote replaces this one and the
+    // plan is dropped rather than shown under the new numbers
+    const q = QUOTE, my = SEQ;
     const plan = steps();
     const est = await dryRunSwap(addrOf(), plan, S.MNEMONIC);
-    PLAN = { steps: plan, est: est };
+    if (QUOTE !== q || SEQ !== my) return;
+    PLAN = { steps: plan, est: est, quote: q, seq: my, slip: SLIP, amount: String($('#sw-amt').value) };
     openConfirm(est);
     armGo('Review this swap', true);
   } catch (e) {
@@ -1169,6 +1197,10 @@ $('#cf-x').addEventListener('click', () => { tap(); closeConfirm(); });
 
 $('#cf-go').addEventListener('click', async () => {
   if (BUSY || !QUOTE || !PLAN || !S.MNEMONIC) return;
+  // only the plan made from the quote on screen, at the tolerance on screen
+  if (PLAN.quote !== QUOTE || PLAN.seq !== SEQ || PLAN.slip !== SLIP || PLAN.amount !== String($('#sw-amt').value)) {
+    PLAN = null; closeConfirm(); armGo('Check what this would cost', !!S.MNEMONIC); return;
+  }
   tap();
   BUSY = true;
   const b = $('#cf-go');
@@ -1176,8 +1208,19 @@ $('#cf-go').addEventListener('click', async () => {
   try {
     b.disabled = true;
     b.textContent = 'Signing';
-    // read again, not from the session: the pool could have been migrated
-    for (const leg of QUOTE.legs) await checkPool(leg.pair, true);
+    // read again, not from the session: the pool could have been migrated,
+    // and what it holds is read from two nodes, not taken from the feed
+    for (const leg of QUOTE.legs) {
+      await checkPool(leg.pair, true);
+      await poolHolds(leg.pair, leg.offerKey, leg.askKey, true);
+    }
+    // the price now, against the floor shown (the only floor CL8Y gets)
+    for (const leg of QUOTE.legs) {
+      const now = await simulateSwap(leg.pair, leg.offerKey, leg.offerRaw, leg.dialect, leg.askKey);
+      if (Number(now.return_amount) < Math.floor(Number(leg.returnRaw) * (1 - SLIP))) {
+        throw new Error('the price moved past your tolerance; check the swap again');
+      }
+    }
     const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC, undefined, '', PLAN.est.gasFee);
     closeConfirm();
 
