@@ -1,6 +1,6 @@
-import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=d7966255';
-import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=d7966255';
-import { $, go } from './shell.js?v=d7966255';
+import { CW20, KNOWN_CW20, KNOWN_IBC, LCD, NATIVE, THIN_LUNC, amt, chainLogo, clean, esc, fmt, getJSON, iconHTML, paintIcons, prices, smart, usd } from './chain.js?v=b691dfb9';
+import { DEC, cacheGet, cacheGetStale, cacheSet, cl8yList, graph, graphReady, knownAsset, mapLimit, mapPrice, marketComplete, owLogo, owMarket, poolPrice, txCandidates } from './market.js?v=b691dfb9';
+import { $, go } from './shell.js?v=b691dfb9';
 
 // keep=true means this contract is on the address's list, so it earns a row
 // even at zero. Only an unknown contract has to prove itself with a balance.
@@ -715,6 +715,9 @@ async function loadBalances(addr, force){
     // every native denom the address actually holds, ibc ones resolved to
     // whatever they were before they crossed the bridge
     for (const b of (bank.balances || [])) {
+      // a denom the chain could have made (the SDK's own pattern); anything
+      // else is a node making things up, and it never reaches the screen
+      if (!b || !/^[a-zA-Z][a-zA-Z0-9/:._-]{2,127}$/.test(String(b.denom)) || !/^\d+$/.test(String(b.amount))) continue;
       if (NATIVE[b.denom]) {
         const m = NATIVE[b.denom];
         // the denom is what a swap has to name in offer_asset; the symbol is

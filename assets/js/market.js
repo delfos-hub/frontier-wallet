@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, LCD2, POOL_CODES, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=d7966255';
+import { EXTRA_PAIRS, FACTORIES, LCD, LCD2, POOL_CODES, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=b691dfb9';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -117,15 +117,17 @@ async function learnAsset(key){
   const r = await smart(key.slice(5), { token_info: {} }, 1).catch(() => null);
   const d = r && r.data;
   if (!d || !d.symbol) return null;
-  const a = { key: key, sym: clean(d.symbol, 16),
-              dec: Number.isInteger(d.decimals) && d.decimals >= 0 && d.decimals <= 18 ? d.decimals : 6, logo: null };
+  const said = Number.isInteger(d.decimals) && d.decimals >= 0 && d.decimals <= 18;
+  const a = { key: key, sym: clean(d.symbol, 16), dec: said ? d.decimals : 6, logo: null };
   // Into DEC as well, and this is the point of the whole call: legRate scales
   // a reserve by ten to the power of what it finds there, and finding nothing
   // means six. A contract that says eighteen and is not heard is a price out
   // by a factor of a trillion - which is exactly what USTR was doing before
   // the published list happened to cover it.
   DEC[key] = a.dec;
-  cacheSet('as:' + key, a);
+  // a 6 put in for a token that gave no valid decimals is a guess for the
+  // screen, not an answer: it is not kept, so confirmDec asks the token again
+  if (said) cacheSet('as:' + key, a);
   ASSET[key] = a;
   return a;
 }

@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=d7966255';
-import { $, go, tap } from './shell.js?v=d7966255';
-import { DEC, assetOf, checkPool, confirmDec, poolHolds, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=d7966255';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=d7966255';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=d7966255';
-import { S } from './state.js?v=d7966255';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=b691dfb9';
+import { $, go, tap } from './shell.js?v=b691dfb9';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=b691dfb9';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=b691dfb9';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=b691dfb9';
+import { S } from './state.js?v=b691dfb9';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -36,6 +36,16 @@ function savedSlip(read){
 }
 let SLIP = savedSlip(function (k) { return localStorage.getItem(k); });
 
+// raw * f, rounded down, in BigInt: Number turns an 18-decimal amount of a
+// thousand tokens or more into "1e+21", which no contract takes as a Uint128
+const scaleRaw = (raw, f) => {
+  const t = String(raw == null ? '0' : raw).trim();
+  const n = Number(t);
+  const r = /^\d+$/.test(t) ? BigInt(t) : BigInt(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+  if (!(f < 1)) return r.toString();
+  if (!(f > 0)) return '0';
+  return (r * BigInt(Math.round(f * 1e9)) / 1000000000n).toString();
+};
 const slipText = s => String(Number((s * 100).toFixed(3))) + '%';
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 function armGo(text, on){
@@ -216,14 +226,14 @@ const LUNC_RESERVE = 2;
 
 function balOf(t){
   if (!t) return 0;
-  const row = heldTokens().find(x => x.sym === t.sym);
+  const row = heldTokens().find(x => keyOf(x) === keyOf(t));
   return row ? (row.v || 0) : (t.v || 0);
 }
 
 // The picker draws the same icon the token list draws, which is why the rows
 // come from heldTokens rather than being rebuilt here.
 function face(el, t){
-  const row = heldTokens().find(x => x.sym === (t && t.sym)) || t;
+  const row = (t && heldTokens().find(x => keyOf(x) === keyOf(t))) || t;
   el.innerHTML = (row ? iconHTML(row) : '') +
     '<span>' + ((t && t.sym) || 'LUNC') + '</span>' +
     '<svg class="sw-caret" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
@@ -244,9 +254,9 @@ const DEPTH = {};
 // definition.
 function firstCandidates(){
   const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (pools.length) return pools;
+  if (pools.length) return pools.map(p => Object.assign({ ask: keyOf(TO) }, p));
   const mids = midsBetween(keyOf(FROM), keyOf(TO));
-  return (mids[0] && mids[0].first) || [];
+  return ((mids[0] && mids[0].first) || []).map(p => Object.assign({ ask: mids[0].key }, p));
 }
 /* Which of them is the deep one, by what it actually holds.
    The list is ordered by the feed's liquidity, and a pool the feed does not
@@ -313,7 +323,8 @@ async function learnComfort(){
   const raw = toRaw(String(bal), decOf(FROM));
   const leg = firstCandidates().filter(p => p.pair === pair)[0];
   if (!leg) { delete COMFORT[pair]; return; }
-  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex).catch(() => null);
+  // with the side it asks for, so the pool is checked for what it holds here too
+  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex, leg.ask).catch(() => null);
   if (!q) { delete COMFORT[pair]; return; }
   const out = Number(q.return_amount), spread = Number(q.spread_amount);
   const fee = Number(q.commission_amount);
@@ -499,15 +510,15 @@ function drawSheet(){
   list.innerHTML = all.some(t => !t.head) ? all.map(function (t) {
     if (t.head) return '<div class="sw-sec">' + t.head + '</div>';
     const f = fiatOf(t);
-    return '<button class="sw-item" type="button" data-k="' + keyOf(t) + '">' +
-      iconHTML(t) + '<span class="sw-item-s">' + t.sym +
+    return '<button class="sw-item" type="button" data-k="' + esc(keyOf(t)) + '">' +
+      iconHTML(t) + '<span class="sw-item-s">' + esc(t.sym) +
       (t.hops === 2 ? '<b class="sw-hop">2 steps</b>' : '') + '</span>' +
       '<span class="sw-item-r">' +
         '<span class="sw-item-v">' + ((t.v || 0) > 0 ? fmt(t.v) : '') + '</span>' +
         '<span class="sw-item-u">' + (f !== null && f > 0 ? usd(f) : '') + '</span>' +
       '</span></button>';
   }).join('') : '<div class="sw-none">' + (q
-    ? 'Nothing here matches ' + q + '.'
+    ? 'Nothing here matches ' + esc(q) + '.'
     : 'Nothing shares a pool with ' + FROM.sym + '.') + '</div>';
   paintIcons(list);
 }
@@ -582,21 +593,23 @@ function result(state, title, note, hash){
         (state === 'done'
           ? '<svg viewBox="0 0 24 24" class="sw-tick"><path d="m4 12 5.5 5.5L20 7"/></svg>'
           : '<span class="spin"></span>') +
-        '<b>' + title + '</b>' +
+        '<b>' + esc(title) + '</b>' +
       '</div>' +
-      '<p>' + note + '</p>' +
-      '<a href="' + link + '" target="_blank" rel="noopener">' +
-        hash.slice(0, 8) + '\u2026' + hash.slice(-6) + ' \u2197</a>' +
+      '<p>' + esc(note) + '</p>' +
+      (/^[0-9A-F]{64}$/i.test(String(hash || '')) ? '<a href="' + link + '" target="_blank" rel="noopener">' +
+        hash.slice(0, 8) + '\u2026' + hash.slice(-6) + ' \u2197</a>' : '') +
     '</div>';
 }
 
 // the same rows are wanted in two places now, so the markup is one function
+// Every line is text: a refusal can carry a node's or a contract's own words
+// (raw_log), and a symbol comes from a token, so nothing here is markup.
 function lineHTML(lines){
   return lines.map(function (l) {
-    return '<div class="sw-line' + (l.tone ? ' ' + l.tone : '') +
+    return '<div class="sw-line' + (l.tone ? ' ' + esc(l.tone) : '') +
       (l.big ? ' big' : '') + '">' +
-      '<span>' + l.k + '</span><b>' + l.v + '</b></div>' +
-      (l.note ? '<p class="sw-note">' + l.note + '</p>' : '');
+      '<span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>' +
+      (l.note ? '<p class="sw-note">' + esc(l.note) + '</p>' : '');
   }).join('');
 }
 
@@ -717,7 +730,7 @@ async function quoteHop(mids, raw, refused){
     asked += one.tried;
     if (!one.best) { trace.push(mid.sym + ':leg1 none of ' + one.tried); continue; }
 
-    const min1 = String(Math.floor(Number(one.best.d.return_amount) * (1 - SLIP)));
+    const min1 = scaleRaw(one.best.d.return_amount, 1 - SLIP);
     if (!(Number(min1) > 0)) {
       trace.push(mid.sym + ':leg1 returned ' + one.best.d.return_amount); continue;
     }
@@ -791,7 +804,14 @@ async function quote(){
   }
   if (my !== SEQ) return;
   const dFrom = decOf(FROM), dTo = decOf(TO);
-  const raw = toRaw($('#sw-amt').value, dFrom);
+  let raw;
+  // an amount toRaw refuses ("1,000") is said on screen, not left on "quoting"
+  try { raw = toRaw($('#sw-amt').value, dFrom); }
+  catch (e) {
+    out.textContent = '-'; out.classList.add('dim');
+    detail([{ k: 'Amount', v: String(e && e.message ? e.message : e).slice(0, 90), tone: 'bad' }]);
+    return;
+  }
 
   try {
     // A pool that will not answer is one fewer option, not an error - but when
@@ -1062,13 +1082,17 @@ function envelope(from, q){
   const gd = q.dialect === 'gd';
   const cl = q.dialect === 'cl';
   // a floor, so rounding never pushes the guard above what was quoted
-  const floor = String(Math.floor(Number(q.returnRaw) * (1 - SLIP)));
+  const floor = scaleRaw(q.returnRaw, 1 - SLIP);
   const guard = gd
     ? { offer_amount: q.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
     : cl
     // seconds, not milliseconds - and no belief_price, which appears in none of
-    // the trades this contract has taken
-    ? { max_spread: String(SLIP), deadline: Math.floor(Date.now() / 1000) + 120 }
+    // the trades this contract has taken; min_return does the work instead
+    // and min_return, a hard floor on what arrives (cl8y-dex-pair 1.21, code
+    // 11715, every pair of the factory): the pool fails the swap below it, so
+    // the minimum shown is the minimum signed. A pair with hooks refuses a
+    // swap that has none.
+    ? { max_spread: String(SLIP), min_return: floor, deadline: Math.floor(Date.now() / 1000) + 120 }
     // TerraSwap checks max_spread against the return before its commission,
     // so a price taken from the net return let the trade land about one pool
     // fee under the minimum shown. Taken from the gross return, the floor it
@@ -1109,12 +1133,9 @@ function envelope(from, q){
    back at worst, and a way out that is the same size as the way in. */
 function confirmLines(est){
   const min = QUOTE.got * (1 - SLIP);
-  // CL8Y's swap message carries only a spread limit, no minimum: the floor is
-  // checked here against a fresh quote just before signing instead (cf-go)
-  const noFloor = QUOTE.legs.some(l => l.dialect === 'cl');
+  // every dialect now carries the floor in the message itself
   const lines = [
-    { k: noFloor ? 'You should receive at least' : 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true,
-      note: noFloor ? 'This pool takes a price limit rather than a minimum. Frontier checks the price again just before signing and stops if it has moved past your tolerance.' : undefined },
+    { k: 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true },
     { k: 'Expected, if the pool holds',
       v: fmt(QUOTE.got) + ' ' + TO.sym + ' \u00b7 ' + slipText(SLIP) + ' tolerance' }
   ];
@@ -1214,7 +1235,8 @@ $('#cf-go').addEventListener('click', async () => {
       await checkPool(leg.pair, true);
       await poolHolds(leg.pair, leg.offerKey, leg.askKey, true);
     }
-    // the price now, against the floor shown (the only floor CL8Y gets)
+    // the price now, against the floor shown: the pool enforces the floor
+    // anyway, this only saves a fee on a swap that would fail
     for (const leg of QUOTE.legs) {
       const now = await simulateSwap(leg.pair, leg.offerKey, leg.offerRaw, leg.dialect, leg.askKey);
       if (Number(now.return_amount) < Math.floor(Number(leg.returnRaw) * (1 - SLIP))) {

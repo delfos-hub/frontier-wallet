@@ -83,6 +83,16 @@ group('decimals from the token itself, and 0 is a real answer');
   const ZERO = 'cw20:terra1zero';
   META[ZERO] = { sym: 'ZERO', dec: 0 };
   ok('a token with 0 decimals is 0', (await mod.confirmDec(ZERO)) === 0 && mod.DEC[ZERO] === 0);
+  const ODD = 'cw20:terra1odd';
+  META[ODD] = { sym: 'ODD', dec: 99 };
+  const seen = await mod.learnAsset(ODD);
+  ok('a token giving invalid decimals is shown with 6', seen && seen.dec === 6);
+  ok('but that 6 is not kept as its answer', !mod.cacheGetStale('as:' + ODD));
+  let oddErr = null;
+  try { await mod.confirmDec(ODD); } catch (e) { oddErr = e; }
+  ok('so signing asks again and refuses it', oddErr && /does not say its decimals/.test(oddErr.message), oddErr && oddErr.message);
+  ok('the price-impact probe names the side it asks for', /simulateSwap\(leg\.pair, keyOf\(FROM\), raw, leg\.dex, leg\.ask\)/.test(swap));
+  ok('changing the send token drops a review on its way', /function paintSendTok\(\)\{[\s\S]{0,120}REV\+\+/.test(tx));
   ok('a quote waits for both tokens’ own decimals', /await Promise\.all\(\[confirmDec\(keyOf\(FROM\)\), confirmDec\(keyOf\(TO\)\)\]\)/.test(swap));
   const swapDec = new Function('DEC', 'keyOf', lift(swap, 'function decOf(') + '; return decOf;')({ 'cw20:z': 0 }, t => t && t.key);
   ok('swap: 0 decimals stay 0', swapDec({ key: 'cw20:z', dec: 6 }) === 0 && swapDec({ dec: 0 }) === 0);
@@ -106,7 +116,7 @@ group('what is signed is the quote on screen');
 
 group('the floor TerraSwap enforces is the one shown');
 {
-  const env = q => new Function('FROM', 'QUOTE', 'SLIP', 'gdInfo', 'keyOf', lift(swap, 'function envelope(') + '; return envelope;')(
+  const env = q => new Function('FROM', 'QUOTE', 'SLIP', 'gdInfo', 'keyOf', lift(swap, 'const scaleRaw = (raw, f) =>') + ';\n' + lift(swap, 'function envelope(') + '; return envelope;')(
     { denom: 'uluna' }, null, 0.01, () => ({}), () => 'native:uluna')(null, q);
   // a pool with a 0.3% commission on the return: net 997, commission 3
   const m = env({ pair: 'p', dialect: 'ts', offerRaw: '1000', returnRaw: '997', feeRaw: '3' }).msg.swap;
@@ -118,7 +128,26 @@ group('the floor TerraSwap enforces is the one shown');
   ok('so the net floor equals the minimum shown', Math.abs(netFloor - 997 * 0.99) < 1e-6, netFloor);
   const old = env({ pair: 'p', dialect: 'ts', offerRaw: '1000', returnRaw: '997' }).msg.swap;
   ok('with no commission reported it is what it was', Math.abs(1000 / Number(old.belief_price) - 997) < 1e-9);
-  ok('CL8Y, which takes no minimum, is said so in the review', /This pool takes a price limit rather than a minimum/.test(swap));
+  ok('CL8Y signs the minimum shown (min_return), so the review no longer hedges it', /min_return: floor/.test(swap) && !/takes a price limit rather than a minimum/.test(swap));
+}
+
+group('a floor of 18-decimal tokens is written out in digits');
+{
+  const env = q => new Function('FROM', 'QUOTE', 'SLIP', 'gdInfo', 'keyOf', 'btoa', lift(swap, 'const scaleRaw = (raw, f) =>') + ';\n' + lift(swap, 'function envelope(') + '; return envelope;')(
+    { contract: 'terra1cl8y' }, null, 0.01, () => ({ cw20: 'terra1cl8y' }), () => 'cw20:terra1cl8y', s => Buffer.from(s).toString('base64'))(null, q);
+  const hook = e => JSON.parse(Buffer.from(e.msg.send.msg, 'base64').toString()).swap;
+  const BIG = '2000000000000000000000';                    // 2,000 tokens at 18 decimals
+  const cl = hook(env({ pair: 'p', dialect: 'cl', offerRaw: '5', returnRaw: BIG }));
+  const gd = hook(env({ pair: 'p', dialect: 'gd', offerRaw: '5', returnRaw: BIG }));
+  ok('CL8Y min_return: 1980000000000000000000, not 1.98e+21', cl.min_return === '1980000000000000000000', cl.min_return);
+  ok('Garuda min_receive the same', gd.min_receive === '1980000000000000000000', gd.min_receive);
+  const scale = new Function(lift(swap, 'const scaleRaw = (raw, f) =>') + '; return scaleRaw;')();
+  ok('exact for any size', scale('123456789012345678901234567890', 0.5) === '61728394506172839450617283945');
+  ok('1 keeps it, 0 or junk gives 0', scale('77', 1) === '77' && scale('77', 0) === '0' && scale('abc', 0.5) === '0');
+  ok('the two-step middle amount too', /const min1 = scaleRaw\(/.test(swap));
+  const defiSrc = read('defi.js');
+  ok('DeFi withdraw and unstake amounts too', /const part = \(r, f\) => scaleRaw\(r, f\);/.test(defiSrc) &&
+    /min_asset1: scaleRaw\(/.test(defiSrc) && !/String\(Math\.floor\(Number/.test(defiSrc));
 }
 
 group('a send review belongs to its form and names the recipient');
