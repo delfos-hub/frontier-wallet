@@ -4,12 +4,12 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=14f173de';
-import { DEC, knownAsset as marketAsset } from './market.js?v=14f173de';
-import { $, go } from './shell.js?v=14f173de';
-import { fiatOf, heldTokens } from './tokens.js?v=14f173de';
-import { S } from './state.js?v=14f173de';
-import { NETS } from './gram-net.js?v=14f173de';
+import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=ccb4ccd6';
+import { DEC, knownAsset as marketAsset } from './market.js?v=ccb4ccd6';
+import { $, go } from './shell.js?v=ccb4ccd6';
+import { fiatOf, heldTokens } from './tokens.js?v=ccb4ccd6';
+import { S } from './state.js?v=ccb4ccd6';
+import { NETS } from './gram-net.js?v=ccb4ccd6';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -193,11 +193,24 @@ function hookOf(msg){
 
 /* The message that says what happened. A pool deposit comes as two token
    approvals and then the deposit; the row read "Approved spending \u00d72"
-   because it named the first message. Approvals are skipped when something
-   else is in the transaction. */
+   because it named the first message. An approval is skipped only when it is
+   for the contract the rest of the transaction calls (or sends to): that is
+   the deposit. One for anyone else is what a history should show. */
 const PREP = /^(increase_allowance|decrease_allowance|approve|approve_all)$/;
+function spenderOf(m){
+  const msg = (m && m.msg) || {};
+  const a = msg[Object.keys(msg)[0]] || {};
+  return a.spender || a.operator || '';
+}
+function isPrep(x, msgs){
+  if (!PREP.test(intentOf(x))) return false;
+  const sp = spenderOf(x);
+  return !!sp && msgs.some(o => o !== x && !PREP.test(intentOf(o)) &&
+    (o.contract === sp || (o.msg && o.msg.send && o.msg.send.contract === sp)));
+}
 function primaryMsg(msgs){
-  return msgs.find(x => !PREP.test(intentOf(x))) || msgs[0] || {};
+  return msgs.find(x => !isPrep(x, msgs) && !PREP.test(intentOf(x))) ||
+    msgs.find(x => !isPrep(x, msgs)) || msgs[0] || {};
 }
 function intentOf(m){
   const msg = m && m.msg;
@@ -229,7 +242,7 @@ function describe(t, me){
   const msgs = ((t.tx || {}).body || {}).messages || [];
   const m = primaryMsg(msgs);
   const type = String(m['@type'] || '');
-  const rest = msgs.filter(x => x !== m && !PREP.test(intentOf(x))).length;
+  const rest = msgs.filter(x => x !== m && !isPrep(x, msgs)).length;
   const extra = rest ? ' +' + rest : '';
 
   if (type.indexOf('MsgSend') >= 0) {
@@ -904,8 +917,11 @@ function summary(me){
   }
   box.hidden = false;
   const now = Date.now(), span = PERIOD ? PERIOD * 86400000 : Infinity;
-  const xs = ALL.filter(t => Number(t.code) === 0 && now - new Date(t.timestamp) < span);
+  const within = ALL.filter(t => now - new Date(t.timestamp) < span);
+  const xs = within.filter(t => Number(t.code) === 0);
   let inn = 0, out = 0, fee = 0, nIn = 0, nOut = 0;
+  // a failed transaction moved nothing but still paid its fee
+  within.forEach(t => { if (Number(t.code) !== 0) fee += feePaid(t, me); });
   const perDay = {};
   xs.forEach(t => {
     const f = flows(t, me);

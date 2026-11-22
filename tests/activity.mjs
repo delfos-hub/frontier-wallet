@@ -47,6 +47,8 @@ const api = new Function('atob', 'short', 'coins', 'fmt', 'amt', 'knownAsset', '
   liftLine(src, 'const VERB ='),
   lift(src, 'function hookOf('),
   liftLine(src, 'const PREP ='),
+  lift(src, 'function spenderOf('),
+  lift(src, 'function isPrep('),
   lift(src, 'function primaryMsg('),
   lift(src, 'function intentOf('),
   liftLine(src, 'const ICON ='),
@@ -256,5 +258,14 @@ group('approvals before the action do not name it');
   ok('two approvals and a deposit read as the deposit', api.describe(t, 'me').title === 'Added liquidity', api.describe(t, 'me').title);
   const only = { tx: { body: { messages: [ex({ increase_allowance: { spender: 'x', amount: '1' } })] } }, logs: [] };
   ok('an approval on its own is still named', api.describe(only, 'me').title === 'Approved spending', api.describe(only, 'me').title);
+  const other = { tx: { body: { messages: [ex({ increase_allowance: { spender: 'terra1stranger', amount: '1' } }),
+    ex({ provide_liquidity: {} })] } }, logs: [] };
+  const o = api.describe(other, 'me');
+  ok('an approval to someone else is counted, not hidden', o.title === 'Added liquidity +1', o.title);
+  const sendTo = { tx: { body: { messages: [ex({ increase_allowance: { spender: 'terra1farm', amount: '1' } }),
+    { '@type': '/cosmwasm.wasm.v1.MsgExecuteContract', contract: 'terra1tok', msg: { send: { contract: 'terra1farm', amount: '5', msg: '' } } }] } }, logs: [] };
+  ok('an approval for the contract a cw20 is sent to is part of it', !/\+1/.test(api.describe(sendTo, 'me').title), api.describe(sendTo, 'me').title);
+  ok('the period summary counts the fee of a failed transaction too',
+     /within\.forEach\(t => \{ if \(Number\(t\.code\) !== 0\) fee \+= feePaid\(t, me\); \}\)/.test(src));
   ok('a prediction is named in words', api.describe({ tx: { body: { messages: [ex({ predict: {} })] } }, logs: [] }, 'me').title === 'Prediction placed');
 }

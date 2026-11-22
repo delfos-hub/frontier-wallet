@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=14f173de';
-import { $, go, tap } from './shell.js?v=14f173de';
-import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=14f173de';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=14f173de';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=14f173de';
-import { S } from './state.js?v=14f173de';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=ccb4ccd6';
+import { $, go, tap } from './shell.js?v=ccb4ccd6';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=ccb4ccd6';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=ccb4ccd6';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=ccb4ccd6';
+import { S } from './state.js?v=ccb4ccd6';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
