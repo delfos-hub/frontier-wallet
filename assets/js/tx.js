@@ -1,9 +1,9 @@
-import { LCD, amt, fmt, getJSON } from './chain.js?v=47b6e663';
-import { $, buzz, go, tap } from './shell.js?v=47b6e663';
-import { S } from './state.js?v=47b6e663';
-import { iconHTML, paintIcons } from './chain.js?v=47b6e663';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=47b6e663';
-import { notify } from './notify.js?v=47b6e663';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=d7966255';
+import { $, buzz, go, tap } from './shell.js?v=d7966255';
+import { S } from './state.js?v=d7966255';
+import { iconHTML, paintIcons } from './chain.js?v=d7966255';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=d7966255';
+import { notify } from './notify.js?v=d7966255';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -289,6 +289,13 @@ async function sendNative(from, to, denom, human, memo, mnemonic, maxFee){
 
 /* ---------------- the screen ---------------- */
 let LAST_GAS = 0;      // gas the most recent review measured
+let REV = 0;           // the review on screen; an answer for an older one is dropped
+// A token's decimals, where 0 is a real answer (a token with no fractions):
+// "|| 6" turned 0 into 6 and sent a million times what was typed.
+function decOf(t){
+  const d = t ? t.dec : undefined;
+  return d !== null && d !== undefined && d !== '' && Number.isInteger(Number(d)) && Number(d) >= 0 && Number(d) <= 18 ? Number(d) : 6;
+}
 let ARMED = null;      // the reviewed transfer, waiting for a second press
 
 const luncOf = () => {
@@ -338,7 +345,7 @@ function paintSendTok(){
     : 'Sent as a coin on Terra Classic. The fee comes out of the same balance.';
   const bal = balanceOf(t);
   const el = $('#send-avail');
-  el.dataset.raw = String(Math.round(bal * Math.pow(10, t.dec || 6)));
+  el.dataset.raw = String(Math.round(bal * Math.pow(10, decOf(t))));
   el.textContent = bal ? '\u00b7 ' + fmt(bal) + ' available' : '';
   $('#send-out').innerHTML = '';
   ARMED = null;
@@ -395,7 +402,7 @@ function line(label, value, strong){
 // contract asked to move its own bookkeeping
 function cw20Step(t, to, human){
   return { contract: t.contract, funds: [],
-           msg: { transfer: { recipient: to, amount: toRaw(human, t.dec || 6) } } };
+           msg: { transfer: { recipient: to, amount: toRaw(human, decOf(t)) } } };
 }
 
 /* A bech32 address (BIP-173) ends in a 6-character checksum over its prefix
@@ -420,12 +427,13 @@ function bech32Ok(addr, hrp){
 }
 
 async function review(){
+  const my = ++REV;
   const out = $('#send-out');
   const to = $('#send-to').value.trim();
   const human = $('#send-amt').value.trim();
   const memo = $('#send-memo').value.trim();
   const from = S.SAVED && S.SAVED.addr;
-  const t = SEND_TOK, dec = t.dec || 6;
+  const t = SEND_TOK, dec = decOf(t);
 
   if (!/^terra1[0-9a-z]{38,58}$/.test(to)) {
     out.innerHTML = '<div class="sbad">That does not look like a Terra Classic address.</div>';
@@ -459,6 +467,9 @@ async function review(){
       // the fee is paid in LUNC whatever is being moved, so the two balances
       // are checked separately - a token transfer can fail for want of LUNC
       const est = await dryRunSwap(from, [cw20Step(t, to, human)], S.MNEMONIC, MAINNET, memo);
+      // the form changed while the node was asked: that answer is for a form
+      // that no longer exists, and a Send button for it must not appear
+      if (my !== REV) return;
       gas = est.gas; gasFee = est.gasFee;
       const lunc = luncBalance();
       if (gasFee / 1e6 > lunc) {
@@ -466,6 +477,7 @@ async function review(){
                 ' LUNC and this address has ' + fmt(lunc) + '.</div>';
       }
       out.innerHTML =
+        line('To', '<code class="saddr">' + esc(to) + '</code>') +
         line('Amount', fmt(sending) + ' ' + t.sym) +
         line('Fee \u00b7 ' + gas.toLocaleString() + ' gas', fmt(gasFee / 1e6) + ' LUNC') +
         line('Leaves your wallet', fmt(sending) + ' ' + t.sym + ' and ' +
@@ -480,6 +492,7 @@ async function review(){
       LAST_GAS = gas;
     } else {
       const d = await dryRunNative(from, to, t.denom, human, memo, S.MNEMONIC);
+      if (my !== REV) return;
       gasFee = d.gasFee;
       const avail = Math.round(have * 1e6);
       // only when the coin being sent is the coin the fee is paid in does the
@@ -488,6 +501,7 @@ async function review(){
       const total = same ? d.total : Number(d.amount);
       const over = same ? d.total > avail : Number(d.amount) > avail;
       out.innerHTML =
+        line('To', '<code class="saddr">' + esc(to) + '</code>') +
         line('Amount', fmt(amt(d.amount, 6)) + ' ' + t.sym) +
         line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE,
              fmt(amt(d.gasFee, 6)) + ' LUNC') +
@@ -515,6 +529,7 @@ async function review(){
     reviewBtn(!b);
     buzz('success');
   } catch (e) {
+    if (my !== REV) return;
     // the message can come from the LCD or a contract: text, never markup
     out.innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>';
   }
@@ -540,11 +555,15 @@ async function confirmSend(btn, to, human, memo, from, maxFee){
     }, 8000);
     return;
   }
+  // only what the review showed, for the form as it is now
+  if ($('#send-to').value.trim() !== to || $('#send-amt').value.trim() !== human || $('#send-memo').value.trim() !== memo) {
+    ARMED = null; $('#send-out').innerHTML = ''; reviewBtn(true); return;
+  }
   ARMED = null;
   btn.disabled = true;
   btn.textContent = 'Signing and sending...';
   const out = $('#send-out');
-  const t = SEND_TOK, dec = t.dec || 6;
+  const t = SEND_TOK, dec = decOf(t);
   const before = balanceOf(t);
   let hash;
   try {
@@ -702,6 +721,7 @@ function reviewBtn(show){
 // reviewed amount in a closure, so a changed field would have been ignored.
 ['#send-to', '#send-amt', '#send-memo'].forEach(function (s) {
   on(s, 'input', function () {
+    REV++;                                   // a review still on its way is for the old form
     if (!$('#send-out').innerHTML) return;
     $('#send-out').innerHTML = '';
     ARMED = null;
@@ -710,7 +730,7 @@ function reviewBtn(show){
 });
 
 function fillMax(){
-  const t = SEND_TOK, dec = t.dec || 6;
+  const t = SEND_TOK, dec = decOf(t);
   const bal = balanceOf(t);
   // Only LUNC pays for its own departure. Everything else leaves the fee to a
   // balance it does not touch, so all of it can go.

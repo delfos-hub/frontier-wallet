@@ -184,7 +184,7 @@ export function makeChain(){
   const codes = {};
   // the second LCD (harness LCD2): answers like the first unless a test makes
   // it lie about a code or go down
-  const second = { codes: {}, down: false };
+  const second = { codes: {}, holds: {}, down: false };
 
   function poolOf(addr){ return POOLS[addr] || null; }
 
@@ -214,6 +214,11 @@ export function makeChain(){
       throw fail(500, 'unknown contract ' + kind);
     }
 
+    // what a pool holds: TerraSwap-style pools answer pair{}, Garuda's pool{}
+    if (msg.pair) {
+      if (pool.dex === 'gd') throw fail(500, 'unknown variant pair');
+      return { data: { asset_infos: [asInfo(pool.a), asInfo(pool.b)], contract_addr: addr } };
+    }
     if (msg.pool) {
       // garuda names its sides differently, and reserves() reads both shapes
       if (pool.dex === 'gd') {
@@ -242,6 +247,16 @@ export function makeChain(){
           quote: side(q.b)
         };
       }) };
+    }
+    // a smart query by URL (the second LCD's reads): the same answers, unless
+    // a test makes that node lie about what a pool holds or go down
+    const sq = url.match(/\/cosmwasm\/wasm\/v1\/contract\/([^/]+)\/smart\/(.+)$/);
+    if (sq) {
+      if (url.indexOf('https://lcd2.test/') === 0) {
+        if (second.down) throw fail(503, 'unavailable');
+        if (second.holds[sq[1]]) return { data: { asset_infos: second.holds[sq[1]].map(asInfo) } };
+      }
+      return smart(sq[1], JSON.parse(Buffer.from(decodeURIComponent(sq[2]), 'base64').toString()));
     }
     const ci = url.match(/\/cosmwasm\/wasm\/v1\/contract\/([^/]+)$/);
     if (ci) {

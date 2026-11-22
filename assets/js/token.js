@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=47b6e663';
-import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=47b6e663';
-import { $, go, tap } from './shell.js?v=47b6e663';
-import { S } from './state.js?v=47b6e663';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=47b6e663';
-import { rowHTML } from './activity.js?v=47b6e663';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=d7966255';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=d7966255';
+import { $, go, tap } from './shell.js?v=d7966255';
+import { S } from './state.js?v=d7966255';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=d7966255';
+import { rowHTML } from './activity.js?v=d7966255';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
@@ -220,7 +220,7 @@ async function about(t, seq){
       $('#tk-name').textContent = ti.name;
     }
     if (ti && ti.total_supply) html += line('Total supply', big(amt(ti.total_supply, ti.decimals === undefined ? 6 : ti.decimals)));
-    html += line('Decimals', String(ti && ti.decimals !== undefined ? ti.decimals : (t.dec || 6)));
+    html += line('Decimals', String(ti && ti.decimals !== undefined ? ti.decimals : (t.dec ?? 6)));
     html += '<button class="tk-addr" type="button" data-copy="' + esc(t.contract) + '">' +
       '<span>Contract</span><b>' + cut(t.contract) + '</b><i>copy</i></button>';
     if (mk && mk.project && /^https?:\/\//.test(mk.project)) {
@@ -385,7 +385,7 @@ async function positions(t, seq){
       found.push({ kind: 'farm', title: t.sym + ' / ' + v.otherSym + ' farm', sub: label + ' \u00b7 ' + cut(c),
         amount: v.a, extra: '+ ' + fmt(v.b) + ' ' + v.otherSym, usd: v.usd, tokUsd: unit !== null ? v.a * unit : null, addr: c, otherKey: v.otherKey });
     } else {
-      const a = amt(st.amount, t.dec || 6);
+      const a = amt(st.amount, t.dec ?? 6);
       found.push({ kind: 'stake', title: 'Staked on ' + label, sub: cut(c), amount: a,
         usd: unit !== null ? a * unit : null, addr: c,
         extra: st.reward && Number(st.reward) > 0 ? 'reward ' + fmt(amt(st.reward, 6)) : '' });

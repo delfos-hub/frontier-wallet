@@ -2328,3 +2328,6 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 .fav-ln{height:34px;margin:auto -13px -10px;padding-top:8px;box-sizing:content-box}
 .fav-nol{height:34px;margin-top:auto}
 .fav-grid{align-items:stretch}
+
+/* the send review names the recipient in full (tx.js review) */
+.sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}
