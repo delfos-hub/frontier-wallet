@@ -59,5 +59,11 @@ group('Favorites price record');
   const many = {}; for (let i = 0; i < 100; i++) many['cw20:t' + i] = 1;
   F.recordAll(many);
   ok('the record is bounded', Object.keys(F.pxBook()).length === 80);
+  const b = F.recordAll({ 'cw20:t1': 1 });
+  ok('recordAll hands back the book it kept, for change() to reuse', b && Object.keys(b).length === 80 && F.change('cw20:t1', b) === F.change('cw20:t1'));
+  const r = lift(fav, 'function render(');
+  ok('prices are recorded before the empty state, so the first star has its line',
+    r.indexOf('const book = recordAll(px)') > 0 && r.indexOf('const book = recordAll(px)') < r.indexOf('if (!favs.length)'));
+  ok('each card reads the same book', /change\(f\.k, book\)/.test(r) && (r.match(/recordAll\(/g) || []).length === 1);
 }
 report();

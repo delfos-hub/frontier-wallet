@@ -13,11 +13,11 @@
    in the list, so a token starred later already has its line: the change and
    the line are this device's own record, labelled with how far back it
    reaches. The line shows from 15 min of record, the % change from an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=bb415887';
-import { S } from './state.js?v=bb415887';
-import { esc, iconHTML, paintIcons } from './chain.js?v=bb415887';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=bb415887';
-import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=bb415887';
+import { $ } from './shell.js?v=ef16c24d';
+import { S } from './state.js?v=ef16c24d';
+import { esc, iconHTML, paintIcons } from './chain.js?v=ef16c24d';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=ef16c24d';
+import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=ef16c24d';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
@@ -91,12 +91,15 @@ function recordAll(prices){
     dirty = true;
   }
   if (dirty) { PX_AT = t; try { localStorage.setItem('fw:favpx', JSON.stringify(book)); } catch (e) {} }
+  return book;
 }
 
 // change over what the record covers (up to 24 h): the line from 15 min,
 // the % only once it covers an hour (pct null before that)
-function change(k){
-  const pts = (pxBook()[k] || []).filter(p => now() - p[0] <= 24 * 3600 + 600);
+// book: the record already read for this repaint (it can hold 80 tokens x
+// 26 h, so it is parsed once per render, not once per card)
+function change(k, book){
+  const pts = ((book || pxBook())[k] || []).filter(p => now() - p[0] <= 24 * 3600 + 600);
   if (pts.length < 2) return null;
   const span = pts[pts.length - 1][0] - pts[0][0];
   if (span < 900) return null;
@@ -152,21 +155,22 @@ function render(){
   if (changed) save(favs);
   const head = '<div class="fav-head"><h3>' + STAR + '<span>Favorites</span></h3>' +
     (favs.length ? '<span class="fav-n">' + favs.length + '/' + MAX + '<span class="fav-drag"> \u00b7 <span>drag to reorder</span></span></span>' : '') + '</div>';
+  // every priced token in the list, not only the favorites (one write), and
+  // before the empty state: the first token starred then already has its line
+  const px = {};
+  mine().forEach(t => { const u = fiatOf(Object.assign({}, t, { v: 1 })); if (u > 0) px[tokKey(t)] = u; });
+  const book = recordAll(px);
   if (!favs.length) {
     sec.innerHTML = head + '<div class="fav-empty">' + STAR + '<div><b>Pin the tokens you watch</b><br>' +
       '<span>' + (TOUCH ? 'Long-press a token in the list to keep it here, under LUNC and USTC.' : 'Tap the star on a token to keep it here, under LUNC and USTC.') +
       ' ' + (syncOn() ? 'Up to 6, synced between your devices (encrypted).' : 'Up to 6, kept on this device.') + '</span></div></div>';
     return;
   }
-  // every priced token in the list, not only the favorites (one write)
-  const px = {};
-  mine().forEach(t => { const u = fiatOf(Object.assign({}, t, { v: 1 })); if (u > 0) px[tokKey(t)] = u; });
-  recordAll(px);
   let html = '<div class="fav-grid">';
   favs.forEach((f, i) => {
     const t = held[f.k] || { sym: f.sym || '?', logo: f.logo, v: 0, contract: f.k.slice(0, 5) === 'cw20:' ? f.k.slice(5) : undefined, denom: f.k.slice(0, 7) === 'native:' ? f.k.slice(7) : undefined };
     const unit = held[f.k] ? fiatOf(Object.assign({}, t, { v: 1 })) : null;
-    const ch = change(f.k), up = !ch || ch.pct === null || ch.pct >= 0;
+    const ch = change(f.k, book), up = !ch || ch.pct === null || ch.pct >= 0;
     html += '<div class="fav-card" draggable="true" data-k="' + esc(f.k) + '" data-i="' + i + '" role="button" tabindex="0">' +
       '<div class="fav-top">' + iconHTML(t) + '<b>' + esc(t.sym || '?') + '</b>' +
       '<button class="fav-off" type="button" title="Remove from favorites" data-k="' + esc(f.k) + '">' + STAR + '</button></div>' +
