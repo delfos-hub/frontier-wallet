@@ -4,12 +4,12 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { DEBUG, THIN_LUNC, amt, dbg, fmt, iconHTML, paintIcons, usd } from './chain.js?v=12072d06';
-import { $, go, tap } from './shell.js?v=12072d06';
-import { DEC, assetOf, checkPool, directPeers, poolDex, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolsBetween, reserves, simulateSwap } from './market.js?v=12072d06';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=12072d06';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=12072d06';
-import { S } from './state.js?v=12072d06';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=14f173de';
+import { $, go, tap } from './shell.js?v=14f173de';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=14f173de';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=14f173de';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=14f173de';
+import { S } from './state.js?v=14f173de';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -36,6 +36,16 @@ function savedSlip(read){
 }
 let SLIP = savedSlip(function (k) { return localStorage.getItem(k); });
 
+// raw * f, rounded down, in BigInt: Number turns an 18-decimal amount of a
+// thousand tokens or more into "1e+21", which no contract takes as a Uint128
+const scaleRaw = (raw, f) => {
+  const t = String(raw == null ? '0' : raw).trim();
+  const n = Number(t);
+  const r = /^\d+$/.test(t) ? BigInt(t) : BigInt(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+  if (!(f < 1)) return r.toString();
+  if (!(f > 0)) return '0';
+  return (r * BigInt(Math.round(f * 1e9)) / 1000000000n).toString();
+};
 const slipText = s => String(Number((s * 100).toFixed(3))) + '%';
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 function armGo(text, on){
@@ -201,11 +211,12 @@ function destinations(t){
    unnoticed until it costs a trade. Asked in order - what the row says, then
    what the market map recorded, and only then the guess. */
 function decOf(t){
-  const d = Number(t && t.dec);
-  if (isFinite(d) && d > 0) return d;
+  // 0 is a real answer (a token with no fractions), so it is kept, not replaced
+  const ok = x => x !== null && x !== undefined && x !== '' && Number.isInteger(Number(x)) && Number(x) >= 0 && Number(x) <= 18;
   const k = keyOf(t);
-  const known = k ? Number(DEC[k]) : NaN;
-  if (isFinite(known) && known > 0) return known;
+  // what the contract said, when it has been asked, before the row
+  if (k && ok(DEC[k])) return Number(DEC[k]);
+  if (t && ok(t.dec)) return Number(t.dec);
   return 6;
 }
 
@@ -215,14 +226,14 @@ const LUNC_RESERVE = 2;
 
 function balOf(t){
   if (!t) return 0;
-  const row = heldTokens().find(x => x.sym === t.sym);
+  const row = heldTokens().find(x => keyOf(x) === keyOf(t));
   return row ? (row.v || 0) : (t.v || 0);
 }
 
 // The picker draws the same icon the token list draws, which is why the rows
 // come from heldTokens rather than being rebuilt here.
 function face(el, t){
-  const row = heldTokens().find(x => x.sym === (t && t.sym)) || t;
+  const row = (t && heldTokens().find(x => keyOf(x) === keyOf(t))) || t;
   el.innerHTML = (row ? iconHTML(row) : '') +
     '<span>' + ((t && t.sym) || 'LUNC') + '</span>' +
     '<svg class="sw-caret" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
@@ -243,9 +254,9 @@ const DEPTH = {};
 // definition.
 function firstCandidates(){
   const pools = poolsBetween(keyOf(FROM), keyOf(TO));
-  if (pools.length) return pools;
+  if (pools.length) return pools.map(p => Object.assign({ ask: keyOf(TO) }, p));
   const mids = midsBetween(keyOf(FROM), keyOf(TO));
-  return (mids[0] && mids[0].first) || [];
+  return ((mids[0] && mids[0].first) || []).map(p => Object.assign({ ask: mids[0].key }, p));
 }
 /* Which of them is the deep one, by what it actually holds.
    The list is ordered by the feed's liquidity, and a pool the feed does not
@@ -312,7 +323,8 @@ async function learnComfort(){
   const raw = toRaw(String(bal), decOf(FROM));
   const leg = firstCandidates().filter(p => p.pair === pair)[0];
   if (!leg) { delete COMFORT[pair]; return; }
-  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex).catch(() => null);
+  // with the side it asks for, so the pool is checked for what it holds here too
+  const q = await simulateSwap(leg.pair, keyOf(FROM), raw, leg.dex, leg.ask).catch(() => null);
   if (!q) { delete COMFORT[pair]; return; }
   const out = Number(q.return_amount), spread = Number(q.spread_amount);
   const fee = Number(q.commission_amount);
@@ -498,15 +510,15 @@ function drawSheet(){
   list.innerHTML = all.some(t => !t.head) ? all.map(function (t) {
     if (t.head) return '<div class="sw-sec">' + t.head + '</div>';
     const f = fiatOf(t);
-    return '<button class="sw-item" type="button" data-k="' + keyOf(t) + '">' +
-      iconHTML(t) + '<span class="sw-item-s">' + t.sym +
+    return '<button class="sw-item" type="button" data-k="' + esc(keyOf(t)) + '">' +
+      iconHTML(t) + '<span class="sw-item-s">' + esc(t.sym) +
       (t.hops === 2 ? '<b class="sw-hop">2 steps</b>' : '') + '</span>' +
       '<span class="sw-item-r">' +
         '<span class="sw-item-v">' + ((t.v || 0) > 0 ? fmt(t.v) : '') + '</span>' +
         '<span class="sw-item-u">' + (f !== null && f > 0 ? usd(f) : '') + '</span>' +
       '</span></button>';
   }).join('') : '<div class="sw-none">' + (q
-    ? 'Nothing here matches ' + q + '.'
+    ? 'Nothing here matches ' + esc(q) + '.'
     : 'Nothing shares a pool with ' + FROM.sym + '.') + '</div>';
   paintIcons(list);
 }
@@ -581,21 +593,23 @@ function result(state, title, note, hash){
         (state === 'done'
           ? '<svg viewBox="0 0 24 24" class="sw-tick"><path d="m4 12 5.5 5.5L20 7"/></svg>'
           : '<span class="spin"></span>') +
-        '<b>' + title + '</b>' +
+        '<b>' + esc(title) + '</b>' +
       '</div>' +
-      '<p>' + note + '</p>' +
-      '<a href="' + link + '" target="_blank" rel="noopener">' +
-        hash.slice(0, 8) + '\u2026' + hash.slice(-6) + ' \u2197</a>' +
+      '<p>' + esc(note) + '</p>' +
+      (/^[0-9A-F]{64}$/i.test(String(hash || '')) ? '<a href="' + link + '" target="_blank" rel="noopener">' +
+        hash.slice(0, 8) + '\u2026' + hash.slice(-6) + ' \u2197</a>' : '') +
     '</div>';
 }
 
 // the same rows are wanted in two places now, so the markup is one function
+// Every line is text: a refusal can carry a node's or a contract's own words
+// (raw_log), and a symbol comes from a token, so nothing here is markup.
 function lineHTML(lines){
   return lines.map(function (l) {
-    return '<div class="sw-line' + (l.tone ? ' ' + l.tone : '') +
+    return '<div class="sw-line' + (l.tone ? ' ' + esc(l.tone) : '') +
       (l.big ? ' big' : '') + '">' +
-      '<span>' + l.k + '</span><b>' + l.v + '</b></div>' +
-      (l.note ? '<p class="sw-note">' + l.note + '</p>' : '');
+      '<span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>' +
+      (l.note ? '<p class="sw-note">' + esc(l.note) + '</p>' : '');
   }).join('');
 }
 
@@ -630,11 +644,12 @@ function valueGap(v, got, costPct){
 /* Ask every pool that holds the pair and keep the best answer.
    Pulled out of quote() because a two step swap asks this twice, once per leg,
    and the second leg is not the pair on screen. */
-async function bestPool(pools, offerKey, raw, refused, label){
+async function bestPool(pools, offerKey, raw, refused, label, askKey){
   // built only when something will read them
   const seen = DEBUG ? [] : null;
   const got = (await Promise.all(pools.slice(0, 3).map(function (p) {
-    return simulateSwap(p.pair, offerKey, raw, p.dex)
+    // askKey: the pool must hold what is offered and what comes back
+    return simulateSwap(p.pair, offerKey, raw, p.dex, askKey)
       .then(function (x) {
         if (seen) seen.push(p.pair.slice(0, 12) + '/' + x.dialect + '=' + x.return_amount);
         return { pair: p.pair, dialect: x.dialect, d: x };
@@ -711,16 +726,16 @@ async function quoteHop(mids, raw, refused){
     if (!mid) { trace.push(m.key.slice(0, 14) + ':unnamed'); continue; }
     const dMid = decOf(mid);
 
-    const one = await bestPool(m.first, keyOf(FROM), raw, refused, 'leg1 to ' + mid.sym);
+    const one = await bestPool(m.first, keyOf(FROM), raw, refused, 'leg1 to ' + mid.sym, m.key);
     asked += one.tried;
     if (!one.best) { trace.push(mid.sym + ':leg1 none of ' + one.tried); continue; }
 
-    const min1 = String(Math.floor(Number(one.best.d.return_amount) * (1 - SLIP)));
+    const min1 = scaleRaw(one.best.d.return_amount, 1 - SLIP);
     if (!(Number(min1) > 0)) {
       trace.push(mid.sym + ':leg1 returned ' + one.best.d.return_amount); continue;
     }
 
-    const two = await bestPool(m.second, m.key, min1, refused, 'leg2 from ' + mid.sym);
+    const two = await bestPool(m.second, m.key, min1, refused, 'leg2 from ' + mid.sym, keyOf(TO));
     asked += two.tried;
     if (!two.best) { trace.push(mid.sym + ':leg2 none of ' + two.tried); continue; }
 
@@ -738,10 +753,10 @@ async function quoteHop(mids, raw, refused){
                    Number(min1) / Math.pow(10, dMid)),
       returnRaw: two.best.d.return_amount,
       legs: [
-        { pair: one.best.pair, dialect: one.best.dialect,
-          offerRaw: raw, returnRaw: one.best.d.return_amount },
-        { pair: two.best.pair, dialect: two.best.dialect,
-          offerRaw: min1, returnRaw: two.best.d.return_amount }
+        { pair: one.best.pair, dialect: one.best.dialect, offerKey: keyOf(FROM), askKey: m.key,
+          offerRaw: raw, returnRaw: one.best.d.return_amount, feeRaw: String(one.best.d.commission_amount || '0') },
+        { pair: two.best.pair, dialect: two.best.dialect, offerKey: m.key, askKey: keyOf(TO),
+          offerRaw: min1, returnRaw: two.best.d.return_amount, feeRaw: String(two.best.d.commission_amount || '0') }
       ]
     };
   }
@@ -754,7 +769,9 @@ async function quoteHop(mids, raw, refused){
 
 async function quote(){
   const my = ++SEQ;
+  // a new quote replaces the old one everywhere, the review panel included
   QUOTE = null; PLAN = null; DETAIL = null; armGo('Enter an amount', false);
+  closeConfirm();
   paintUsd();
   const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
   const out = $('#sw-out');
@@ -776,8 +793,25 @@ async function quote(){
   if (!isFinite(v) || v <= 0) { out.textContent = '-'; out.classList.add('dim'); detail([]); return; }
 
   out.textContent = 'quoting'; out.classList.add('dim');
+  // both tokens' decimals from their own contracts (issuer list aside) before
+  // any amount is turned into base units or shown
+  try { await Promise.all([confirmDec(keyOf(FROM)), confirmDec(keyOf(TO))]); }
+  catch (e) {
+    if (my !== SEQ) return;
+    out.textContent = '-'; out.classList.add('dim');
+    detail([{ k: 'Token', v: String(e && e.message ? e.message : e).slice(0, 90), tone: 'bad' }]);
+    return;
+  }
+  if (my !== SEQ) return;
   const dFrom = decOf(FROM), dTo = decOf(TO);
-  const raw = toRaw($('#sw-amt').value, dFrom);
+  let raw;
+  // an amount toRaw refuses ("1,000") is said on screen, not left on "quoting"
+  try { raw = toRaw($('#sw-amt').value, dFrom); }
+  catch (e) {
+    out.textContent = '-'; out.classList.add('dim');
+    detail([{ k: 'Amount', v: String(e && e.message ? e.message : e).slice(0, 90), tone: 'bad' }]);
+    return;
+  }
 
   try {
     // A pool that will not answer is one fewer option, not an error - but when
@@ -787,7 +821,7 @@ async function quote(){
     let lines, pair, pct, hop = null, direct = null;
 
     if (pools.length) {
-      direct = await bestPool(pools, keyOf(FROM), raw, refused, 'direct');
+      direct = await bestPool(pools, keyOf(FROM), raw, refused, 'direct', keyOf(TO));
       if (my !== SEQ) return;
       if (!direct.best) throw new Error(refused[0] || 'no pool would quote this amount');
       pair = direct.best.pair;
@@ -807,8 +841,9 @@ async function quote(){
       QUOTE = { pair: pair, dialect: direct.best.dialect, offerRaw: raw,
                 returnRaw: String(direct.best.d.return_amount),
                 got: c.out, dTo: dTo, pct: pct, hops: 1,
-                legs: [{ pair: pair, dialect: direct.best.dialect,
-                         offerRaw: raw, returnRaw: String(direct.best.d.return_amount) }] };
+                legs: [{ pair: pair, dialect: direct.best.dialect, offerKey: keyOf(FROM), askKey: keyOf(TO),
+                         offerRaw: raw, returnRaw: String(direct.best.d.return_amount),
+                         feeRaw: String(direct.best.d.commission_amount || '0') }] };
       lines = [
         { k: 'Rate', v: '1 ' + FROM.sym + ' = ' + fmt(c.out / v) + ' ' + TO.sym },
         { k: 'Price impact', v: pct.toFixed(2) + '%',
@@ -1047,14 +1082,22 @@ function envelope(from, q){
   const gd = q.dialect === 'gd';
   const cl = q.dialect === 'cl';
   // a floor, so rounding never pushes the guard above what was quoted
-  const floor = String(Math.floor(Number(q.returnRaw) * (1 - SLIP)));
+  const floor = scaleRaw(q.returnRaw, 1 - SLIP);
   const guard = gd
     ? { offer_amount: q.offerRaw, min_receive: floor, deadline: Date.now() + 120000 }
     : cl
     // seconds, not milliseconds - and no belief_price, which appears in none of
-    // the trades this contract has taken
-    ? { max_spread: String(SLIP), deadline: Math.floor(Date.now() / 1000) + 120 }
-    : { belief_price: (Number(q.offerRaw) / Number(q.returnRaw)).toFixed(18),
+    // the trades this contract has taken; min_return does the work instead
+    // and min_return, a hard floor on what arrives (cl8y-dex-pair 1.21, code
+    // 11715, every pair of the factory): the pool fails the swap below it, so
+    // the minimum shown is the minimum signed. A pair with hooks refuses a
+    // swap that has none.
+    ? { max_spread: String(SLIP), min_return: floor, deadline: Math.floor(Date.now() / 1000) + 120 }
+    // TerraSwap checks max_spread against the return before its commission,
+    // so a price taken from the net return let the trade land about one pool
+    // fee under the minimum shown. Taken from the gross return, the floor it
+    // enforces is the net return less the tolerance, which is what is shown.
+    : { belief_price: (Number(q.offerRaw) / (Number(q.returnRaw) + (Number(q.feeRaw) || 0))).toFixed(18),
         max_spread: String(SLIP) };
 
   if (from.denom) {
@@ -1090,6 +1133,7 @@ function envelope(from, q){
    back at worst, and a way out that is the same size as the way in. */
 function confirmLines(est){
   const min = QUOTE.got * (1 - SLIP);
+  // every dialect now carries the floor in the message itself
   const lines = [
     { k: 'You receive at least', v: fmt(min) + ' ' + TO.sym, big: true },
     { k: 'Expected, if the pool holds',
@@ -1149,9 +1193,14 @@ $('#sw-go').addEventListener('click', async () => {
     // the node runs the message and prices the gas, which is also what proves
     // the transaction was built correctly
     b.textContent = 'Checking with the node';
+    // the plan belongs to this quote: if the amount, the pair or the tolerance
+    // changes while the node is asked, a new quote replaces this one and the
+    // plan is dropped rather than shown under the new numbers
+    const q = QUOTE, my = SEQ;
     const plan = steps();
     const est = await dryRunSwap(addrOf(), plan, S.MNEMONIC);
-    PLAN = { steps: plan, est: est };
+    if (QUOTE !== q || SEQ !== my) return;
+    PLAN = { steps: plan, est: est, quote: q, seq: my, slip: SLIP, amount: String($('#sw-amt').value) };
     openConfirm(est);
     armGo('Review this swap', true);
   } catch (e) {
@@ -1169,6 +1218,10 @@ $('#cf-x').addEventListener('click', () => { tap(); closeConfirm(); });
 
 $('#cf-go').addEventListener('click', async () => {
   if (BUSY || !QUOTE || !PLAN || !S.MNEMONIC) return;
+  // only the plan made from the quote on screen, at the tolerance on screen
+  if (PLAN.quote !== QUOTE || PLAN.seq !== SEQ || PLAN.slip !== SLIP || PLAN.amount !== String($('#sw-amt').value)) {
+    PLAN = null; closeConfirm(); armGo('Check what this would cost', !!S.MNEMONIC); return;
+  }
   tap();
   BUSY = true;
   const b = $('#cf-go');
@@ -1176,8 +1229,20 @@ $('#cf-go').addEventListener('click', async () => {
   try {
     b.disabled = true;
     b.textContent = 'Signing';
-    // read again, not from the session: the pool could have been migrated
-    for (const leg of QUOTE.legs) await checkPool(leg.pair, true);
+    // read again, not from the session: the pool could have been migrated,
+    // and what it holds is read from two nodes, not taken from the feed
+    for (const leg of QUOTE.legs) {
+      await checkPool(leg.pair, true);
+      await poolHolds(leg.pair, leg.offerKey, leg.askKey, true);
+    }
+    // the price now, against the floor shown: the pool enforces the floor
+    // anyway, this only saves a fee on a swap that would fail
+    for (const leg of QUOTE.legs) {
+      const now = await simulateSwap(leg.pair, leg.offerKey, leg.offerRaw, leg.dialect, leg.askKey);
+      if (Number(now.return_amount) < Math.floor(Number(leg.returnRaw) * (1 - SLIP))) {
+        throw new Error('the price moved past your tolerance; check the swap again');
+      }
+    }
     const res = await sendSwap(addrOf(), PLAN.steps, S.MNEMONIC, undefined, '', PLAN.est.gasFee);
     closeConfirm();
 

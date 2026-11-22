@@ -47,8 +47,9 @@ const api = new Function('heldTokens', 'toRaw', 'sortHeld', [
   liftLine(src, 'const sendKey ='),
   lift(src, 'function sendable('),
   lift(src, 'function balanceOf('),
+  lift(src, 'function decOf('),
   lift(src, 'function cw20Step('),
-  'return { isCw20, sendKey, sendable, balanceOf, cw20Step };'
+  'return { isCw20, sendKey, sendable, balanceOf, cw20Step, decOf };'
 ].join('\n'))(() => HELD, (h, d) => String(Math.round(Number(h) * Math.pow(10, d))), sortHeld);
 
 group('what can be sent');

@@ -10,11 +10,12 @@
    everything that would sign is switched off (body.is-watch), and the header
    says "Read only". Importing that address's phrase later turns it into a
    full wallet in place. */
-import { $, go, tap } from './shell.js?v=12072d06';
-import { S } from './state.js?v=12072d06';
-import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=12072d06';
-import { dots } from './onboarding.js?v=12072d06';
-import { openWallet } from './tokens.js?v=12072d06';
+import { $, go, tap } from './shell.js?v=14f173de';
+import { S } from './state.js?v=14f173de';
+import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=14f173de';
+import { dots } from './onboarding.js?v=14f173de';
+import { openWallet } from './tokens.js?v=14f173de';
+import { dropWallet } from './sync.js?v=14f173de';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -63,15 +64,15 @@ function draw(){
   const list = wallets(), act = activeId();
   $('#wl-list').innerHTML = list.map(function (w) {
     const t = lastTotal(w.addr);
-    return '<div class="wl-row' + (w.id === act ? ' on' : '') + '" data-id="' + w.id + '">' +
+    return '<div class="wl-row' + (w.id === act ? ' on' : '') + '" data-id="' + esc(w.id) + '">' +
       '<span class="wl-ava" style="background:' + ava(w.addr) + '"></span>' +
       '<span class="wl-mid"><b>' + esc(w.name) + (w.watch ? '<i class="wl-tag">Watch</i>' : '') + '</b>' +
-        '<span>' + short(w.addr) + '</span></span>' +
+        '<span>' + esc(short(w.addr)) + '</span></span>' +
       '<span class="wl-r">' + (t !== null ? '<b>' + usd(t) + '</b>' : '') +
         (w.id === act ? '<svg class="wl-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></svg>' : '') + '</span>' +
-      '<button type="button" class="wl-more" data-more="' + w.id + '" aria-label="Wallet options"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>' +
-      '<div class="wl-acts" hidden><button type="button" data-rename="' + w.id + '">Rename</button>' +
-        '<button type="button" class="danger" data-remove="' + w.id + '">Remove</button></div>' +
+      '<button type="button" class="wl-more" data-more="' + esc(w.id) + '" aria-label="Wallet options"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>' +
+      '<div class="wl-acts" hidden><button type="button" data-rename="' + esc(w.id) + '">Rename</button>' +
+        '<button type="button" class="danger" data-remove="' + esc(w.id) + '">Remove</button></div>' +
     '</div>';
   }).join('');
 }
@@ -108,6 +109,8 @@ $('#wl-list').addEventListener('click', async function (e) {
       : 'Remove ' + w.name + ' from this device? Only its recovery phrase can bring it back.';
     if (!confirm(msg)) return;
     const was = activeId() === w.id;
+    // its server copy can be deleted only while its key is at hand
+    if (!wallets().some(x => x.id !== w.id && x.addr === w.addr)) await dropWallet(w.addr);
     await removeWallet(w.id);
     if (was) { close(); enter(); } else draw();
     return;

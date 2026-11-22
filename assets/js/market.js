@@ -1,4 +1,4 @@
-import { EXTRA_PAIRS, FACTORIES, LCD, LCD2, POOL_CODES, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=12072d06';
+import { EXTRA_PAIRS, FACTORIES, LCD, LCD2, POOL_CODES, THIN_LUNC, amt, clean, dbg, getJSON, smart } from './chain.js?v=14f173de';
 
 /* ---------------- discovery and pricing ----------------
    The chain has no "which CW20 does this address hold" endpoint. Balances live
@@ -89,7 +89,10 @@ function knownAsset(key){
   const kept = cacheGetStale('as:' + key);
   if (!feed && !list && !kept) return null;
   // whatever we settle on below, the scale has to reach the arithmetic
-  const known = (list && list.dec) || (kept && kept.dec) || (feed && feed.dec);
+  // the issuer's list, then what the token's own contract said (token_info,
+  // kept by learnAsset), and only then the feed, which is not an authority on
+  // anybody's decimals. A 0 is a real answer, so ?? and not ||.
+  const known = list && list.dec != null ? list.dec : kept && kept.dec != null ? kept.dec : feed ? feed.dec : undefined;
   if (known !== undefined && known !== null) DEC[key] = known;
   const pick = (field, order) => {
     for (const src of order) if (src && src[field] !== undefined && src[field] !== null) return src[field];
@@ -101,8 +104,8 @@ function knownAsset(key){
     // whatever string the contract carries, and a contract's internal name is
     // not always the one the token is traded under.
     sym: clean(pick('sym', [list, feed, kept]), 16) || null,
-    // the issuer's list first for both: it is the only authority on either
-    dec: pick('dec', [list, feed, kept]),
+    // decimals: the issuer's list, then the contract itself, then the feed
+    dec: pick('dec', [list, kept, feed]),
     logo: pick('logo', [list, feed, kept])
   };
 }
@@ -114,15 +117,17 @@ async function learnAsset(key){
   const r = await smart(key.slice(5), { token_info: {} }, 1).catch(() => null);
   const d = r && r.data;
   if (!d || !d.symbol) return null;
-  const a = { key: key, sym: clean(d.symbol, 16),
-              dec: d.decimals === undefined ? 6 : d.decimals, logo: null };
+  const said = Number.isInteger(d.decimals) && d.decimals >= 0 && d.decimals <= 18;
+  const a = { key: key, sym: clean(d.symbol, 16), dec: said ? d.decimals : 6, logo: null };
   // Into DEC as well, and this is the point of the whole call: legRate scales
   // a reserve by ten to the power of what it finds there, and finding nothing
   // means six. A contract that says eighteen and is not heard is a price out
   // by a factor of a trillion - which is exactly what USTR was doing before
   // the published list happened to cover it.
-  if (d.decimals !== undefined) DEC[key] = d.decimals;
-  cacheSet('as:' + key, a);
+  DEC[key] = a.dec;
+  // a 6 put in for a token that gave no valid decimals is a guess for the
+  // screen, not an answer: it is not kept, so confirmDec asks the token again
+  if (said) cacheSet('as:' + key, a);
   ASSET[key] = a;
   return a;
 }
@@ -518,8 +523,9 @@ const poolDex = pair => POOL_CODES[POOL_OK[pair]] || '';
 // learning once and keeping. The map's dex name is only the first guess; the
 // pool itself is the authority.
 const DIALECTS = ['ts', 'gd', 'cl'];
-async function simulateSwap(pair, offerKey, raw, guess){
+async function simulateSwap(pair, offerKey, raw, guess, askKey){
   await checkPool(pair);
+  if (askKey) await poolHolds(pair, offerKey, askKey);
   const known = cacheGetStale('dex:' + pair);
   const first = known || guess;
   // the remembered one, or the map's guess, then the others - and whichever
@@ -588,6 +594,64 @@ async function mapLimit(items, n, fn){
     while (i < items.length) { const k = i++; out[k] = await fn(items[k]); }
   }));
   return out;
+}
+
+/* A token's decimals from its own contract, for any CW20 the issuer's list
+   does not cover - asked before a quote is shown, because a feed row that says
+   6 for a contract that says 18 shows the amount 10^12 off. Kept for good (a
+   contract's decimals do not change). */
+async function confirmDec(key){
+  if (!key || key.slice(0, 5) !== 'cw20:') return null;
+  await cl8yList().catch(() => null);
+  if (LIST && LIST[key] && LIST[key].dec != null) return LIST[key].dec;
+  const kept = cacheGetStale('as:' + key);
+  if (kept && kept.dec != null) { DEC[key] = kept.dec; return kept.dec; }
+  const r = await smart(key.slice(5), { token_info: {} }, 1);
+  const d = r && r.data;
+  if (!d || !Number.isInteger(d.decimals) || d.decimals < 0 || d.decimals > 18) throw new Error('this token does not say its decimals');
+  const a = Object.assign({}, knownAsset(key) || { key: key, logo: null }, { sym: clean(d.symbol, 16) || (kept && kept.sym) || null, dec: d.decimals });
+  DEC[key] = d.decimals;
+  cacheSet('as:' + key, a);
+  ASSET[key] = a;
+  return d.decimals;
+}
+
+/* Which two assets a pool holds, from the pool itself. A pool is trusted on
+   its code (checkPool), but anyone can instantiate a known pair code with any
+   two tokens, so its code says nothing about what it holds: the market feed
+   names the pair, and a wrong row would put a JUNK/LUNC pool behind a
+   LUNC/USTC quote. Asked before a quote and, fresh from two LCDs, before
+   signing. A pool's assets never change, so a match is kept for the session.
+   TerraSwap-style pools answer pair{} with asset_infos; Garuda's answer pool{}
+   with asset1/asset2. */
+const POOL_HOLDS = {};
+async function assetsAt(lcd, pair){
+  const q = m => (lcd === LCD ? smart(pair, m, 1)
+    : getJSON(lcd + '/cosmwasm/wasm/v1/contract/' + pair + '/smart/' + btoa(JSON.stringify(m)), 12000, 1)).then(r => (r && r.data) || null);
+  const p = await q({ pair: {} }).catch(() => null);
+  if (p && Array.isArray(p.asset_infos) && p.asset_infos.length === 2) return p.asset_infos.map(infoKey);
+  const g = await q({ pool: {} }).catch(() => null);
+  if (g && g.asset1 && g.asset2) return [infoKey(g.asset1), infoKey(g.asset2)];
+  if (g && Array.isArray(g.assets) && g.assets.length === 2) return g.assets.map(a => infoKey(a.info || a));
+  throw new Error('the pool would not say what it holds');
+}
+const samePair = (got, a, b) => got.length === 2 && got.indexOf('?') < 0 &&
+  ((got[0] === a && got[1] === b) || (got[0] === b && got[1] === a));
+async function poolHolds(pair, a, b, fresh){
+  const want = [a, b].sort().join('|');
+  if (!fresh && POOL_HOLDS[pair] === want) return;
+  let got;
+  if (fresh) {
+    const [x, y] = await Promise.all([assetsAt(LCD, pair), assetsAt(LCD2, pair).catch(() => null)]);
+    if (!y) { delete POOL_HOLDS[pair]; throw new Error('could not confirm the pool\u2019s tokens on a second LCD'); }
+    if (x.slice().sort().join('|') !== y.slice().sort().join('|')) { delete POOL_HOLDS[pair]; throw new Error('the two LCDs disagree on what this pool holds'); }
+    got = x;
+  } else got = await assetsAt(LCD, pair);
+  if (!samePair(got, a, b)) {
+    delete POOL_HOLDS[pair];
+    throw new Error('this pool does not hold the pair shown');
+  }
+  POOL_HOLDS[pair] = want;
 }
 
 // Every CW20 transfer writes its own contract address into the wasm event, so
@@ -1090,4 +1154,4 @@ async function poolPrice(token, quick){
   return await bondPrice(token).catch(() => null);
 }
 
-export { DEC, dexDialect, poolsOf, infoKey, assetOf, cacheGet, checkPool, cacheGetStale, poolDex, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };
+export { DEC, confirmDec, poolHolds, dexDialect, poolsOf, infoKey, assetOf, cacheGet, checkPool, cacheGetStale, poolDex, cacheSet, cl8yList, directPairs, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapLimit, mapPrice, marketComplete, midsBetween, owLogo, owMarket, poolPrice, poolsBetween, reserves, simulateSwap, tsInfo, txCandidates };

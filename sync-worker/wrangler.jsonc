@@ -12,8 +12,9 @@
 	"d1_databases": [
 		{ "binding": "DB", "database_name": "frontier-sync", "database_id": "2071fc3b-d921-4dd9-9e46-a5a9792403df" }
 	],
-	// daily purge of records not written for 400 days
-	"triggers": { "crons": ["23 3 * * *"] },
+	// no cron: the account's free cron slots are taken (offers-worker x2,
+	// relayer-watchdog); the daily purge runs from requests (worker.js)
+	"triggers": { "crons": [] },
 	// per client (IPv4, or IPv6 /64). The namespace ids must differ
 	// from the other Workers' on the account (offers-worker uses its own).
 	"ratelimits": [

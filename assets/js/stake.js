@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=12072d06';
-import { $, buzz } from './shell.js?v=12072d06';
-import { S } from './state.js?v=12072d06';
-import { luncRaw, refreshBalances } from './tokens.js?v=12072d06';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=12072d06';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=14f173de';
+import { $, buzz } from './shell.js?v=14f173de';
+import { S } from './state.js?v=14f173de';
+import { luncRaw, refreshBalances } from './tokens.js?v=14f173de';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=14f173de';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -554,11 +554,11 @@ function reviewLines(f){
     if (f.only.length) l.push(['To balance', L(f.onlyAmount) + ' LUNC from ' + cnt(f.only) + ' not earning (jailed or inactive)']);
     return l;
   }
-  if (f.kind === 'delegate') return [['Action', 'Stake ' + a], ['Validator', nameOf(f.validator)],
+  if (f.kind === 'delegate') return [['Action', 'Stake ' + a], ['Validator', nameOf(f.validator)], ['Address', f.validator],
     ['Commission', ((DATA.byAddr[f.validator] || {}).rate * 100 || 0).toFixed(1) + '% of rewards']];
-  if (f.kind === 'undelegate') return [['Action', 'Unstake ' + a], ['Validator', nameOf(f.validator)],
+  if (f.kind === 'undelegate') return [['Action', 'Unstake ' + a], ['Validator', nameOf(f.validator)], ['Address', f.validator],
     ['Back on', new Date(Date.now() + UNBOND_DAYS * 86400000).toLocaleDateString((document.documentElement.lang && document.documentElement.lang !== 'en' ? document.documentElement.lang : 'en-GB'), { day: 'numeric', month: 'short', year: 'numeric' })]];
-  return [['Action', 'Move ' + a], ['From', nameOf(f.from)], ['To', nameOf(f.to)]];
+  return [['Action', 'Move ' + a], ['From', nameOf(f.from)], ['To', nameOf(f.to)], ['To address', f.to]];
 }
 
 function warningOf(f){

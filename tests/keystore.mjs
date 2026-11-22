@@ -26,9 +26,11 @@ function fakeStore(name, opts = {}){
     setItem: cb((k, v) => { log.push('set'); data[k] = v; return true; }),
     removeItem: cb(k => { log.push('remove'); delete data[k]; return true; }) };
 }
-async function loadStore({ version = '9.1', secure, device, cloud, local = {}, localBroken = false }){
+async function loadStore({ version = '9.1', secure, device, cloud, local = {}, localBroken = false, host = true }){
+  // a Telegram client gives the page a bridge; a plain tab has none
+  if (host) globalThis.TelegramWebviewProxy = { postEvent(){} }; else delete globalThis.TelegramWebviewProxy;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ks-'));
-  const tg = { isVersionAtLeast: v => parseFloat(version) >= parseFloat(v) };
+  const tg = { initData: 'auth_date=1&hash=' + '0'.repeat(64), isVersionAtLeast: v => parseFloat(version) >= parseFloat(v) };
   if (secure) tg.SecureStorage = secure;
   if (device) tg.DeviceStorage = device;
   if (cloud) tg.CloudStorage = cloud;
@@ -41,6 +43,25 @@ async function loadStore({ version = '9.1', secure, device, cloud, local = {}, l
   fs.writeFileSync(path.join(dir, 'storage.js'), fs.readFileSync(path.join(SRC, 'storage.js'), 'utf8').replace(/\?v=[0-9a-f]+/g, ''));
   const m = await import(pathToFileURL(path.join(dir, 'storage.js')).href);
   return { Store: m.Store, ls };
+}
+
+group('Telegram storage only in a Telegram client');
+{
+  const secure = fakeStore('secure');
+  const { Store, ls } = await loadStore({ version: '8.0', secure, host: false });
+  await Store.save('BLOB');
+  ok('signed-looking initData in a plain tab (from the address) does not pick SecureStorage',
+    Store.kind === 'local' && ls[KEY] === 'BLOB' && !secure.log.includes('set'), Store.kind);
+}
+{
+  const mute = { getItem(){}, setItem(){}, removeItem(){} };     // never calls back
+  const { Store } = await loadStore({ version: '8.0', secure: mute });
+  const t0 = Date.now();
+  let err = null;
+  try { await Store.load(); } catch (e) { err = e; }
+  ok('a store that never answers ends in an error after a while, not an empty wallet',
+    err && /did not answer/.test(err.message) && Date.now() - t0 >= 9000, err && err.message);
+  ok('and nothing lower was tried in its place', Store.kind === 'secure');
 }
 
 group('the encrypted key stays on the device');
