@@ -2335,11 +2335,14 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 /* Vote on a wide screen (gov.js drawDesk): the list beside the open proposal */
 html.dk #st-gov{max-width:min(1400px,calc(100vw - var(--rail) - 64px))!important}
 html.dk .gvd{display:flex;flex-direction:column;gap:18px}
-.gvd-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.gvd-tile{position:relative;display:flex;flex-direction:column;gap:2px;min-width:0;padding:14px 16px;border-radius:16px;
+/* the tiles share the columns of the list and the pane below (.gvd-cols):
+   the empty 0 column plus the 10px gaps make the same 20px gutter */
+.gvd-stats{display:grid;grid-template-columns:minmax(290px,340px) 0 repeat(3,minmax(0,1fr));gap:10px}
+.gvd-stats .gvd-tile:nth-child(2){grid-column:3}
+.gvd-tile{position:relative;display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 14px;border-radius:16px;
   background:linear-gradient(180deg,rgba(22,30,48,.92),rgba(18,24,42,.92));border:1px solid var(--border)}
 .gvd-tile>span{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-.gvd-tile>b{display:flex;align-items:center;gap:8px;font-family:'Rajdhani','Exo 2',sans-serif;font-size:22px;font-weight:700;color:#fff;line-height:1.2}
+.gvd-tile>b{display:flex;align-items:center;gap:8px;font-family:'Rajdhani','Exo 2',sans-serif;font-size:16px;font-weight:700;color:#fff;line-height:1.2}
 .gvd-tile small{font-size:12px;color:#A9B9D6;line-height:1.4}
 .gvd-tile small .gvd-todo{color:#FFD27A;font-weight:600}
 .gvd-tile-go{position:absolute;top:12px;right:12px;min-height:32px;padding:0 12px;border-radius:10px;border:1px solid rgba(0,212,255,.45);
@@ -2406,7 +2409,7 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-ch span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .gvd-ch b{font-size:14px;color:#E8F0FF;overflow-wrap:anywhere}
 .gvd-src{margin:0;text-align:left}
-.gvd-card .gov-text{max-width:78ch;font-size:14px}
+.gvd-card .gov-text{max-width:none;font-size:14px}
 .gvd-card .gov-text.clip{max-height:340px}
 .gvd-wkey .y::before{border-color:#3ecf8e} .gvd-wkey .v::before{border-color:#c77dff} /* who voted: two summaries and the table of votes */
 .gvd-sums{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -2452,7 +2455,7 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-find svg{width:15px;height:15px;fill:none;stroke:#8FA3C6;stroke-width:2;stroke-linecap:round;flex:none}
 .gvd-find input{flex:1;min-width:0;border:0;outline:0;background:none;color:#E8F0FF;font:inherit;font-size:13px}
 .gvd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.gvd-tbl-wrap{overflow-x:auto}
+.gvd-tbl-wrap{overflow-x:auto;container-type:inline-size}
 .gvd-tbl{width:100%;border-collapse:collapse;font-size:13.5px}
 .gvd-tbl th{padding:12px 10px 10px;text-align:left;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
 .gvd-tbl th:first-child,.gvd-tbl td:first-child{padding-left:20px}
@@ -2478,6 +2481,22 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-vote.y{color:#3ecf8e;background:rgba(62,207,142,.12)} .gvd-vote.n{color:#f06a6a;background:rgba(240,106,106,.12)}
 .gvd-vote.v{color:#c77dff;background:rgba(176,74,232,.14)} .gvd-vote.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
 .gvd-vote.none{color:var(--muted);background:rgba(255,255,255,.04)}
+/* a narrow card (a 1200 px laptop): the stake column folds into the voting
+   power tooltip and the names give way, so Vote and its link stay in view */
+@container (max-width:700px){
+  .gvd-tbl .c-stake{display:none}
+  .gvd-voter{max-width:180px;gap:8px}
+  .gvd-voter .gv-ava{width:28px;height:28px}
+  .gvd-vp{width:84px}
+}
+@container (max-width:520px){
+  .gvd-tbl th,.gvd-tbl td{padding-left:7px;padding-right:7px}
+  .gvd-tbl th:first-child,.gvd-tbl td:first-child{padding-left:14px}
+  .gvd-tbl th:last-child,.gvd-tbl td:last-child{padding-right:14px}
+  .gvd-voter{max-width:140px}
+  .gvd-rank{display:none}
+  .gvd-vp{width:64px}
+}
 .gvd-mbtn{display:inline-grid;place-items:center;width:30px;height:30px;margin-left:6px;vertical-align:middle;border-radius:50%;border:1px solid rgba(0,212,255,.35);
   background:rgba(0,212,255,.08);cursor:pointer;padding:0}
 .gvd-mbtn svg{width:15px;height:15px;fill:none;stroke:#7FE3FF;stroke-width:2;stroke-linejoin:round}
@@ -2494,6 +2513,7 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-vcell{display:flex;align-items:center}
 .gvd-when{display:block;margin-top:3px;padding-left:2px;font-size:11px;color:var(--muted)}
 .gvd-more{display:block;margin:12px auto 4px}
-@media (max-width:1280px){.gvd-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.gvd-sums{grid-template-columns:1fr}}
+@media (max-width:1280px){.gvd-stats{grid-template-columns:minmax(290px,340px) minmax(0,1fr);column-gap:20px}
+  .gvd-stats .gvd-tile:nth-child(2){grid-column:2}.gvd-sums{grid-template-columns:1fr}}
 /* the send review names the recipient in full (tx.js review) */
 .sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}

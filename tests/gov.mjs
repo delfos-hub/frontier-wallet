@@ -129,5 +129,24 @@ check('billions', big(88520000000000000n), '88.52B');
 check('millions', big(792000000000000n), '792.00M');
 check('thousands', big(1500000000n), '1.5K');
 check('nothing', big(0n), '0');
+// shares are rounded to 0.01%, not cut
+{
+  const at = gsrc.indexOf('const pctOf = (x, t) =>');
+  const pctOf = new Function('return ' + gsrc.slice(gsrc.indexOf('(x, t) =>', at), gsrc.indexOf(';\n', at)))();
+  check('9.6149% reads 9.61', pctOf(96149n, 1000000n), 9.61);
+  check('9.6150% reads 9.62 (rounded, not cut)', pctOf(96150n, 1000000n), 9.62);
+  check('nothing over nothing', pctOf(1n, 0n), 0);
+  check('tally pct rounds too', /const pct = x => all > 0n \? Number\(\(x \* 20000n \/ all \+ 1n\) \/ 2n\) \/ 100 : 0;/.test(gsrc), true);
+}
+// a narrow card folds the stake column, so Vote stays in view (CSS container query)
+{
+  const css = fs.readFileSync(path.resolve('assets/css/app.css'), 'utf8');
+  check('stake cells are marked for folding', (gsrc.match(/c-stake/g) || []).length, 2);
+  check('the table measures its own width', /\.gvd-tbl-wrap\{[^}]*container-type:inline-size/.test(css), true);
+  const q = css.indexOf('@container (max-width:700px)'), base = css.indexOf('.gvd-voter{display:flex');
+  check('the narrow rules come after the base ones (else they lose)', q > base && base > 0, true);
+  check('the proposal text fills the card', /\.gvd-card \.gov-text\{max-width:none/.test(css), true);
+  check('the tiles use the columns of the list below', /\.gvd-stats\{display:grid;grid-template-columns:minmax\(290px,340px\) 0 repeat\(3,minmax\(0,1fr\)\)/.test(css), true);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

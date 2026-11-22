@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=62ee34a3';
-import { $, buzz, go } from './shell.js?v=62ee34a3';
-import { S } from './state.js?v=62ee34a3';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=62ee34a3';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=b01ee650';
+import { $, buzz, go } from './shell.js?v=b01ee650';
+import { S } from './state.js?v=b01ee650';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=b01ee650';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -348,7 +348,7 @@ function standing(t, rules, bonded){
   const y = BigInt(t.yes_count || '0'), n = BigInt(t.no_count || '0'),
         v = BigInt(t.no_with_veto_count || '0'), a = BigInt(t.abstain_count || '0');
   const all = y + n + v + a, decisive = y + n + v;
-  const pct = x => all > 0n ? Number(x * 10000n / all) / 100 : 0;
+  const pct = x => all > 0n ? Number((x * 20000n / all + 1n) / 2n) / 100 : 0;
   const turnout = bonded > 0n ? Number(all * 10000n / bonded) / 100 : 0;
   let verdict;
   if (turnout < rules.quorum * 100) verdict = { ok: false, text: 'Quorum not reached (' + turnout.toFixed(1) + '% of ' + (rules.quorum * 100).toFixed(0) + '%)' };
@@ -379,7 +379,7 @@ function finalSplit(p){
         v = BigInt(t.no_with_veto_count || '0'), a = BigInt(t.abstain_count || '0');
   const all = y + n + v + a;
   if (all === 0n) return null;
-  const pct = x => Number(x * 10000n / all) / 100;
+  const pct = x => Number((x * 20000n / all + 1n) / 2n) / 100;
   return { yes: pct(y), no: pct(n), veto: pct(v), abstain: pct(a) };
 }
 // turnout against the quorum: a thin track with the quorum marked on it
@@ -925,7 +925,8 @@ function paintTable(id, live, v, vals, T, again){
   vals.forEach(x => { byAcc[x.acc] = x; });
   const K = o => OPT_CLASS[o] || 'none';
   const bonded = DATA && DATA.bonded > 0n ? DATA.bonded : (vals.reduce((a, x) => a + x.tokens, 0n) || 1n);
-  const pctOf = (x, t) => t > 0n ? Number(x * 10000n / t) / 100 : 0;
+  // rounded to 0.01%, not cut (9.61%, not 9.60%)
+  const pctOf = (x, t) => t > 0n ? Number((x * 20000n / t + 1n) / 2n) / 100 : 0;
 
   const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">Not voted</b>';
   // ---- this wallet's validators and their votes (they vote for its stake when it does not)
@@ -1009,15 +1010,16 @@ function paintTable(id, live, v, vals, T, again){
       '<label class="gvd-find"><span class="gvd-sr">Find a voter</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
         '<input type="search" id="gvd-q" placeholder="Name or address" value="' + esc(T.q) + '"></label>' +
     '</div>' +
-    (shown.length ? '<div class="gvd-tbl-wrap"><table class="gvd-tbl"><thead><tr><th>Voter</th><th class="r">Voting stake</th><th>Voting power</th><th>Vote</th></tr></thead><tbody>' +
+    (shown.length ? '<div class="gvd-tbl-wrap"><table class="gvd-tbl"><thead><tr><th>Voter</th><th class="r c-stake">Voting stake</th><th>Voting power</th><th>Vote</th></tr></thead><tbody>' +
       shown.map(r => {
         const c = v.memo[r.a], tx = v.tx[r.a], k = K(r.o), p = r.stake ? pctOf(r.stake, bonded) : 0, isOpen = !!T.open[r.a];
         return '<tr class="gvd-tr' + (c ? ' has' : '') + (isOpen ? ' open' : '') + '" data-a="' + esc(r.a) + '">' +
           '<td><span class="gvd-voter">' + (r.val ? '<span class="gvd-rank">' + r.rank + '</span>' + face(r.val.name, r.a, r.val.op, r.val.ident)
             : '<span class="gvd-rank d">D</span><span class="gv-ava gvd-del" style="--h:' + hue(r.a) + '"><em>' + esc(r.a.slice(6, 7).toUpperCase()) + '</em></span>') +
             '<span class="gvd-vn"><b>' + esc(r.val ? r.val.name : shortAcc(r.a)) + '</b><small>' + (r.val ? 'Validator' : 'Delegator') + '</small></span></span></td>' +
-          '<td class="r">' + (r.stake === undefined ? '<span class="gvd-dim">\u2026</span>' : r.stake > 0n ? big(r.stake) : '<span class="gvd-dim">\u2014</span>') + '</td>' +
-          '<td><span class="gvd-vp"><i style="width:' + Math.min(100, p * 10).toFixed(1) + '%"></i><b>' + (p ? (p < 0.01 ? '<0.01' : p.toFixed(2)) + '%' : '\u2014') + '</b></span></td>' +
+          '<td class="r c-stake">' + (r.stake === undefined ? '<span class="gvd-dim">\u2026</span>' : r.stake > 0n ? big(r.stake) : '<span class="gvd-dim">\u2014</span>') + '</td>' +
+          // the stake again as a tooltip: in a narrow card its own column is folded away
+          '<td><span class="gvd-vp"' + (r.stake > 0n ? ' title="' + esc(big(r.stake)) + ' LUNC"' : '') + '><i style="width:' + Math.min(100, p * 10).toFixed(1) + '%"></i><b>' + (p ? (p < 0.01 ? '<0.01' : p.toFixed(2)) + '%' : '\u2014') + '</b></span></td>' +
           '<td><span class="gvd-vcell">' + (r.o ? '<span class="gvd-vote ' + k + '">' + esc(OPT_SHORT[r.o] || r.o) + '</span>' : '<span class="gvd-vote none">Did not vote</span>') +
             (c ? '<button type="button" class="gvd-mbtn" aria-expanded="' + isOpen + '" aria-label="Show the comment">' + MEMO_ICON + '</button>' : '') + '</span>' +
             // when, linked to the vote transaction on the explorer
