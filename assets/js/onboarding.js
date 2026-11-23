@@ -1,6 +1,6 @@
-import { finish } from './crypto.js?v=d28c5b44';
-import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=d28c5b44';
-import { S } from './state.js?v=d28c5b44';
+import { finish } from './crypto.js?v=b233f939';
+import { $, $$, bip39, buzz, go, libs, tap } from './shell.js?v=b233f939';
+import { S } from './state.js?v=b233f939';
 
 /* ---------------- length toggle ---------------- */
 $('#seg').addEventListener('click', e => {
