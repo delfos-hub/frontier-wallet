@@ -122,6 +122,63 @@ check('no messages is a signal vote', row(changesOf({ messages: [] }), 'Action')
 const bad = changesOf({ messages: [{ '@type': '/cosmwasm.wasm.v1.MsgExecuteContract', contract: 'terra1c', msg: '{not json' }] });
 check('a contract message that does not parse still reads', row(bad, 'Action'), 'Run a contract');
 
+// a cancelled upgrade, every action, and what was left out
+{
+  const cancel = changesOf({ messages: [{ '@type': '/cosmos.gov.v1.MsgExecLegacyContent', content: { '@type': '/cosmos.upgrade.v1beta1.CancelSoftwareUpgradeProposal', title: 't' } }] });
+  check('a legacy CancelSoftwareUpgradeProposal reads as a cancellation', row(cancel, 'Action'), 'Cancel the planned upgrade');
+  const cancel2 = changesOf({ messages: [{ '@type': '/cosmos.upgrade.v1beta1.MsgCancelUpgrade' }] });
+  check('so does MsgCancelUpgrade', row(cancel2, 'Action'), 'Cancel the planned upgrade');
+  check('and an upgrade is still an upgrade', row(up, 'Action'), 'Upgrade the chain software');
+  const four = Array.from({ length: 4 }, () => ({ '@type': '/cosmwasm.wasm.v1.MsgUpdateParams', params: { a: 1 } }));
+  const fifth = changesOf({ messages: four.concat([{ '@type': '/cosmos.distribution.v1beta1.MsgCommunityPoolSpend', recipient: 'terra1r', amount: [{ denom: 'uluna', amount: '7000000' }] }]) });
+  check('a pool spend in fifth place is shown', row(fifth, 'Action 5') + ' / ' + row(fifth, 'Amount'), 'Pay from the community pool / 7 LUNC');
+  check('and the actions are numbered', row(fifth, 'Action 1'), 'Set the wasm parameters');
+  const many = changesOf({ messages: Array.from({ length: 25 }, () => ({ '@type': '/cosmos.distribution.v1beta1.MsgCommunityPoolSpend', recipient: 'terra1r', amount: [{ denom: 'uluna', amount: '1000000' }] })) });
+  check('no cap on summary rows: 20 actions, 3 rows each', many.filter(x => x[0] === 'Amount').length, 20);
+  check('past 20 the rest are counted', row(many, 'Not shown'), '5 more actions, listed in full below');
+  check('and listed in full as data', /\(p\.messages \|\| \[\]\)\.length > MAX_ACTIONS \? '<details class="gvd-raw">/.test(gsrc) && /esc\(JSON\.stringify\(p\.messages, null, 2\)/.test(gsrc), true);
+}
+
+// split votes keep every option and its weight
+console.log('\nsplit votes');
+{
+  const lib = new Function(gsrc.slice(gsrc.indexOf('const NUM_OPT ='), gsrc.indexOf('const splitText')) + '\n' +
+    gsrc.slice(gsrc.indexOf('const shareOf ='), gsrc.indexOf('};', gsrc.indexOf('const shareOf =')) + 2) + '\nreturn { splitOf, shareOf, W1 };')();
+  const sp = lib.splitOf([{ option: 'VOTE_OPTION_YES', weight: '0.250000000000000000' }, { option: 'VOTE_OPTION_NO', weight: '0.750000000000000000' }]);
+  check('both options kept with their weights', JSON.stringify(sp.map(x => [x[0], String(x[1])])), JSON.stringify([['VOTE_OPTION_YES', '250000'], ['VOTE_OPTION_NO', '750000']]));
+  check('numeric options from a transaction read too', lib.splitOf([{ option: 1, weight: '0.5' }, { option: 3, weight: '0.5' }]).map(x => x[0]).join(','), 'VOTE_OPTION_YES,VOTE_OPTION_NO');
+  const v = { split: { d1: sp }, txv: { d1: 'VOTE_OPTION_YES', d2: 'VOTE_OPTION_NO' } };
+  const stake = 100000000n;                               // 100 LUNC
+  const of = (a, o) => stake * lib.shareOf(v, a, o) / lib.W1;
+  check('100 LUNC split 25/75: 25 to Yes', String(of('d1', 'VOTE_OPTION_YES')), '25000000');
+  check('and 75 to No', String(of('d1', 'VOTE_OPTION_NO')), '75000000');
+  check('a single vote takes it all', String(of('d2', 'VOTE_OPTION_NO')) + '/' + String(of('d2', 'VOTE_OPTION_YES')), '100000000/0');
+  check('the breakdown adds stake by weight', /const dSt = o => dl\.reduce\(\(a, x\) => a \+ dStake\(x\) \* part\(x, o\) \/ W1, 0n\)/.test(gsrc) &&
+    /const vStake = o => vv\.reduce\(\(a, x\) => a \+ x\.tokens \* part\(x\.acc, o\) \/ W1, 0n\)/.test(gsrc), true);
+  check('a split shows as one in the row', /gvd-vote split" title="Split vote">' \+ esc\(splitText\(v\.split\[r\.a\]\)\)/.test(gsrc), true);
+}
+
+// a vote stays tied to its wallet and to an open proposal
+console.log('\nthe vote flow');
+{
+  const mk = (addr, live) => new Function('addrOf', 'DATA', gsrc.slice(gsrc.indexOf('function flowValid('), gsrc.indexOf('async function review(')) + '; return flowValid;')(() => addr, { live: live });
+  const f = { id: '12237', addr: 'terra1a' };
+  check('same wallet, still voting: holds', mk('terra1a', [{ id: '12237' }])(f), true);
+  check('another wallet active: does not', mk('terra1b', [{ id: '12237' }])(f), false);
+  check('the proposal left voting (Passed): does not', mk('terra1a', [{ id: '12238' }])(f), false);
+  check('a redraw drops a flow that no longer holds', /if \(FLOW && !flowValid\(FLOW\)\) FLOW = null;\s*const busy/.test(gsrc), true);
+  check('confirm refuses one that no longer holds, before signing', /async function confirm\(btn, f, opt\)\{[\s\S]{0,200}if \(!flowValid\(f\)\) \{/.test(gsrc), true);
+  check('and signs for the wallet that was reviewed', /sendVote\(f\.addr, f\.id/.test(gsrc), true);
+}
+
+// unknown stays unknown
+console.log('\nunknown is not an answer');
+{
+  check('a vote that could not be read is not "voted on all"', /: unread \? 'Could not read your vote on '/.test(gsrc), true);
+  check('"did not vote" only from a history read in full', /: v\.txok \? 'You did not vote on this one\.' :/.test(gsrc), true);
+  check('a missing page makes the history partial', /out\.txok = rest\.every\(Boolean\) && Math\.ceil\(total \/ 100\) <= 1 \+ more;/.test(gsrc), true);
+}
+
 // the voters table's numbers
 console.log('\nvoters table');
 const big = new Function(gsrc.slice(gsrc.indexOf('const big ='), gsrc.indexOf('const ago =')) + '; return big;')();

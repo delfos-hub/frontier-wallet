@@ -912,6 +912,7 @@ button.row.gov-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:
 .gov-v.y{color:#3ecf8e;background:rgba(62,207,142,.12)}.gov-v.n{color:#f06a6a;background:rgba(240,106,106,.12)}
 .gov-v.v{color:#c77dff;background:rgba(176,74,232,.14)}.gov-v.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
 .gov-v.none{color:var(--muted);font-weight:500}
+.gov-v.split{color:#FFD27A;background:rgba(255,210,122,.10)}
 .gov-memo{margin-top:6px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 #gov-memo{width:100%;box-sizing:border-box;resize:vertical;font:inherit}
 body.sheet-open .tabs{visibility:hidden}
@@ -2413,6 +2414,8 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-mv>span:not(.gv-ava) small{font-size:11.5px;color:var(--muted)}
 .gvd-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .gvd-ch>div{display:flex;flex-direction:column;padding:11px 14px;border-radius:12px;background:rgba(11,15,26,.55);min-width:0}
+.gvd-raw{margin-top:10px}.gvd-raw summary{cursor:pointer;font-size:12.5px;color:#7FE3FF}
+.gvd-raw pre{max-height:360px;overflow:auto;margin:8px 0 0;font-size:12px}
 .gvd-ch span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .gvd-ch b{font-size:14px;color:#E8F0FF;overflow-wrap:anywhere}
 .gvd-src{margin:0;text-align:left}
@@ -2488,6 +2491,7 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-vote.y{color:#3ecf8e;background:rgba(62,207,142,.12)} .gvd-vote.n{color:#f06a6a;background:rgba(240,106,106,.12)}
 .gvd-vote.v{color:#c77dff;background:rgba(176,74,232,.14)} .gvd-vote.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
 .gvd-vote.none{color:var(--muted);background:rgba(255,255,255,.04)}
+.gvd-vote.split{color:#FFD27A;background:rgba(255,210,122,.10)}
 /* a narrow card (a 1200 px laptop): the stake column folds into the voting
    power tooltip and the names give way, so Vote and its link stay in view */
 @container (max-width:700px){
