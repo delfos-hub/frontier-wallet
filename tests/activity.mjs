@@ -269,3 +269,60 @@ group('approvals before the action do not name it');
      /within\.forEach\(t => \{ if \(Number\(t\.code\) !== 0\) fee \+= feePaid\(t, me\); \}\)/.test(src));
   ok('a prediction is named in words', api.describe({ tx: { body: { messages: [ex({ predict: {} })] } }, logs: [] }, 'me').title === 'Prediction placed');
 }
+
+group('network fees: top-level events and logs');
+{
+  const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
+  const fx = new Function(
+    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
+    lift(src, 'function feeEvents(') + '\n' + lift(src, 'function feePaid(') + '\nreturn feePaid;')();
+  const tr = (from, to, amount) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }] });
+  const msgLogs = [{ events: [tr('me', 'terra1bob', '200000000uluna')] }];
+  const feeOnly = [tr('me', FEE, '10000000uluna')];
+  ok('fee in top-level events, transfer in the logs: 10 LUNC', fx({ logs: msgLogs, events: feeOnly }, 'me') === 10000000, fx({ logs: msgLogs, events: feeOnly }, 'me'));
+  ok('the same with empty logs: 10 LUNC', fx({ logs: [], events: feeOnly }, 'me') === 10000000);
+  ok('events holding the messages too: counted once', fx({ logs: msgLogs, events: feeOnly.concat(msgLogs[0].events) }, 'me') === 10000000);
+  ok('a fee paid by another address is not this one’s', fx({ logs: msgLogs, events: [tr('terra1granter', FEE, '10000000uluna')] }, 'me') === 0);
+  const tax = { type: 'tax_payment', attributes: [{ key: 'tax_amount', value: '5000000uluna' }] };
+  const taxed = [tr('me', FEE, '10000000uluna'), tr('me', FEE, '5000000uluna'), tax];
+  ok('the burn tax in the same events is left out', fx({ logs: [], events: taxed }, 'me') === 10000000, fx({ logs: [], events: taxed }, 'me'));
+  ok('only logs (an old node): still read', fx({ logs: [{ events: feeOnly }] }, 'me') === 10000000);
+}
+
+group('the period: whole local days, like the bars');
+{
+  const calDay = new Function(lift(src, 'function calDay(') + '\nreturn calDay;')();
+  const was = process.env.TZ;
+  process.env.TZ = 'Europe/Paris';
+  try {
+    const now = new Date('2026-11-23T12:00:00Z').getTime();                  // 13:00 in Paris
+    const from7 = calDay(now, 6).getTime();
+    ok('7D starts at local midnight on 17 November', from7 === new Date('2026-11-16T23:00:00Z').getTime(), new Date(from7).toISOString());
+    ok('so 14:00 on 16 November is outside it, as the bars are', new Date('2026-11-16T13:00:00Z').getTime() < from7);
+    const keys = [];
+    const dk = d => d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    const nowOct = new Date('2026-10-27T10:00:00Z').getTime();
+    for (let i = 6; i >= 0; i--) keys.push(dk(calDay(nowOct, i)));
+    ok('across the October clock change each day appears once', new Set(keys).size === 7 && keys.includes('2026-10-25'), keys.join(' '));
+    ok('the window and the bars use the same days', /const from = PERIOD \? dayAt\(PERIOD - 1\)\.getTime\(\)/.test(src) && /const d = dayAt\(i\), k = dayKey\(d\)/.test(src));
+  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+}
+
+group('rows: approvals to others, grouped unstakes, wallet switch');
+{
+  const lk = lift(src, 'function look(');
+  ok('an approval to another spender stays in the row title', /const also = msgs\.filter\(x => x !== m && PREP\.test\(intentOf\(x\)\) && !isPrep\(x, msgs\)\)/.test(lk) && /if \(also\.length\) title \+= ' \+'/.test(lk));
+  ok('and the detail names it', /for \(const sp of l\.also\) html \+= row\('Also approved'/.test(src));
+  const foldSrc = src.slice(src.indexOf('const sameKey = main.every'), src.indexOf('// otherwise only the count'));
+  const fold = new Function('fmt', 'human', 'symOfKey', 'amountText', 'run', 'main',
+    foldSrc + '\nreturn fold;');
+  const H = f => f.raw / 1e6;
+  const unst = [{ key: 'native:uluna', raw: 0, req: 20e6 }, { key: 'native:uluna', raw: 0, req: 30e6 }];
+  const f1 = fold(x => String(x), H, () => 'LUNC', f => String(f.raw), unst.map(m => ({ l: { usd: 0 } })), unst);
+  ok('two unstakes of 20 and 30 fold to 50 LUNC, not -0', f1.top === '50 LUNC', f1.top);
+  const odd = [{ key: 'native:uluna', raw: 0 }, { key: 'native:uluna', raw: 0 }];
+  const f2 = fold(x => String(x), H, () => 'LUNC', f => String(f.raw), odd.map(m => ({ l: {} })), odd);
+  ok('with no amount to add up, only the count', f2.top === undefined);
+  const rd = lift(src, 'async function read(');
+  ok('switching wallet clears the last one’s summary first', /sumBox\.dataset\.for !== me\) \{ sumBox\.hidden = true; sumBox\.innerHTML = ''/.test(rd) && /box\.dataset\.for = me;/.test(src));
+}

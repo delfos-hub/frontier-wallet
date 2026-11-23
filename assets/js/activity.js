@@ -4,12 +4,12 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=61434eb6';
-import { DEC, knownAsset as marketAsset } from './market.js?v=61434eb6';
-import { $, go } from './shell.js?v=61434eb6';
-import { fiatOf, heldTokens } from './tokens.js?v=61434eb6';
-import { S } from './state.js?v=61434eb6';
-import { NETS } from './gram-net.js?v=61434eb6';
+import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=fc4290fc';
+import { DEC, knownAsset as marketAsset } from './market.js?v=fc4290fc';
+import { $, go } from './shell.js?v=fc4290fc';
+import { fiatOf, heldTokens } from './tokens.js?v=fc4290fc';
+import { S } from './state.js?v=fc4290fc';
+import { NETS } from './gram-net.js?v=fc4290fc';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -429,6 +429,8 @@ function openTx(hash){
     }).join('') + '</div>';
   }
   if (l.place) html += row('Where', l.place);
+  // spending approved for someone other than the contract above
+  for (const sp of l.also) html += row('Also approved', 'spending by ' + short(sp), 'warn') + '<p class="tx-who">' + esc(sp) + '</p>';
   // what actually arrived, when the tax came out of it
   if (!failed && taxPaid(t, me).length) {
     for (const mv of transfersIn(t, me)) if (!mv.mine) html += row('Recipient got', mv.text) +
@@ -635,6 +637,9 @@ function look(t, me){
   const ins = f.filter(x => x.raw > 0), outs = f.filter(x => x.raw < 0);
   const swap = d.kind === 'swap' || /swap/.test(intent);
   let title = d.title.replace(/ \+\d+$/, ''), kind = d.kind, group = 'other';
+  // an approval for someone other than the contract this transaction deals
+  // with stays in sight: in the title of the row and named in the detail
+  const also = msgs.filter(x => x !== m && PREP.test(intentOf(x)) && !isPrep(x, msgs)).map(spenderOf).filter(Boolean);
   if (swap) { title = 'Swapped'; kind = 'swap'; group = 'swaps'; }
   else if (type.indexOf('MsgSend') >= 0 || intent === 'transfer') group = 'transfers';
   else if (STAKING_MSG.test(type)) group = 'staking';
@@ -689,11 +694,14 @@ function look(t, me){
   }
   const gs = gramSwapRow(t, m, intent, ins, me);
   if (gs) { title = gs.title; kind = gs.kind; group = gs.group; sub = gs.sub; if (gs.below) below = gs.below; }
-  const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0 } : null));
+  if (also.length) title += ' +' + (also.length === 1 ? 'approval' : also.length + ' approvals');
+  // a request with no flow yet (an unstake): its amount rides along as req,
+  // so a folded run can add it up
+  const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0, req: Number(m.msg[intent].amount) } : null));
   const second = swap ? ins[0] : null;
   const usdMain = main ? worthOf(main) : 0;
   return { title: title, kind: kind, group: group, sub: sub, top: top, topIn: topIn, below: below,
-           main: main, second: second, usd: usdMain, flows: f, place: place };
+           main: main, second: second, usd: usdMain, flows: f, place: place, also: also };
 }
 
 const BADGE = {
@@ -865,11 +873,16 @@ function foldDay(xs, me){
       const main = run.map(x => x.l.main);
       const sameKey = main.every(f => f && f.key === main[0].key);
       let fold = { n: run.length };
-      if (sameKey) {
+      if (sameKey && main.every(f => f.req > 0)) {
+        // requests (unstakes) move nothing yet: add up what was asked for
+        const asked = main.reduce((a, f) => a + f.req, 0);
+        fold.top = fmt(human({ key: main[0].key, raw: asked })) + ' ' + symOfKey(main[0].key);
+      } else if (sameKey && main.every(f => f.raw !== 0)) {
         const tot = { key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) };
         fold.top = amountText(tot);
         fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
       }
+      // otherwise only the count: no total that could be wrong
       out += '<div class="ac-fold' + (FOLD_OPEN[id] ? ' open' : '') + '" data-fold="' + esc(id) + '">' + rowHTML(run[0].t, me, false, fold) +
         '<div class="ac-fold-in">' + run.map(x => rowHTML(x.t, me)).join('') + '</div></div>';
     }
@@ -887,17 +900,34 @@ let PERIOD = 30;
 const isDesk = () => document.documentElement.classList.contains('dk');
 // the network fee this address paid: its moves to the fee collector that are
 // not the burn tax (the tax has its own line)
+// The fee is charged before the messages run, so it is a top-level event;
+// the message logs may not repeat it. Top-level events when there are any
+// (they hold the messages' events too, so nothing is counted twice), the logs
+// only for a node that gives nothing else.
+function feeEvents(t){
+  if ((t.events || []).length) return t.events;
+  return eventsOf(t);
+}
 function feePaid(t, me){
   let fee = 0;
-  for (const e of eventsOf(t)) {
+  const evs = feeEvents(t);
+  for (const e of evs) {
     if (e.type !== 'transfer') continue;
     let to = '', from = '', what = '';
     for (const a of (e.attributes || [])) { if (a.key === 'recipient') to = a.value; if (a.key === 'sender') from = a.value; if (a.key === 'amount') what = a.value; }
     if (from !== me || to !== FEE_COLLECTOR) continue;
     for (const part of what.split(',')) { const mm = /^(\d+)uluna$/.exec(part.trim()); if (mm) fee += Number(mm[1]); }
   }
-  for (const c of taxPaid(t, me)) if (c.denom === 'uluna') fee -= Number(c.amount);
+  // the burn tax also goes to the fee collector and has its own line: taken
+  // out when these events carry it
+  const taxHere = evs.some(e => e.type === 'tax_payment') || evs === eventsOf(t);
+  if (taxHere) for (const c of taxPaid(t, me)) if (c.denom === 'uluna') fee -= Number(c.amount);
   return Math.max(0, fee);
+}
+// local midnight i calendar days before now's day
+function calDay(now, i){
+  const t = new Date(now);
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
 }
 function summary(me){
   let box = document.getElementById('ac-sum');
@@ -916,8 +946,13 @@ function summary(me){
     });
   }
   box.hidden = false;
-  const now = Date.now(), span = PERIOD ? PERIOD * 86400000 : Infinity;
-  const within = ALL.filter(t => now - new Date(t.timestamp) < span);
+  box.dataset.for = me;
+  // the period is whole local days, the same days the bars show: today and
+  // the 6 (or 29) before it, counted on the calendar so a clock change does
+  // not shift or double a day
+  const now = Date.now(), dayAt = i => calDay(now, i);
+  const from = PERIOD ? dayAt(PERIOD - 1).getTime() : -Infinity;
+  const within = ALL.filter(t => new Date(t.timestamp).getTime() >= from);
   const xs = within.filter(t => Number(t.code) === 0);
   let inn = 0, out = 0, fee = 0, nIn = 0, nOut = 0;
   // a failed transaction moved nothing but still paid its fee
@@ -942,7 +977,7 @@ function summary(me){
   const nBars = PERIOD === 7 ? 7 : 30;
   const bars = [];
   for (let i = nBars - 1; i >= 0; i--) {
-    const d = new Date(now - i * 86400000), k = dayKey(d);
+    const d = dayAt(i), k = dayKey(d);
     bars.push({ k: k, v: perDay[k] || { a: 0, b: 0, ca: 0, cb: 0 }, label: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) });
   }
   // priced in dollars; with no prices yet, by how many transactions
@@ -1006,6 +1041,9 @@ async function read(me){
   while (FETCH_P) await FETCH_P.catch(() => {});
   const list = $('#ac-list');
   const old = cached(me);
+  // another wallet: the last one's summary goes before anything of this one
+  const sumBox = document.getElementById('ac-sum');
+  if (sumBox && sumBox.dataset.for !== me) { sumBox.hidden = true; sumBox.innerHTML = ''; sumBox.dataset.for = ''; }
   ALL = []; PAGE_OFF = 0; SHOWN = 40; MORE = true; LOADED_FOR = me;
   if (old && old.length) { ALL = old.slice(); render(); }
   else list.innerHTML = '<div class="empty">Reading the chain</div>';

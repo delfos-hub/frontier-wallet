@@ -698,6 +698,7 @@ button.waddr:active{opacity:.6}
   text-align:right;word-break:break-all}
 .tx-line.in b{color:#00FFB0}
 .tx-line.out b{color:#FF6B8A}
+.tx-line.warn b{color:#FFD27A}
 .tx-who{margin:-2px 0 6px;font-size:11px;color:var(--muted);
   font-family:'Rajdhani','Exo 2',sans-serif;text-align:right}
 .tx-moves{margin-bottom:8px}
