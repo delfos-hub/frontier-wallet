@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=b691dfb9';
-import { GRAM_NET, TERMS } from './gram-net.js?v=b691dfb9';
-import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=b691dfb9';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=b691dfb9';
-import { S } from './state.js?v=b691dfb9';
-import { decryptSeed } from './storage.js?v=b691dfb9';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=b691dfb9';
-import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=b691dfb9';
-import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=b691dfb9';
-import { chime, notify } from './notify.js?v=b691dfb9';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=ef16c24d';
+import { GRAM_NET, TERMS } from './gram-net.js?v=ef16c24d';
+import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=ef16c24d';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=ef16c24d';
+import { S } from './state.js?v=ef16c24d';
+import { decryptSeed } from './storage.js?v=ef16c24d';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=ef16c24d';
+import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=ef16c24d';
+import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=ef16c24d';
+import { chime, notify } from './notify.js?v=ef16c24d';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -246,6 +246,8 @@ function homeDeal(){
       .sort((x, y) => RANK[x.stage] - RANK[y.stage])[0];
     if (b) {
       const late = !(Number(b.timeout) > now());
+      // the stages refundBtn offers "Get my GRAM back" for once the TON lock ended
+      const back = late && ['unanswered', 'announced', 'sent', 'refunding', 'claiming'].indexOf(b.stage) >= 0;
       d = { t: 'Buying ' + human(b.lunc, 6) + ' LUNC for ' + human(b.gram, 9) + ' GRAM', tab: 'buy',
         s: b.stage === 'claiming' ? 'The seller locked your LUNC \u00b7 finishing' + (b.terraTimeout ? ', ' + hm(b.terraTimeout - now()) + ' left' : '')
           : b.stage === 'announced' ? 'Waiting for the seller to lock your LUNC'
@@ -254,7 +256,8 @@ function homeDeal(){
           : 'Your GRAM is going into the lock on TON',
         step: b.stage === 'claiming' ? 2 : 1,
         // a refund that can be taken now is something to do, not to wait for
-        hot: b.stage === 'unanswered' && late, go: b.stage === 'unanswered' && late ? 'Get GRAM back' : '' };
+        hot: back, go: back ? 'Get GRAM back' : '' };
+      if (back && b.stage !== 'unanswered') d.s = 'The TON lock has ended \u00b7 your GRAM can come back now';
     }
   }
   if (!d) {
@@ -278,23 +281,44 @@ function homeDeal(){
   $('#xc-gram-steps').querySelectorAll('i').forEach((el, i) => { el.className = i < d.step ? 'done' : i === d.step ? 'now' : ''; });
 }
 function onHome(){ const st = card && card.closest('.step'); return !!(st && st.classList.contains('on')); }
+// The last figures read are kept per network, so the card shows them at once
+// on the next visit instead of dashes while /offers is read again.
+const HOME_KEY = 'fw:gram:home:' + NET.name;
+function paintMarket(m){
+  if (!m) return;
+  const live = $('#xc-gram-live');
+  live.textContent = m.n ? m.n + (m.n > 1 ? ' offers live' : ' offer live') : 'No offers yet';
+  live.classList.toggle('none', !m.n);
+  live.hidden = false;
+  $('#xc-gram-price').textContent = m.price || '\u2014';
+  $('#xc-gram-size').textContent = m.size || '\u2014';
+  $('#xc-gram-time').textContent = m.time || '\u2014';
+}
+function keptMarket(){
+  try {
+    const m = JSON.parse(localStorage.getItem(HOME_KEY) || 'null');
+    // a day old at most, and text only (it is painted with textContent)
+    if (!m || typeof m !== 'object' || !(now() - Number(m.at) < 86400)) return null;
+    return { n: Math.max(0, Math.floor(Number(m.n) || 0)), price: String(m.price || ''), size: String(m.size || ''), time: String(m.time || '') };
+  } catch (e) { return null; }
+}
 async function homeMarket(force){
   if (!card || card.hidden || document.hidden || !onHome()) return;
   if (!force && now() - HOME_AT < 120) return;
   HOME_AT = now();
   let book;
-  try { book = await api('/offers'); } catch (e) { return; }
+  try { book = await api('/offers'); } catch (e) { HOME_AT = 0; return; }
   const me = addrOf(), offers = (book.offers || []).filter(o => o.maker !== me && o.live !== false);
-  const live = $('#xc-gram-live');
-  live.textContent = offers.length ? offers.length + (offers.length > 1 ? ' offers live' : ' offer live') : 'No offers yet';
-  live.classList.toggle('none', !offers.length);
-  live.hidden = false;
   const best = offers.reduce((a, o) => (a === null || BigInt(o.price) < BigInt(a.price) ? o : a), null);
-  $('#xc-gram-price').textContent = best ? '1 GRAM = ' + Math.round(1e15 / Number(best.price)).toLocaleString('en-US') + ' LUNC' : '\u2014';
-  const p = book.policy || {};
-  $('#xc-gram-size').textContent = p.min_deal && p.max_deal ? human(p.min_deal, 9) + ' \u2013 ' + human(p.max_deal, 9) + ' GRAM' : '\u2014';
-  const aw = Number(p.answer_window_sec);
-  $('#xc-gram-time').textContent = aw > 0 ? 'up to ' + Math.round(aw / 60) + ' min' : '\u2014';
+  const p = book.policy || {}, aw = Number(p.answer_window_sec);
+  const m = {
+    n: offers.length,
+    price: best ? '1 GRAM = ' + Math.round(1e15 / Number(best.price)).toLocaleString('en-US') + ' LUNC' : '',
+    size: p.min_deal && p.max_deal ? human(p.min_deal, 9) + ' \u2013 ' + human(p.max_deal, 9) + ' GRAM' : '',
+    time: aw > 0 ? 'up to ' + Math.round(aw / 60) + ' min' : ''
+  };
+  paintMarket(m);
+  try { localStorage.setItem(HOME_KEY, JSON.stringify(Object.assign({ at: now() }, m))); } catch (e) {}
 }
 function homeCard(force){ if (!card || card.hidden) return; homeDeal(); homeMarket(force); }
 setInterval(() => homeCard(false), 30000);
@@ -304,6 +328,14 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) home
 document.addEventListener('click', e => {
   if (e.target.closest('[data-go="home"], #tabs .tab[data-tab="home"]')) setTimeout(() => homeCard(false), 50);
 });
+// home shown (after unlock, a tab, a back button, a wallet switch): the
+// market is read then, not 30 s later on the next tick
+{
+  const st = card && card.closest('.step');
+  if (st && window.MutationObserver) new MutationObserver(() => { if (onHome()) homeCard(false); })
+    .observe(st, { attributes: true, attributeFilter: ['class'] });
+}
+if (card && !card.hidden) paintMarket(keptMarket());
 setTimeout(() => homeCard(true), 1500);
 
 /* ---------------- loading ---------------- */
