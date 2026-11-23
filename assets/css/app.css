@@ -2347,6 +2347,12 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-tile small .gvd-todo{color:#FFD27A;font-weight:600}
 .gvd-tile-go{position:absolute;top:12px;right:12px;min-height:32px;padding:0 12px;border-radius:10px;border:1px solid rgba(0,212,255,.45);
   background:rgba(0,212,255,.08);color:#7FE3FF;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+/* a narrow tile (about 1280-1450 px windows): the button goes under the value
+   instead of over it */
+.gvd-tile{container-type:inline-size}
+@container (max-width:260px){
+  .gvd-tile-go{position:static;align-self:flex-start;margin-top:6px;min-height:28px}
+}
 .gvd-faces{display:inline-flex}
 .gvd-faces .gv-ava{width:26px;height:26px;box-shadow:0 0 0 2px #12182A}
 .gvd-faces .gv-ava+.gv-ava{margin-left:-8px}

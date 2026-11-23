@@ -146,6 +146,8 @@ check('nothing', big(0n), '0');
   const q = css.indexOf('@container (max-width:700px)'), base = css.indexOf('.gvd-voter{display:flex');
   check('the narrow rules come after the base ones (else they lose)', q > base && base > 0, true);
   check('the proposal text fills the card', /\.gvd-card \.gov-text\{max-width:none/.test(css), true);
+  check('in a narrow tile the Stake button goes under the value, not over it',
+    /\.gvd-tile\{container-type:inline-size\}\s*@container \(max-width:260px\)\{\s*\.gvd-tile-go\{position:static/.test(css), true);
   check('the tiles use the columns of the list below', /\.gvd-stats\{display:grid;grid-template-columns:minmax\(290px,340px\) 0 repeat\(3,minmax\(0,1fr\)\)/.test(css), true);
 }
 console.log(`\n${pass} passed, ${fail} failed`);
