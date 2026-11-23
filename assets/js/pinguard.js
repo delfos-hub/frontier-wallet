@@ -30,10 +30,14 @@ function pinFail(now = Date.now()){
   return r;
 }
 function pinOk(){ write({ n: 0, until: 0 }); }
+// wrong tries left before a wait begins (0 once waits have started)
+function pinLeft(){ return Math.max(0, FREE - read().n); }
+// how long the current wait is in all, for a progress bar
+function pinSpan(){ const n = read().n; return n >= FREE ? Math.min(MAX, FIRST * Math.pow(2, n - FREE)) : 0; }
 // "30 s", "2 min"
 function waitText(ms){
   const s = Math.ceil(ms / 1000);
   return s < 60 ? s + ' s' : Math.ceil(s / 60) + ' min';
 }
 
-export { pinFail, pinOk, pinWait, waitText };
+export { pinFail, pinLeft, pinOk, pinSpan, pinWait, waitText };

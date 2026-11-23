@@ -10,12 +10,12 @@
    everything that would sign is switched off (body.is-watch), and the header
    says "Read only". Importing that address's phrase later turns it into a
    full wallet in place. */
-import { $, go, tap } from './shell.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=ef16c24d';
-import { dots } from './onboarding.js?v=ef16c24d';
-import { openWallet } from './tokens.js?v=ef16c24d';
-import { dropWallet } from './sync.js?v=ef16c24d';
+import { $, go, tap } from './shell.js?v=14c912f7';
+import { S } from './state.js?v=14c912f7';
+import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=14c912f7';
+import { dots } from './onboarding.js?v=14c912f7';
+import { openWallet } from './tokens.js?v=14c912f7';
+import { dropWallet } from './sync.js?v=14c912f7';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -25,7 +25,8 @@ function hue(addr){
   for (let i = 0; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) % 360;
   return h;
 }
-const ava = addr => 'linear-gradient(135deg,hsl(' + hue(addr) + ' 80% 55%),hsl(' + ((hue(addr) + 70) % 360) + ' 85% 60%))';
+// the two colours of a wallet's ring, as CSS variables (see .wava in app.css)
+const avaVars = addr => '--wa:hsl(' + hue(addr) + ' 80% 58%);--wb:hsl(' + ((hue(addr) + 70) % 360) + ' 85% 62%)';
 function lastTotal(addr){
   try { const v = Number(localStorage.getItem('fw:tot:' + addr)); return isFinite(v) && v > 0 ? v : null; } catch (e) { return null; }
 }
@@ -55,7 +56,7 @@ function header(){
   const n = $('#wl-name');
   if (n && w) n.textContent = w.name || 'Wallet';
   const a = document.querySelector('.wtop .wava');
-  if (a && w) a.style.background = ava(w.addr);
+  if (a && w) a.setAttribute('style', avaVars(w.addr));
 }
 document.addEventListener('frontier:wallet', header);
 
@@ -65,7 +66,7 @@ function draw(){
   $('#wl-list').innerHTML = list.map(function (w) {
     const t = lastTotal(w.addr);
     return '<div class="wl-row' + (w.id === act ? ' on' : '') + '" data-id="' + esc(w.id) + '">' +
-      '<span class="wl-ava" style="background:' + ava(w.addr) + '"></span>' +
+      '<span class="wl-ava" style="' + avaVars(w.addr) + '"></span>' +
       '<span class="wl-mid"><b>' + esc(w.name) + (w.watch ? '<i class="wl-tag">Watch</i>' : '') + '</b>' +
         '<span>' + esc(short(w.addr)) + '</span></span>' +
       '<span class="wl-r">' + (t !== null ? '<b>' + usd(t) + '</b>' : '') +
@@ -132,9 +133,32 @@ on('#wl-watch', 'click', () => { close(); go('watch'); });
 /* From the unlock screen: another wallet instead of this one. From the
    welcome screen, when wallets already exist: back to them. */
 function switchLink(){
+  const list = wallets(), act = activeId();
   const b = $('#unlock-switch');
-  if (b) b.hidden = wallets().length < 2;
+  if (b) b.hidden = list.length < 2;
+  // the mark over the PIN in this wallet's colours
+  const me = list.find(w => w.id === act);
+  const av = $('#unlock-ava');
+  if (av && me) av.setAttribute('style', avaVars(me.addr));
+  // wide screens: the other wallets as chips under the PIN (the phone keeps
+  // its Switch wallet button, which opens the same list as a sheet)
+  const ws = $('#unlock-ws'), row = $('#unlock-ws-row');
+  if (!ws || !row) return;
+  const others = list.filter(w => w.id !== act);
+  ws.hidden = !others.length;
+  const n = $('#unlock-ws-n');
+  if (n) n.textContent = others.length + ' more on this device';
+  row.innerHTML = others.map(w =>
+    '<button type="button" class="ul-chip" data-pick="' + esc(w.id) + '">' +
+      '<span class="wl-ava" style="' + avaVars(w.addr) + '"></span>' +
+      '<span>' + esc(w.name) + (w.watch ? ' <i class="wl-tag">Watch</i>' : '') + '</span><small>' + esc(w.addr.slice(-6)) + '</small></button>').join('') +
+    '<button type="button" class="ul-chip ul-add" data-add="1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add wallet</span></button>';
 }
+on('#unlock-ws-row', 'click', e => {
+  const p = e.target.closest('[data-pick]');
+  if (p) { tap(); pick(p.dataset.pick); return; }
+  if (e.target.closest('[data-add]')) { tap(); go('welcome'); backLink(); }
+});
 function backLink(){
   const b = $('#welcome-back');
   if (b) b.hidden = !wallets().length;
