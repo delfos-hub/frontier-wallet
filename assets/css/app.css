@@ -1779,6 +1779,7 @@ button.wname svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-wid
 .gv-you.done.n{color:#f06a6a;background:rgba(240,106,106,.12)}
 .gv-you.done.v{color:#c77dff;background:rgba(176,74,232,.14)}
 .gv-you.done.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
+.gv-you.done.split{color:#FFD27A;background:rgba(255,210,122,.10)}
 
 .gv-recent{border:1px solid var(--border);border-radius:18px;overflow:hidden;
   background:linear-gradient(180deg,rgba(22,30,48,.92),rgba(18,24,42,.92))}
@@ -2378,6 +2379,7 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
 .gvd-you{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
 .gvd-you.todo{color:#FFD27A;background:rgba(255,186,73,.1)}
+.gvd-you.split{color:#FFD27A;background:rgba(255,210,122,.10)}
 .gvd-you.y{color:#3ecf8e;background:rgba(62,207,142,.12)} .gvd-you.n{color:#f06a6a;background:rgba(240,106,106,.12)}
 .gvd-you.v{color:#c77dff;background:rgba(176,74,232,.14)} .gvd-you.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
 .gvd-pane{display:flex;flex-direction:column;gap:14px;min-width:0}

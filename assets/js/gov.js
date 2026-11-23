@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=dfea3f9d';
-import { $, buzz, go } from './shell.js?v=dfea3f9d';
-import { S } from './state.js?v=dfea3f9d';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=dfea3f9d';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=73e97f22';
+import { $, buzz, go } from './shell.js?v=73e97f22';
+import { S } from './state.js?v=73e97f22';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=73e97f22';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -197,12 +197,21 @@ function splitOf(options){
   }
   return out;
 }
+// this wallet's own vote on an open proposal, as the chain returns it:
+// one option, or a split
+function myVote(m){
+  if (!m || m === UNKNOWN || !m.options) return null;
+  const sp = splitOf(m.options);
+  if (!sp.length) return null;
+  return sp.length > 1 ? { o: sp[0][0], text: splitText(sp), split: true } : { o: sp[0][0], text: OPT[sp[0][0]] || sp[0][0], split: false };
+}
 const splitText = sp => sp.map(x => (OPT_SHORT[x[0]] || x[0]) + ' ' + (Number(x[1]) / 1e4).toFixed(Number(x[1]) % 10000 ? 2 : 0) + '%').join(' \u00b7 ');
-// how much of a voter's weight went to option o, in millionths
-const shareOf = (v, a, o) => {
-  const sp = v.split && v.split[a];
+// how much of a voter's weight went to option o, in millionths. split and
+// votes are the maps already built for the view: nothing is copied per
+// lookup (a copy per voter made a 1,500-voter table take seconds)
+const shareOf = (split, votes, a, o) => {
+  const sp = split && split[a];
   if (sp) { const x = sp.find(y => y[0] === o); return x ? x[1] : 0n; }
-  const votes = Object.assign({}, v.txv || {}, v.votes || {});
   return votes[a] === o ? W1 : 0n;
 };
 /* Who voted, in three steps that each show as soon as they land, so the list
@@ -343,6 +352,9 @@ function slim(p){
   if (typeof o.summary === 'string' && o.summary.length > 20000) o.summary = o.summary.slice(0, 20000);
   try {
     if (JSON.stringify(o.messages || []).length > 24000) {
+      // too big to keep whole: the actions keep their type only, and the
+      // proposal says so, so the screen reads them again from the chain
+      o._slim = true;
       o.messages = (o.messages || []).map(m => {
         const c = m && m.content;
         const keep = { '@type': m && m['@type'] };
@@ -364,12 +376,6 @@ function keptRaw(addr){
         !Array.isArray(r.tallies) || !Array.isArray(r.mine) || r.tallies.length !== r.live.length) return null;
     return r;
   } catch (e) { return null; }
-}
-async function load(addr){
-  const raw = await fetchRaw(addr);
-  keepRaw(raw);
-  DATA = build(raw);
-  return DATA;
 }
 
 // Where the vote stands against the chain's own rules.
@@ -453,7 +459,7 @@ function drawPhone(){
   if (!d.live.length) h += '<div class="empty">No proposal is in its voting period right now.</div>';
   h += d.live.map(p => {
     const s = p._tally ? standing(p._tally, rulesFor(p, d.rules), d.bonded) : null;
-    const mine = p._mine && p._mine.options && p._mine.options[0] ? p._mine.options[0].option : null;
+    const my = myVote(p._mine), mine = my && my.o;
     const unknown = p._mine === UNKNOWN;
     return '<button class="gv-card gov-row" data-id="' + esc(p.id) + '" type="button">' +
       '<span class="gv-meta"><span class="gv-id">#' + esc(p.id) + '</span><span class="gv-kind">' + esc(kindOf(p)) + '</span>' +
@@ -462,7 +468,7 @@ function drawPhone(){
       (s ? bar(s) + turnout(s, rulesFor(p, d.rules)) : '') +
       '<span class="gv-foot">' +
         (s ? '<span class="gv-verdict ' + (s.verdict.ok ? 'ok' : 'bad') + '">' + esc(s.verdict.text) + '</span>' : '<span></span>') +
-        (mine ? '<span class="gv-you done ' + (OPT_CLASS[mine] || '') + '">You voted ' + esc(OPT[mine] || mine) + '</span>'
+        (mine ? '<span class="gv-you done ' + (my.split ? 'split' : (OPT_CLASS[mine] || '')) + '">You voted ' + esc(my.text) + '</span>'
           : unknown ? '' : '<span class="gv-you todo">Vote now</span>') +
       '</span></button>';
   }).join('');
@@ -571,6 +577,51 @@ function changesOf(p){
 }
 
 const MAX_ACTIONS = 20;
+const ACTION_CAP = 200000;          // characters of one action shown at once
+
+// "What it changes": the summary, then every action as the chain has it, one
+// at a time on demand. A proposal kept on the device with its actions trimmed
+// says so and is read again from the chain (fullActions).
+function changesHTML(p){
+  const ch = changesOf(p), msgs = p.messages || [];
+  const typeOf = m => String((m && m['@type']) || '').split('.').pop() + (m && m.content && m.content['@type'] ? ': ' + String(m.content['@type']).split('.').pop() : '');
+  return '<h3>What it changes</h3>' +
+    (p._slim ? '<p class="tiny gvd-todo" id="gov-ch-note">The details of these actions were not kept on this device. Reading them from the chain\u2026</p>' : '') +
+    '<div class="gvd-ch">' + ch.map(x => '<div><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>').join('') + '</div>' +
+    (msgs.length && !p._slim ? '<details class="gvd-raw"><summary>Every action as data (' + msgs.length + ')</summary>' +
+      msgs.map((m, i) => '<details class="gvd-act" data-i="' + i + '"><summary>Action ' + (i + 1) + ' \u00b7 ' + esc(typeOf(m)) + '</summary><pre class="gov-text"></pre></details>').join('') +
+      '</details>' : '') +
+    '<p class="tiny gvd-src">Read from the proposal\u2019s messages.</p>';
+}
+// one action's text, filled when it is opened; past the cap it says it is cut
+function actionText(m){
+  const t = JSON.stringify(m, null, 2) || '';
+  return t.length > ACTION_CAP ? t.slice(0, ACTION_CAP) + '\n\n[cut: this action is ' + t.length + ' characters, the first ' + ACTION_CAP + ' are shown]' : t;
+}
+function wireChanges(p){
+  const box = $('#gov-changes');
+  if (!box) return;
+  box.querySelectorAll('.gvd-act').forEach(d => d.addEventListener('toggle', () => {
+    const pre = d.querySelector('pre');
+    if (d.open && pre && !pre.textContent) pre.textContent = actionText((p.messages || [])[Number(d.getAttribute('data-i'))]);
+  }));
+  if (p._slim) fullActions(p).then(ok => {
+    const b = $('#gov-changes');
+    if (!b || String(SEL) !== String(p.id)) return;
+    if (ok) { b.innerHTML = changesHTML(p); wireChanges(p); }
+    else { const n = $('#gov-ch-note'); if (n) n.textContent = 'The details of these actions could not be read from the chain. Open the proposal again to retry.'; }
+  });
+}
+// the proposal's actions read again in full
+async function fullActions(p){
+  try {
+    const r = await getJSON(G + '/proposals/' + p.id, 20000, 1);
+    const m = r && r.proposal && r.proposal.messages;
+    if (!Array.isArray(m)) return false;
+    p.messages = m; p._slim = false;
+    return true;
+  } catch (e) { return false; }
+}
 
 function drawDesk(){
   const body = $('#gov-body');
@@ -591,7 +642,7 @@ function drawDesk(){
     '<div class="gvd-items">' + (list.length ? list.map(p => {
       const live = d.live.indexOf(p) >= 0;
       const s = live && p._tally ? standing(p._tally, rulesFor(p, d.rules), d.bonded) : finalSplit(p);
-      const mine = p._mine && p._mine.options && p._mine.options[0] ? p._mine.options[0].option : null;
+      const my = myVote(p._mine), mine = my && my.o;
       return '<button type="button" class="gvd-item' + (String(p.id) === SEL ? ' on' : '') + '" data-id="' + esc(p.id) + '">' +
         '<span class="gvd-meta"><span class="gv-id">#' + esc(p.id) + '</span><span class="gv-kind">' + esc(kindOf(p)) + '</span>' +
         (live ? '<span class="gv-time">' + CLOCK + '<span>' + left(p.voting_end_time) + '</span></span>'
@@ -599,7 +650,7 @@ function drawDesk(){
         '<span class="gv-title">' + esc(titleOf(p)) + '</span>' + (s ? bar(s) : '') +
         '<span class="gvd-foot"><span>' + (live && s ? 'Turnout ' + s.turnout.toFixed(1) + '% of ' + (rulesFor(p, d.rules).quorum * 100).toFixed(0) + '%'
           : st(p) === 'deposit' ? 'Waiting for its deposit' : esc(when(p.voting_end_time).split(',')[0] || '')) + '</span>' +
-        (live ? (mine ? '<b class="gvd-you ' + (VOTE_C[mine] || '') + '">You voted ' + esc(OPT[mine] || mine) + '</b>'
+        (live ? (mine ? '<b class="gvd-you ' + (my.split ? 'split' : (VOTE_C[mine] || '')) + '">You voted ' + esc(my.text) + '</b>'
           : p._mine === UNKNOWN ? '' : '<b class="gvd-you todo">Not voted</b>') : '') + '</span></button>';
     }).join('') : '<div class="empty">Nothing here.</div>') + '</div>' +
     '<p class="tiny gv-note">Proposals come straight from the chain. A vote can be changed until voting ends; the last one counts.</p>' +
@@ -651,12 +702,15 @@ function paintStats(){
 
 function draw(){ return isDesk() ? drawDesk() : drawPhone(); }
 
-let LOADING = false;
+// One read at a time, and each for one wallet: an answer that comes back
+// after the wallet changed is kept for that wallet but never drawn, and the
+// wallet now open gets its own read as soon as the old one ends.
+let LOADING = '', LOAD_AGAIN = false;
 async function loadGov(){
-  if (LOADING) return;
-  LOADING = true;
-  const body = $('#gov-body');
   const a = addrOf();
+  if (LOADING) { LOAD_AGAIN = true; return; }
+  LOADING = a || '-';
+  const body = $('#gov-body');
   validators().catch(() => {});          // the voters list needs them; start now
   // what this device kept from the last visit, drawn at once; the chain is
   // read meanwhile and the screen redrawn when it answers
@@ -665,9 +719,18 @@ async function loadGov(){
     if (k) { DATA = build(k); DATA.addr = a; draw(); }
     else body.innerHTML = '<div class="empty"><span class="spin"></span>Reading proposals</div>';
   }
-  try { await load(a); DATA.addr = a; draw(); badgeFromData(); }
-  catch (e) { if (!DATA) body.innerHTML = '<div class="empty">Could not read proposals: ' + esc(e.message || e) + '</div>'; }
-  finally { LOADING = false; }
+  try {
+    const raw = await fetchRaw(a);
+    keepRaw(raw);
+    if (addrOf() === a) { DATA = build(raw); DATA.addr = a; draw(); badgeFromData(); }
+  } catch (e) {
+    if (addrOf() === a && (!DATA || DATA.addr !== a)) body.innerHTML = '<div class="empty">Could not read proposals: ' + esc(e.message || e) + '</div>';
+  } finally {
+    LOADING = '';
+    const again = LOAD_AGAIN || addrOf() !== a;
+    LOAD_AGAIN = false;
+    if (again) loadGov();
+  }
 }
 
 /* ---------------- one proposal ---------------- */
@@ -685,14 +748,15 @@ $('#gov-sheet').addEventListener('click', e => {
 function open(id){
   const p = DATA.live.find(x => String(x.id) === String(id)) || DATA.recent.find(x => String(x.id) === String(id));
   if (!p) return;
-  const live = DATA.live.indexOf(p) >= 0;
+  // open for votes only while its voting period runs, by the clock too
+  const live = DATA.live.indexOf(p) >= 0 && votingOpen(p);
   const desk = isDesk();
   FLOW = { id: String(p.id), live: live, desk: desk, addr: addrOf() };
   $('#gov-sheet-title').textContent = 'Proposal #' + p.id;
   const rules = rulesFor(p, DATA.rules);
   const s = live && p._tally ? standing(p._tally, rules, DATA.bonded) : null;
   const f = !live ? finalSplit(p) : null;
-  const mine = p._mine && p._mine.options && p._mine.options[0] ? p._mine.options[0].option : null;
+  const my = myVote(p._mine), mine = my && my.o;
   const st = (STATUS[p.status] || '').toLowerCase();
   const text = textOf(p);
   const meta = '<div class="gv-sh-meta"><span class="gv-pill ' + esc(st) + '">' + esc(STATUS[p.status] || p.status) + '</span>' +
@@ -717,7 +781,7 @@ function open(id){
   let vote = '';
   if (live) {
     vote = '<div class="gv-vote">' +
-      '<div class="gv-vote-h"><b>Your vote</b><span>' + (mine ? esc(OPT[mine] || mine) + ' \u00b7 you can change it'
+      '<div class="gv-vote-h"><b>Your vote</b><span>' + (mine ? esc(my.text) + ' \u00b7 you can change it'
         : p._mine === UNKNOWN ? 'Could not read your vote' : 'Not voted yet') + '</span></div>' +
       '<div class="gov-opts">' + ['yes', 'no', 'veto', 'abstain'].map(o =>
         '<button class="gov-opt gv-o ' + ({ yes: 'y', no: 'n', veto: 'v', abstain: 'a' })[o] + (mine && OPT_KEY[mine] === o ? ' was' : '') +
@@ -747,13 +811,7 @@ function open(id){
         (live ? '<section class="gvd-card gvd-v">' + vote + '<div id="gov-myvals"></div></section>'
           : DATA.dels.length && st !== 'deposit' ? '<section class="gvd-card gvd-v"><div id="gov-myvals"></div></section>' : '') +
       '</div>' +
-      (ch.length ? '<section class="gvd-card"><h3>What it changes</h3><div class="gvd-ch">' +
-        ch.map(x => '<div><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>').join('') +
-        '</div>' +
-        // past the cap: every action as the chain has it, to read in full
-        ((p.messages || []).length > MAX_ACTIONS ? '<details class="gvd-raw"><summary>All ' + p.messages.length + ' actions as data</summary><pre class="gov-text">' +
-          esc(JSON.stringify(p.messages, null, 2).slice(0, 200000)) + '</pre></details>' : '') +
-        '<p class="tiny gvd-src">Read from the proposal\u2019s messages.</p></section>' : '') +
+      (ch.length ? '<section class="gvd-card" id="gov-changes">' + changesHTML(p) + '</section>' : '') +
       (txt ? '<section class="gvd-card"><h3>Proposal text</h3>' + txt + '</section>' : '') +
       (st !== 'deposit' ? '<section class="gvd-card" id="gov-sum"><div class="empty"><span class="spin"></span>Reading votes</div></section>' +
         '<section class="gvd-card gvd-tcard"><div id="gov-voters"><div class="empty"><span class="spin"></span>Reading votes and comments</div></div></section>' : '');
@@ -766,6 +824,7 @@ function open(id){
     sheet(true);
   }
   if (!desk || st !== 'deposit') showVoters(String(p.id), live);
+  if (desk) wireChanges(p);
   const more = $('#gov-more');
   if (more) more.addEventListener('click', () => { $('#gov-text').classList.remove('clip'); more.remove(); });
   const gt = $('#gov-text');
@@ -974,6 +1033,10 @@ function paintTable(id, live, v, vals, T, again){
   const box = $('#gov-voters'), sum = $('#gov-sum');
   if (!box) return;
   const votes = Object.assign({}, v.txv || {}, live ? v.votes : {});
+  // an ended proposal's votes come only from the vote history: with a page of
+  // it missing, "no vote found" is not "did not vote"
+  const known = live || !!v.txok;
+  const NONE = known ? 'Did not vote' : 'Unknown';
   const waiting = !live && v.step < 2;
   const byAcc = {};
   vals.forEach(x => { byAcc[x.acc] = x; });
@@ -982,7 +1045,7 @@ function paintTable(id, live, v, vals, T, again){
   // rounded to 0.01%, not cut (9.61%, not 9.60%)
   const pctOf = (x, t) => t > 0n ? Number((x * 20000n / t + 1n) / 2n) / 100 : 0;
 
-  const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">Not voted</b>';
+  const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">' + (known ? 'Not voted' : 'Unknown') + '</b>';
   // ---- this wallet's validators and their votes (they vote for its stake when it does not)
   const mv = $('#gov-myvals');
   if (mv && DATA) {
@@ -992,7 +1055,7 @@ function paintTable(id, live, v, vals, T, again){
         const val = vals.find(y => y.op === x.op), acc = val ? val.acc : accOf(x.op);
         return '<div class="gvd-mv">' + face(val ? val.name : x.op.slice(12), acc, x.op, val && val.ident) +
           '<span><b>' + esc(val ? val.name : shortAcc(x.op)) + '</b><small>' + L(x.amount) + ' LUNC of yours</small></span>' +
-          (waiting ? '<b class="gov-v none">\u2026</b>' : tag(votes[acc])) + '</div>';
+          (waiting ? '<b class="gov-v none">\u2026</b>' : v.split && v.split[acc] ? '<b class="gov-v split">' + esc(splitText(v.split[acc])) + '</b>' : tag(votes[acc])) + '</div>';
       }).join('');
     fillLogos(mv);
   }
@@ -1012,7 +1075,7 @@ function paintTable(id, live, v, vals, T, again){
       const vv = vals.filter(x => x.acc);
       const vTot = vv.reduce((a, x) => a + x.tokens, 0n) || 1n;
       // a split vote counts for each of its options, by its weight
-      const part = (a, o) => shareOf({ split: v.split, txv: votes }, a, o);
+      const part = (a, o) => shareOf(v.split, votes, a, o);
       const vBy = o => vv.filter(x => part(x.acc, o) > 0n);
       const vStake = o => vv.reduce((a, x) => a + x.tokens * part(x.acc, o) / W1, 0n);
       const vVoted = vv.filter(x => votes[x.acc]);
@@ -1025,7 +1088,7 @@ function paintTable(id, live, v, vals, T, again){
       const dSt = o => dl.reduce((a, x) => a + dStake(x) * part(x, o) / W1, 0n);
       const useStake = dTot > 0n;
       sum.innerHTML = '<div class="gvd-sums">' +
-        donut('Validators', vVoted.length + ' / ' + vv.length, 'voted',
+        donut('Validators', vVoted.length + ' / ' + vv.length, known ? 'voted' : 'vote found \u00b7 history incomplete',
           opts.map(o => ({ k: K(o), w: Number(vStake(o) / 1000000n) })).concat([{ k: 'none', w: Number(vNone / 1000000n) }]),
           opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: vBy(o).length, stake: big(vStake(o)), pct: pctOf(vStake(o), vTot).toFixed(2) + '%' }))) +
         donut('Delegators', String(dl.length), dKnown < dl.length ? 'voted \u00b7 stake ' + Math.round(dKnown / Math.max(1, dl.length) * 100) + '%' : 'voted',
@@ -1033,7 +1096,8 @@ function paintTable(id, live, v, vals, T, again){
           opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: dBy(o).length, stake: useStake ? big(dSt(o)) : '\u2014',
             pct: useStake ? pctOf(dSt(o), dTot).toFixed(2) + '%' : '' }))) +
         '</div><p class="tiny gvd-src">Validators weigh what is bonded to them; a delegator who votes overrides their validator for their own stake.' +
-        (live ? '' : ' Read from the vote transactions: the chain clears its own record when voting ends.') + '</p>';
+        (live ? '' : ' Read from the vote transactions: the chain clears its own record when voting ends.') +
+        (known ? '' : ' <b class="gvd-todo">Part of that history did not come back, so these totals may be short and a voter shown as Unknown may have voted.</b>') + '</p>';
     }
   }
   if (waiting) { box.innerHTML = ''; return; }
@@ -1047,7 +1111,7 @@ function paintTable(id, live, v, vals, T, again){
   let list = rows.filter(r =>
     (T.tab === 'all' || (T.tab === 'val') === !!r.val) &&
     (r.o || (r.val && T.quiet)) &&
-    (T.opt === 'all' || K(r.o) === T.opt) &&
+    (T.opt === 'all' || (v.split && v.split[r.a] ? v.split[r.a].some(x => K(x[0]) === T.opt) : K(r.o) === T.opt)) &&
     (!T.memo || v.memo[r.a]) &&
     (!q || r.a.toLowerCase().includes(q) || (r.val && (r.val.name.toLowerCase().includes(q) || r.val.op.toLowerCase().includes(q)))));
   const w = r => r.stake === undefined ? -1n : r.stake;
@@ -1065,7 +1129,7 @@ function paintTable(id, live, v, vals, T, again){
       '<label class="gvd-sel"><span class="gvd-sr">Vote type</span><select id="gvd-opt">' +
         optSel.map(([k, l]) => '<option value="' + k + '"' + (T.opt === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
       '<label class="gvd-sw"><input type="checkbox" id="gvd-memo"' + (T.memo ? ' checked' : '') + '><i></i>Comments only<em>' + said + '</em></label>' +
-      '<label class="gvd-sw"><input type="checkbox" id="gvd-quiet"' + (T.quiet ? ' checked' : '') + '><i></i>Validators that did not vote</label>' +
+      '<label class="gvd-sw"><input type="checkbox" id="gvd-quiet"' + (T.quiet ? ' checked' : '') + '><i></i>' + (known ? 'Validators that did not vote' : 'Validators with no vote found') + '</label>' +
       '<label class="gvd-find"><span class="gvd-sr">Find a voter</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
         '<input type="search" id="gvd-q" placeholder="Name or address" value="' + esc(T.q) + '"></label>' +
     '</div>' +
@@ -1082,7 +1146,7 @@ function paintTable(id, live, v, vals, T, again){
           '<td><span class="gvd-vcell">' + (v.split && v.split[r.a]
               // a split vote, said as one: every option with its share
               ? '<span class="gvd-vote split" title="Split vote">' + esc(splitText(v.split[r.a])) + '</span>'
-              : r.o ? '<span class="gvd-vote ' + k + '">' + esc(OPT_SHORT[r.o] || r.o) + '</span>' : '<span class="gvd-vote none">Did not vote</span>') +
+              : r.o ? '<span class="gvd-vote ' + k + '">' + esc(OPT_SHORT[r.o] || r.o) + '</span>' : '<span class="gvd-vote none">' + NONE + '</span>') +
             (c ? '<button type="button" class="gvd-mbtn" aria-expanded="' + isOpen + '" aria-label="Show the comment">' + MEMO_ICON + '</button>' : '') + '</span>' +
             // when, linked to the vote transaction on the explorer
             '<small class="gvd-when">' + (tx ? '<a class="gvd-hash" href="' + FINDER_TX + esc(tx.hash) + '" target="_blank" rel="noopener noreferrer" title="Transaction ' + esc(tx.hash) + '">' +
@@ -1116,8 +1180,16 @@ function paintTable(id, live, v, vals, T, again){
 
 // a vote flow holds while the wallet it was opened for is the active one and
 // its proposal is still in voting
-function flowValid(f){
-  return !!f && f.addr === addrOf() && !!DATA && DATA.live.some(p => String(p.id) === String(f.id));
+function flowValid(f, now){
+  if (!f || f.addr !== addrOf() || !DATA) return false;
+  const p = DATA.live.find(x => String(x.id) === String(f.id));
+  return !!p && votingOpen(p, now);
+}
+// still in its voting period by its own clock: a list kept on the device can
+// hold a proposal whose voting has ended since
+function votingOpen(p, now){
+  const end = new Date(p && p.voting_end_time).getTime();
+  return Number.isFinite(end) && end > (now === undefined ? Date.now() : now);
 }
 async function review(opt){
   const f = FLOW;

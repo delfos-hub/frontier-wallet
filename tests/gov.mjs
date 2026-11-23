@@ -136,7 +136,7 @@ check('a contract message that does not parse still reads', row(bad, 'Action'), 
   const many = changesOf({ messages: Array.from({ length: 25 }, () => ({ '@type': '/cosmos.distribution.v1beta1.MsgCommunityPoolSpend', recipient: 'terra1r', amount: [{ denom: 'uluna', amount: '1000000' }] })) });
   check('no cap on summary rows: 20 actions, 3 rows each', many.filter(x => x[0] === 'Amount').length, 20);
   check('past 20 the rest are counted', row(many, 'Not shown'), '5 more actions, listed in full below');
-  check('and listed in full as data', /\(p\.messages \|\| \[\]\)\.length > MAX_ACTIONS \? '<details class="gvd-raw">/.test(gsrc) && /esc\(JSON\.stringify\(p\.messages, null, 2\)/.test(gsrc), true);
+  check('and every action is there as data', /Every action as data \(' \+ msgs\.length \+ '\)/.test(gsrc), true);
 }
 
 // split votes keep every option and its weight
@@ -147,9 +147,9 @@ console.log('\nsplit votes');
   const sp = lib.splitOf([{ option: 'VOTE_OPTION_YES', weight: '0.250000000000000000' }, { option: 'VOTE_OPTION_NO', weight: '0.750000000000000000' }]);
   check('both options kept with their weights', JSON.stringify(sp.map(x => [x[0], String(x[1])])), JSON.stringify([['VOTE_OPTION_YES', '250000'], ['VOTE_OPTION_NO', '750000']]));
   check('numeric options from a transaction read too', lib.splitOf([{ option: 1, weight: '0.5' }, { option: 3, weight: '0.5' }]).map(x => x[0]).join(','), 'VOTE_OPTION_YES,VOTE_OPTION_NO');
-  const v = { split: { d1: sp }, txv: { d1: 'VOTE_OPTION_YES', d2: 'VOTE_OPTION_NO' } };
+  const split = { d1: sp }, votes = { d1: 'VOTE_OPTION_YES', d2: 'VOTE_OPTION_NO' };
   const stake = 100000000n;                               // 100 LUNC
-  const of = (a, o) => stake * lib.shareOf(v, a, o) / lib.W1;
+  const of = (a, o) => stake * lib.shareOf(split, votes, a, o) / lib.W1;
   check('100 LUNC split 25/75: 25 to Yes', String(of('d1', 'VOTE_OPTION_YES')), '25000000');
   check('and 75 to No', String(of('d1', 'VOTE_OPTION_NO')), '75000000');
   check('a single vote takes it all', String(of('d2', 'VOTE_OPTION_NO')) + '/' + String(of('d2', 'VOTE_OPTION_YES')), '100000000/0');
@@ -163,9 +163,12 @@ console.log('\nthe vote flow');
 {
   const mk = (addr, live) => new Function('addrOf', 'DATA', gsrc.slice(gsrc.indexOf('function flowValid('), gsrc.indexOf('async function review(')) + '; return flowValid;')(() => addr, { live: live });
   const f = { id: '12237', addr: 'terra1a' };
-  check('same wallet, still voting: holds', mk('terra1a', [{ id: '12237' }])(f), true);
-  check('another wallet active: does not', mk('terra1b', [{ id: '12237' }])(f), false);
-  check('the proposal left voting (Passed): does not', mk('terra1a', [{ id: '12238' }])(f), false);
+  const soon = new Date(Date.now() + 3600e3).toISOString(), gone = new Date(Date.now() - 60e3).toISOString();
+  check('same wallet, still voting: holds', mk('terra1a', [{ id: '12237', voting_end_time: soon }])(f), true);
+  check('another wallet active: does not', mk('terra1b', [{ id: '12237', voting_end_time: soon }])(f), false);
+  check('the proposal left voting (Passed): does not', mk('terra1a', [{ id: '12238', voting_end_time: soon }])(f), false);
+  check('still in the kept open list but past its end time: does not', mk('terra1a', [{ id: '12237', voting_end_time: gone }])(f), false);
+  check('open() offers voting only before the end time', /const live = DATA\.live\.indexOf\(p\) >= 0 && votingOpen\(p\);/.test(gsrc), true);
   check('a redraw drops a flow that no longer holds', /if \(FLOW && !flowValid\(FLOW\)\) FLOW = null;\s*const busy/.test(gsrc), true);
   check('confirm refuses one that no longer holds, before signing', /async function confirm\(btn, f, opt\)\{[\s\S]{0,200}if \(!flowValid\(f\)\) \{/.test(gsrc), true);
   check('and signs for the wallet that was reviewed', /sendVote\(f\.addr, f\.id/.test(gsrc), true);
@@ -177,6 +180,98 @@ console.log('\nunknown is not an answer');
   check('a vote that could not be read is not "voted on all"', /: unread \? 'Could not read your vote on '/.test(gsrc), true);
   check('"did not vote" only from a history read in full', /: v\.txok \? 'You did not vote on this one\.' :/.test(gsrc), true);
   check('a missing page makes the history partial', /out\.txok = rest\.every\(Boolean\) && Math\.ceil\(total \/ 100\) <= 1 \+ more;/.test(gsrc), true);
+}
+
+// a read for one wallet never lands on another
+console.log('\nreads per wallet');
+{
+  const at = gsrc.indexOf('let LOADING =');
+  const code = gsrc.slice(at, gsrc.indexOf('/* ---------------- one proposal', at));
+  let cur = 'A', DATA = null, drawn = [];
+  const pend = {};
+  const env = {
+    addrOf: () => cur,
+    $: () => ({ set innerHTML(v) {} }),
+    validators: () => Promise.resolve(),
+    keptRaw: () => null,
+    keepRaw: () => {},
+    fetchRaw: a => new Promise(res => { pend[a] = res; }),
+    build: raw => ({ who: raw.who }),
+    draw: () => drawn.push(DATA_REF().who),
+    badgeFromData: () => {},
+    esc: String
+  };
+  let DATA_REF;
+  const mk = new Function(...Object.keys(env), 'let DATA = null;\n' + code + '\nreturn { loadGov, get DATA(){ return DATA; } };');
+  const g = mk(...Object.values(env));
+  DATA_REF = () => g.DATA;
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  g.loadGov();                                  // A starts
+  cur = 'B'; g.loadGov();                       // B asked while A runs
+  pend.A({ who: 'A' }); await tick(); await tick();
+  check('A\u2019s late answer is not drawn on B\u2019s screen', drawn.includes('A'), false);
+  check('B gets its own read', typeof pend.B, 'function');
+  pend.B({ who: 'B' }); await tick(); await tick();
+  check('and B\u2019s answer is drawn', drawn.join(','), 'B');
+  check('DATA is B\u2019s', g.DATA.who, 'B');
+}
+
+// split votes and unknown history in every view
+console.log('\nsplit and unknown everywhere');
+{
+  const lib = new Function('UNKNOWN', 'OPT', 'OPT_SHORT', gsrc.slice(gsrc.indexOf('const NUM_OPT ='), gsrc.indexOf('const shareOf =')) + '\nreturn { myVote, splitText };')(
+    {}, { VOTE_OPTION_YES: 'Yes', VOTE_OPTION_NO: 'No' }, { VOTE_OPTION_YES: 'Yes', VOTE_OPTION_NO: 'No' });
+  const my = lib.myVote({ options: [{ option: 'VOTE_OPTION_YES', weight: '0.25' }, { option: 'VOTE_OPTION_NO', weight: '0.75' }] });
+  check('my own split vote reads as the split, not as Yes', my.text, 'Yes 25% \u00b7 No 75%');
+  check('a single vote reads as itself', lib.myVote({ options: [{ option: 'VOTE_OPTION_NO', weight: '1' }] }).text, 'No');
+  check('the phone card and the list use it', (gsrc.match(/const my = myVote\(p\._mine\), mine = my && my\.o;/g) || []).length, 3);
+  check('the vote filter finds a split under each of its options', /v\.split\[r\.a\]\.some\(x => K\(x\[0\]\) === T\.opt\)/.test(gsrc), true);
+  check('with history missing, no vote found reads Unknown, not Did not vote', /const NONE = known \? 'Did not vote' : 'Unknown';/.test(gsrc) && /'<span class="gvd-vote none">' \+ NONE \+ '<\/span>'/.test(gsrc), true);
+  check('and the validators\u2019 total says the history is incomplete', /known \? 'voted' : 'vote found \\u00b7 history incomplete'/.test(gsrc), true);
+}
+
+// a large table: no copy of every vote per lookup
+console.log('\nlarge voter list');
+{
+  const shareOf = new Function('W1', 'return ' + gsrc.slice(gsrc.indexOf('(split, votes, a, o) =>'), gsrc.indexOf('};', gsrc.indexOf('(split, votes, a, o) =>')) + 1))(1000000n);
+  const votes = {}, stake = {}, split = {};
+  const O = ['VOTE_OPTION_YES', 'VOTE_OPTION_NO', 'VOTE_OPTION_ABSTAIN', 'VOTE_OPTION_NO_WITH_VETO'];
+  for (let i = 0; i < 1500; i++) { votes['d' + i] = O[i % 4]; if (i < 300) stake['d' + i] = BigInt(i + 1) * 1000000n; }
+  const dl = Object.keys(votes), t0 = Date.now();
+  let sum = 0n;
+  for (let r = 0; r < 4; r++) for (const o of O) sum += dl.reduce((a, x) => a + (stake[x] || 0n) * shareOf(split, votes, x, o) / 1000000n, 0n);
+  const ms = Date.now() - t0;
+  check('1,500 voters x 4 options x 4 passes stay fast (' + ms + ' ms)', ms < 500, true);
+  check('and add up to every known stake, four times', String(sum), String(4n * Array.from({ length: 300 }, (_, i) => BigInt(i + 1) * 1000000n).reduce((a, b) => a + b, 0n)));
+}
+
+// every action can be read, fresh or kept
+console.log('\nevery action inspectable');
+{
+  const at = gsrc.indexOf('const MAX_ACTIONS = 20;');
+  const lib = new Function('esc', 'changesOf', 'getJSON', 'G', '$', 'SEL',
+    gsrc.slice(at, gsrc.indexOf('function drawDesk(')) + '\n' + gsrc.slice(gsrc.indexOf('function slim('), gsrc.indexOf('function keepRaw(')) +
+    '\nreturn { changesHTML, actionText, fullActions, slim, ACTION_CAP };');
+  const spend = { '@type': '/cosmos.distribution.v1beta1.MsgCommunityPoolSpend', recipient: 'terra1finalrecipient', amount: [{ denom: 'uluna', amount: '7000000' }], authority: 'terra10d07y265gmmuvt4z0w9aw880jnsr700juxf8sk' };
+  const filler = Array.from({ length: 20 }, (_, i) => ({ '@type': '/cosmwasm.wasm.v1.MsgExecuteContract', contract: 'terra1c' + i, msg: { blob: 'x'.repeat(1500) } }));
+  const P = { id: '99', messages: filler.concat([spend]) };
+  const full = JSON.parse(JSON.stringify(P));
+  const L = lib((x) => String(x).replace(/</g, '&lt;'), () => [['Action', 'x']],
+    async (url) => ({ proposal: JSON.parse(JSON.stringify(full)) }), 'G', () => null, '99');
+  const h = L.changesHTML(P);
+  check('fresh: 21 actions listed, one by one', (h.match(/class="gvd-act"/g) || []).length, 21);
+  const t21 = L.actionText(P.messages[20]);
+  check('fresh: the 21st action shows its recipient and amount', /terra1finalrecipient/.test(t21) && /"amount": "7000000"/.test(t21), true);
+  const kept = L.slim(JSON.parse(JSON.stringify(P)));
+  check('kept on the device: trimmed and marked', kept._slim === true && !kept.messages[20].recipient, true);
+  const hk = L.changesHTML(kept);
+  check('kept: the screen says the details are being read again', /were not kept on this device/.test(hk) && !/class="gvd-act"/.test(hk), true);
+  const ok = await L.fullActions(kept);
+  const t21k = L.actionText(kept.messages[20]);
+  check('kept: after the read the 21st action has its recipient and amount', ok && !kept._slim && /terra1finalrecipient/.test(t21k) && /"amount": "7000000"/.test(t21k), true);
+  check('kept: and all 21 are listed', (L.changesHTML(kept).match(/class="gvd-act"/g) || []).length, 21);
+  const huge = L.actionText({ blob: 'y'.repeat(L.ACTION_CAP + 10) });
+  check('an action past the cap says it is cut, and by how much', /\[cut: this action is \d+ characters, the first 200000 are shown\]$/.test(huge), true);
 }
 
 // the voters table's numbers

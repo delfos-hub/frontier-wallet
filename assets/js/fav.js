@@ -13,11 +13,11 @@
    in the list, so a token starred later already has its line: the change and
    the line are this device's own record, labelled with how far back it
    reaches. The line shows from 15 min of record, the % change from an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=dfea3f9d';
-import { S } from './state.js?v=dfea3f9d';
-import { esc, iconHTML, paintIcons } from './chain.js?v=dfea3f9d';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=dfea3f9d';
-import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=dfea3f9d';
+import { $ } from './shell.js?v=73e97f22';
+import { S } from './state.js?v=73e97f22';
+import { esc, iconHTML, paintIcons } from './chain.js?v=73e97f22';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=73e97f22';
+import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=73e97f22';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
