@@ -10,12 +10,12 @@
    everything that would sign is switched off (body.is-watch), and the header
    says "Read only". Importing that address's phrase later turns it into a
    full wallet in place. */
-import { $, go, tap } from './shell.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=ef16c24d';
-import { dots } from './onboarding.js?v=ef16c24d';
-import { openWallet } from './tokens.js?v=ef16c24d';
-import { dropWallet } from './sync.js?v=ef16c24d';
+import { $, go, tap } from './shell.js?v=594deaf9';
+import { S } from './state.js?v=594deaf9';
+import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=594deaf9';
+import { dots } from './onboarding.js?v=594deaf9';
+import { openWallet } from './tokens.js?v=594deaf9';
+import { dropWallet } from './sync.js?v=594deaf9';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -25,7 +25,8 @@ function hue(addr){
   for (let i = 0; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) % 360;
   return h;
 }
-const ava = addr => 'linear-gradient(135deg,hsl(' + hue(addr) + ' 80% 55%),hsl(' + ((hue(addr) + 70) % 360) + ' 85% 60%))';
+// the two colours of a wallet's ring, as CSS variables (see .wava in app.css)
+const avaVars = addr => '--wa:hsl(' + hue(addr) + ' 80% 58%);--wb:hsl(' + ((hue(addr) + 70) % 360) + ' 85% 62%)';
 function lastTotal(addr){
   try { const v = Number(localStorage.getItem('fw:tot:' + addr)); return isFinite(v) && v > 0 ? v : null; } catch (e) { return null; }
 }
@@ -55,7 +56,7 @@ function header(){
   const n = $('#wl-name');
   if (n && w) n.textContent = w.name || 'Wallet';
   const a = document.querySelector('.wtop .wava');
-  if (a && w) a.style.background = ava(w.addr);
+  if (a && w) a.setAttribute('style', avaVars(w.addr));
 }
 document.addEventListener('frontier:wallet', header);
 
@@ -65,7 +66,7 @@ function draw(){
   $('#wl-list').innerHTML = list.map(function (w) {
     const t = lastTotal(w.addr);
     return '<div class="wl-row' + (w.id === act ? ' on' : '') + '" data-id="' + esc(w.id) + '">' +
-      '<span class="wl-ava" style="background:' + ava(w.addr) + '"></span>' +
+      '<span class="wl-ava" style="' + avaVars(w.addr) + '"></span>' +
       '<span class="wl-mid"><b>' + esc(w.name) + (w.watch ? '<i class="wl-tag">Watch</i>' : '') + '</b>' +
         '<span>' + esc(short(w.addr)) + '</span></span>' +
       '<span class="wl-r">' + (t !== null ? '<b>' + usd(t) + '</b>' : '') +
