@@ -17,12 +17,12 @@
        the handful of query shapes the exchanges on this chain use.
    Every answer that does not change (a minter, a label) is kept for good, so
    the second open of a page asks the chain only for amounts. */
-import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=ef16c24d';
-import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=ef16c24d';
-import { $, go, tap } from './shell.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=ef16c24d';
-import { rowHTML } from './activity.js?v=ef16c24d';
+import { LCD, amt, fmt, getJSON, iconHTML, paintIcons, smart, usd } from './chain.js?v=5bd0e71a';
+import { DEC, graph, graphReady, infoKey, knownAsset, mapLimit, owMarket, poolsOf, txCandidates } from './market.js?v=5bd0e71a';
+import { $, go, tap } from './shell.js?v=5bd0e71a';
+import { S } from './state.js?v=5bd0e71a';
+import { fiatOf, heldTokens, luncUsd, tokKey, walletUsd } from './tokens.js?v=5bd0e71a';
+import { rowHTML } from './activity.js?v=5bd0e71a';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 let SEQ = 0, CUR = null, KEY = '';
