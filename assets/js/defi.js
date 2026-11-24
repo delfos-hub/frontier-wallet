@@ -20,14 +20,14 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=ef16c24d';
-import { DEC, knownAsset, mapLimit, reserves, txCandidates } from './market.js?v=ef16c24d';
-import { $, buzz, go, tap } from './shell.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=ef16c24d';
-import * as P from './defi-parse.js?v=ef16c24d';
-import { dryRunSwap, sendSwap } from './tx.js?v=ef16c24d';
-import { notify } from './notify.js?v=ef16c24d';
+import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=ba8afbb2';
+import { DEC, knownAsset, mapLimit, mapPrice, poolPrice, reserves, txCandidates } from './market.js?v=ba8afbb2';
+import { $, buzz, go, tap } from './shell.js?v=ba8afbb2';
+import { S } from './state.js?v=ba8afbb2';
+import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=ba8afbb2';
+import * as P from './defi-parse.js?v=ba8afbb2';
+import { dryRunSwap, sendSwap } from './tx.js?v=ba8afbb2';
+import { notify } from './notify.js?v=ba8afbb2';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -199,9 +199,50 @@ function rowOf(key){
   return r;
 }
 function human(x){ const m = META[x.key] || { dec: 6 }; return amt(x.raw, m.dec); }
+/* A token's dollar price for a position. The wallet's own list prices only
+   what it holds, and only while the pool it read is fresh: VIMA staked in
+   full has no row there, and a row priced through a route lost its price at
+   the next refresh until the route was walked again - so the staking card
+   showed a sum one moment and nothing the next. Positions now keep the last
+   price they had (a day at most), and ask the market themselves for a token
+   the list cannot price. */
+const PX = {};
+const PX_AGE = 24 * 3600 * 1000;
+function keepUnit(key, u){
+  if (!(u > 0) || !isFinite(u)) return;
+  const was = PX[key] || permGet('px:' + key);
+  PX[key] = { u: u, at: Date.now() };
+  if (!was || Date.now() - was.at > 10 * 60 * 1000 || Math.abs(was.u - u) / u > 0.02) permSet('px:' + key, PX[key]);
+}
+function keptUnit(key){
+  const k = PX[key] || permGet('px:' + key);
+  return k && k.u > 0 && Date.now() - k.at < PX_AGE ? k.u : null;
+}
+function unitUsd(key){
+  const u = fiatOf(Object.assign({}, rowOf(key), { v: 1 }));
+  if (u !== null && u > 0) { keepUnit(key, u); return u; }
+  return keptUnit(key);
+}
 function dollars(x){
-  const u = fiatOf(Object.assign({}, rowOf(x.key), { v: 1 }));
+  const u = unitUsd(x.key);
   return u === null ? null : u * human(x);
+}
+// at most one question per token every few minutes; an answer redraws
+const ASKED = {};
+async function askPrice(key){
+  if (!key || key === 'native:uluna' || key === 'native:uusd') return;
+  const u = fiatOf(Object.assign({}, rowOf(key), { v: 1 }));
+  if (u !== null && u > 0) { keepUnit(key, u); return; }
+  if (ASKED[key] && Date.now() - ASKED[key] < 3 * 60 * 1000) return;
+  ASKED[key] = Date.now();
+  const lunc = fiatOf({ sym: 'LUNC', denom: 'uluna', v: 1 });
+  if (!(lunc > 0)) { ASKED[key] = 0; return; }
+  let p = null;
+  try {
+    if (key.slice(0, 5) === 'cw20:') p = await poolPrice(key.slice(5), true);
+    if (!p) p = await mapPrice(key);
+  } catch (e) { p = null; }
+  if (p && p.inLunc > 0) { keepUnit(key, p.inLunc * lunc); draw(); }
 }
 
 /* ---------------- an LP token, worth what ---------------- */
@@ -540,6 +581,7 @@ async function readAll(list, addr, seq, counted){
       await Promise.all(keys.map(meta));
       FOUND[p.contract] = p;
       draw();
+      keys.forEach(k => { askPrice(k).catch(() => {}); });
     }
   });
 }
@@ -934,6 +976,8 @@ document.addEventListener('frontier:refresh', () => { if (me()) scan(false); });
 setInterval(function () {
   const e = document.getElementById('st-earn');
   if (Object.keys(FOUND).length && e && e.classList.contains('on')) draw();
+  // a token still without a price is asked about again (askPrice spaces it)
+  Object.values(FOUND).forEach(p => p.holds.concat(p.rewards).forEach(x => { if (unitUsd(x.key) === null) askPrice(x.key).catch(() => {}); }));
 }, 15000);
 
 export { scan, FOUND };
