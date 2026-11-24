@@ -11,10 +11,10 @@
    transaction by hash; contract query, execute, code upload and instantiate;
    and the contracts made from this wallet. Every signed action is simulated
    first, the fee is shown, and signing checks it again (tx.js checkFee). */
-import { esc, fmt } from './chain.js?v=d55e7470';
-import { $, $$, go } from './shell.js?v=d55e7470';
-import { S } from './state.js?v=d55e7470';
-import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=d55e7470';
+import { esc, fmt } from './chain.js?v=0e7835a0';
+import { $, $$, go } from './shell.js?v=0e7835a0';
+import { S } from './state.js?v=0e7835a0';
+import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=0e7835a0';
 
 const MAINNET = 'columbus-5';
 
@@ -52,11 +52,44 @@ function applyMode(){
   if (t) t.hidden = !on;
   // test LUNC in Home's token list: with Developer mode only, never in the total
   if (on) setTimeout(() => balance(), 0); else setTimeout(testRow, 0);
-  const v = $('#dev-cur');
-  if (v) v.textContent = on ? 'On' : 'Off';
+  $('#dev-sw').setAttribute('aria-checked', on ? 'true' : 'false');
+  $('#set-dev').classList.toggle('on', on);
+  $('#dev-cur').textContent = on ? 'On \u00b7 rebel-2 test network' : 'Test network, faucet, contract tools';
+  $('#dev-open').hidden = !on;
   if (!on && ($('#st-dev').classList.contains('on') || $('#st-tsend').classList.contains('on'))) go('settings');
 }
-$('#set-dev').addEventListener('click', () => { store.set('fw:dev', !devOn()); applyMode(); if (devOn()) go('dev'); });
+/* The switch in Settings. Turning it on first says what changes, and asks;
+   once on, the TEST section shows in the menu (briefly lit, so it is found)
+   and a row under the switch opens it. Nothing moves you away from Settings.
+   Turning it off needs no question: it only hides the section again. */
+const ask = $('#dev-ask');
+function askOpen(v){
+  ask.hidden = !v;
+  $('#set-dev').classList.toggle('asking', v);
+  if (v) { $('#dev-sw').setAttribute('aria-checked', 'mixed'); $('#dev-yes').focus({ preventScroll: true });
+    requestAnimationFrame(() => ask.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })); }
+  else applyMode();
+}
+function devToggle(){
+  if (!ask.hidden) { askOpen(false); return; }
+  if (devOn()) { store.set('fw:dev', false); applyMode(); return; }
+  askOpen(true);
+}
+$('#set-dev').addEventListener('click', devToggle);
+$('#dev-no').addEventListener('click', () => { askOpen(false); $('#dev-sw').focus({ preventScroll: true }); });
+$('#dev-yes').addEventListener('click', () => {
+  store.set('fw:dev', true);
+  askOpen(false);
+  const t = $('#tabs .tab[data-tab="dev"]');
+  if (t) { t.classList.remove('dv-new'); void t.offsetWidth; t.classList.add('dv-new'); setTimeout(() => t.classList.remove('dv-new'), 2600); }
+  const o = $('#dev-open'); o.classList.add('dv-new'); setTimeout(() => o.classList.remove('dv-new'), 2600);
+  $('#dev-sw').focus({ preventScroll: true });
+});
+ask.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); $('#dev-no').click(); } });
+$('#dev-open').addEventListener('click', () => go('dev'));
+// leaving Settings with the question open answers it with Cancel
+new MutationObserver(() => { if (!ask.hidden && !$('#st-settings').classList.contains('on')) askOpen(false); })
+  .observe($('#st-settings'), { attributes: true, attributeFilter: ['class'] });
 applyMode();
 
 /* ---------- talking to the node ----------
