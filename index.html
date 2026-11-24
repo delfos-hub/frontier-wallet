@@ -119,7 +119,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   #fw-splash.gone{opacity:0}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=ef16c24d">
+<link rel="stylesheet" href="assets/css/app.css?v=14c912f7">
 </head>
 <body>
 <div id="rt"></div>
@@ -144,7 +144,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   </div>
   <div class="fw-load"><i></i></div>
 </div>
-<script src="assets/js/splash.js?v=ef16c24d"></script>
+<script src="assets/js/splash.js?v=14c912f7"></script>
 
 <div class="orb"></div>
 
@@ -336,17 +336,27 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
 <!-- ================= UNLOCK ================= -->
 <section class="step" id="st-unlock">
   <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+    <!-- the wallet's mark: its colours, turning; faster while the PIN is checked -->
+    <div class="wava ul-ava" id="unlock-ava" aria-hidden="true"></div>
     <h1 style="text-align:center">Welcome back</h1>
-    <p class="lede" style="text-align:center" id="unlock-addr">...</p>
+    <p class="lede ul-who" style="text-align:center" id="unlock-addr">...</p>
     <div class="pinbox" id="pinboxU">
-      <label>Enter your PIN</label>
+      <label for="pu">Enter your PIN</label>
       <div class="pinrow" id="pinrowU"></div>
-      <input class="pinin" id="pu" type="tel" inputmode="numeric" maxlength="8" autocomplete="off">
-      <div class="meter-txt" id="umsg" style="min-height:0"></div>
+      <input class="pinin" id="pu" type="tel" inputmode="numeric" maxlength="8" autocomplete="off" aria-describedby="umsg">
+      <div class="meter-txt" id="umsg" role="status" style="min-height:0"></div>
+      <div class="ul-bar" id="ubar" hidden><i></i></div>
+      <button class="btn ul-go" id="unlock-go" type="button" disabled>Unlock</button>
+    </div>
+    <!-- wide screens: the other wallets on this device, one click away -->
+    <div class="ul-ws" id="unlock-ws" hidden>
+      <div class="ul-ws-h"><span>Other wallets</span><span id="unlock-ws-n"></span></div>
+      <div class="ul-ws-row" id="unlock-ws-row"></div>
     </div>
   </div>
   <button class="btn" id="unlock-switch" type="button" hidden>Switch wallet</button>
   <button class="btn quiet" id="btn-forget">Forget this wallet</button>
+  <p class="ul-foot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/></svg>Non-custodial · your keys stay in this browser</p>
 </section>
 
 <!-- ================= HOME (placeholder) ================= -->
@@ -1058,23 +1068,23 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=ef16c24d"></script>
-<script src="assets/js/ads.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/swap.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/activity.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/nft.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/wallets.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/seed.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/home-tools.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/p2p.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/gram.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/incoming.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/token.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/defi.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/gov.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/stake.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/fav.js?v=ef16c24d"></script>
-<script type="module" src="assets/js/desktop.js?v=ef16c24d"></script>
+<script type="module" src="assets/js/app.js?v=14c912f7"></script>
+<script src="assets/js/ads.js?v=14c912f7"></script>
+<script type="module" src="assets/js/swap.js?v=14c912f7"></script>
+<script type="module" src="assets/js/activity.js?v=14c912f7"></script>
+<script type="module" src="assets/js/nft.js?v=14c912f7"></script>
+<script type="module" src="assets/js/wallets.js?v=14c912f7"></script>
+<script type="module" src="assets/js/seed.js?v=14c912f7"></script>
+<script type="module" src="assets/js/home-tools.js?v=14c912f7"></script>
+<script type="module" src="assets/js/p2p.js?v=14c912f7"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=14c912f7"></script>
+<script type="module" src="assets/js/gram.js?v=14c912f7"></script>
+<script type="module" src="assets/js/incoming.js?v=14c912f7"></script>
+<script type="module" src="assets/js/token.js?v=14c912f7"></script>
+<script type="module" src="assets/js/defi.js?v=14c912f7"></script>
+<script type="module" src="assets/js/gov.js?v=14c912f7"></script>
+<script type="module" src="assets/js/stake.js?v=14c912f7"></script>
+<script type="module" src="assets/js/fav.js?v=14c912f7"></script>
+<script type="module" src="assets/js/desktop.js?v=14c912f7"></script>
 </body>
 </html>
