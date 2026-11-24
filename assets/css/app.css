@@ -2365,7 +2365,8 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-filter button{min-height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--border);background:#12182A;color:#A9B9D6;
   font:inherit;font-size:12.5px;cursor:pointer}
 .gvd-filter button.on{border-color:#7B5CFF;background:rgba(123,92,255,.18);color:#E8F0FF;font-weight:600}
-.gvd-items{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;padding-right:4px;scrollbar-width:thin}
+.gvd-items{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;padding-right:4px}
+/* no scrollbar-width here: in Chrome it turns off the styled bar (::-webkit-scrollbar) and brings back the browser's white one */
 .gvd-item{display:flex;flex-direction:column;gap:6px;width:100%;padding:13px 14px;border-radius:16px;border:1px solid var(--border);
   background:linear-gradient(180deg,rgba(22,30,48,.92),rgba(18,24,42,.92));color:var(--text);font:inherit;text-align:left;cursor:pointer;
   transition:border-color .15s,box-shadow .15s}

@@ -14,10 +14,10 @@
 //     address is kept, so a second visit draws from cache;
 //   - each collection shows four and opens to all of them;
 //   - tapping a card opens it: the picture, its name, traits and contract.
-import { LCD, getJSON, smart } from './chain.js?v=73e97f22';
-import { $, tap } from './shell.js?v=73e97f22';
-import { cacheGet, cacheSet, mapLimit, txCandidates } from './market.js?v=73e97f22';
-import { S } from './state.js?v=73e97f22';
+import { LCD, getJSON, smart } from './chain.js?v=58088143';
+import { $, tap } from './shell.js?v=58088143';
+import { cacheGet, cacheSet, mapLimit, txCandidates } from './market.js?v=58088143';
+import { S } from './state.js?v=58088143';
 
 const PREVIEW = 4;              // cards per collection before "See all"
 const MAX_IDS = 1000;           // ids read per collection, 100 a page

@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=73e97f22';
-import { $, buzz, go } from './shell.js?v=73e97f22';
-import { S } from './state.js?v=73e97f22';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=73e97f22';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=58088143';
+import { $, buzz, go } from './shell.js?v=58088143';
+import { S } from './state.js?v=58088143';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=58088143';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -884,18 +884,25 @@ function kbCached(id){
   try { const c = JSON.parse(localStorage.getItem('vlogo2:' + id) || 'null'); if (c && Date.now() - c.t < (c.u ? 7 * 86400000 : 86400000)) return c; } catch (e) {}
   return null;
 }
+// pictures that failed once in this session: the table repaints as the stakes
+// come in, and asking for a missing picture again on every repaint made the
+// letter under it flicker
+const NOPIC = new Set();
+// and the ones already shown: drawn again at once, not lazily, so they do not blink either
+const OKPIC = new Set();
 const face = (name, key, op, ident) => {
   const c = kbCached(ident);
-  const src = c && c.u && /^https:\/\//.test(c.u) ? c.u : op ? LOGO(op) : '';
+  let src = c && c.u && /^https:\/\//.test(c.u) ? c.u : op ? LOGO(op) : '';
+  if (NOPIC.has(src)) src = '';
   return '<span class="gv-ava" style="--h:' + hue(key) + '"' + (ident && !c ? ' data-ident="' + esc(ident) + '"' : '') +
     '><em>' + esc((name || '?').trim().slice(0, 1).toUpperCase()) + '</em>' +
-    (src ? '<img src="' + esc(src) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span>';
+    (src ? '<img src="' + esc(src) + '" alt=""' + (OKPIC.has(src) ? '' : ' loading="lazy"') + ' referrerpolicy="no-referrer">' : '') + '</span>';
 };
 let KB_Q = Promise.resolve(), KB_PAUSE = 0;
 function fillLogos(root){
   if (!root) return;
   // a picture that does not load leaves the letter under it
-  root.querySelectorAll('.gv-ava img').forEach(img => { if (!img._w) { img._w = 1; img.addEventListener('error', () => img.remove(), { once: true }); } });
+  root.querySelectorAll('.gv-ava img').forEach(img => { if (!img._w) { img._w = 1; img.addEventListener('load', () => OKPIC.add(img.getAttribute('src')), { once: true }); img.addEventListener('error', () => { NOPIC.add(img.getAttribute('src')); img.remove(); }, { once: true }); } });
   const ids = [...new Set([...root.querySelectorAll('.gv-ava[data-ident]')].map(e => e.getAttribute('data-ident')))];
   if (!ids.length) return;
   // four at a time, behind any lookup already running; after a refusal or an
@@ -925,7 +932,8 @@ function fillLogos(root){
           if (old) old.remove();
           const img = document.createElement('img');
           img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.src = c.u; img._w = 1;
-          img.addEventListener('error', () => img.remove(), { once: true });
+          img.addEventListener('load', () => OKPIC.add(c.u), { once: true });
+          img.addEventListener('error', () => { NOPIC.add(c.u); img.remove(); }, { once: true });
           el.appendChild(img);
         });
       }));
