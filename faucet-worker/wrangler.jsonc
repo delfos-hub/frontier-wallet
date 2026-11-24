@@ -33,7 +33,7 @@
 	"vars": {
 		"CHAIN": "rebel-2",
 		"LCD": "https://lcd.luncblaze.com",
-		"AMOUNT": "20000000000", // uluna per claim: 20,000 LUNC
+		"AMOUNT": "1000000000", // uluna per claim: 1,000 LUNC
 		"COOLDOWN_H": "24", // hours between claims of one address
 		"PER_CLIENT_DAY": "3", // claims per IP (or IPv6 /64) a day
 		"DAILY_CAP": "2000000000000", // uluna across everyone a day: 2,000,000 LUNC
