@@ -11,10 +11,10 @@
    transaction by hash; contract query, execute, code upload and instantiate;
    and the contracts made from this wallet. Every signed action is simulated
    first, the fee is shown, and signing checks it again (tx.js checkFee). */
-import { esc, fmt } from './chain.js?v=cb9ac960';
-import { $, $$, go } from './shell.js?v=cb9ac960';
-import { S } from './state.js?v=cb9ac960';
-import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=cb9ac960';
+import { esc, fmt } from './chain.js?v=d55e7470';
+import { $, $$, go } from './shell.js?v=d55e7470';
+import { S } from './state.js?v=d55e7470';
+import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=d55e7470';
 
 const MAINNET = 'columbus-5';
 
@@ -329,8 +329,9 @@ $('#dv-send-open').addEventListener('click', () => go('tsend'));
 
 /* Test LUNC in Home's token list, when Developer mode is on and the address
    holds some on the test network. The row has no data-k, so tokens.js leaves
-   it alone (it diffs only its own rows) and fav.js puts no star on it; the
-   list is redrawn often, so it is put back whenever it goes. A tap opens the
+   it alone (it diffs only its own rows) and fav.js puts no star on it. It
+   sits first; the list is redrawn often and moves its own rows to the top,
+   so the row is put back first whenever it is not. A tap opens the
    test send. */
 let TEST_LUNC = '0';
 const tokList = $('#tok-list');
@@ -350,11 +351,12 @@ function testRow(){
   }
   li.querySelector('.row-amt').textContent = fmt(Number(TEST_LUNC) / 1e6) + ' · Test coins';
   li.querySelector('.row-sub').textContent = NET.chain;
-  if (li.parentNode !== tokList || li !== tokList.lastElementChild) tokList.appendChild(li);
+  // first in the list, where it is found at a glance
+  if (li !== tokList.firstElementChild) tokList.insertBefore(li, tokList.firstElementChild);
 }
 if (tokList) new MutationObserver(() => {
   const li = tokList.querySelector('li.dv-trow');
-  if ((!li || li !== tokList.lastElementChild) && devOn() && BigInt(TEST_LUNC || '0') > 0n) testRow();
+  if ((!li || li !== tokList.firstElementChild) && devOn() && BigInt(TEST_LUNC || '0') > 0n) testRow();
 }).observe(tokList, { childList: true });
 let SEND = null;
 function sendMsg(){
