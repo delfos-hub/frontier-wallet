@@ -3068,3 +3068,5 @@ html.dk :is(.sw-pick,.sd-pick)[aria-expanded="true"]{border-color:rgba(59,227,25
 :is(.sw-pick,.sd-pick) svg:last-child{transition:transform .2s}
 html.dk :is(.sw-pick,.sd-pick)[aria-expanded="true"] svg:last-child{transform:rotate(180deg)}
 @media (prefers-reduced-motion:reduce){html.dk .sw-sheet.drop .sw-sheet-in{animation:none}}
+/* a menu is not a sheet: the rail stays where it is while one is open */
+html.dk body.sheet-open:has(.sw-sheet.drop:not([hidden])) .tabs{visibility:visible}

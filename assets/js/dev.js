@@ -11,10 +11,10 @@
    transaction by hash; contract query, execute, code upload and instantiate;
    and the contracts made from this wallet. Every signed action is simulated
    first, the fee is shown, and signing checks it again (tx.js checkFee). */
-import { esc, fmt } from './chain.js?v=6edc972c';
-import { $, $$, go } from './shell.js?v=6edc972c';
-import { S } from './state.js?v=6edc972c';
-import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=6edc972c';
+import { esc, fmt } from './chain.js?v=bade985a';
+import { $, $$, go } from './shell.js?v=bade985a';
+import { S } from './state.js?v=bade985a';
+import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=bade985a';
 
 const MAINNET = 'columbus-5';
 
