@@ -181,3 +181,64 @@ export { $, $$, base, bip32, bip39, buzz, dropKeyboard, go, libs, report, ripe, 
   sheets.forEach(s => mo.observe(s, { attributes: true, attributeFilter: ['hidden'] }));
   sync();
 })();
+
+/* Token pickers in a window (Swap, Send) unfold under the field that opened
+   them, as a menu, instead of a second window over the first. The sheets stay
+   what they are - the same list, search and handlers - only placed and shaped
+   differently. On a phone they are bottom sheets, as before. */
+(function pickerDrops(){
+  const ids = ['sw-sheet', 'sd-sheet'];
+  const sheets = ids.map(id => document.getElementById(id)).filter(Boolean);
+  if (!sheets.length || typeof MutationObserver === 'undefined') return;
+  let anchor = null;
+  // capture: noted before the button's own handler opens the sheet
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('.sw-pick, .sd-pick');
+    if (a) anchor = a;
+  }, true);
+  const inner = s => s.querySelector('.sw-sheet-in');
+  function clear(s){
+    s.classList.remove('drop', 'up');
+    const i = inner(s);
+    if (i) ['left', 'width', 'top', 'bottom', 'maxHeight'].forEach(k => { i.style[k] = ''; });
+  }
+  function place(s){
+    const i = inner(s);
+    if (!i || !anchor || !document.documentElement.classList.contains('dk') || !anchor.closest('.step.as-modal')) { clear(s); return; }
+    const r = (anchor.closest('.sw-side') || anchor).getBoundingClientRect();
+    const below = innerHeight - r.bottom - 22, above = r.top - 22;
+    const up = below < 280 && above > below;
+    s.classList.add('drop');
+    s.classList.toggle('up', up);
+    i.style.left = r.left + 'px';
+    i.style.width = r.width + 'px';
+    i.style.top = up ? '' : (r.bottom + 6) + 'px';
+    i.style.bottom = up ? (innerHeight - r.top + 6) + 'px' : '';
+    i.style.maxHeight = Math.min(440, up ? above : below) + 'px';
+  }
+  const open = () => sheets.find(s => !s.hidden && s.classList.contains('drop'));
+  sheets.forEach(s => new MutationObserver(() => {
+    if (!s.hidden) {
+      place(s);
+      if (anchor) anchor.setAttribute('aria-expanded', 'true');
+      const q = s.querySelector('.sw-find input');
+      if (q && s.classList.contains('drop')) q.focus({ preventScroll: true });
+    } else {
+      if (anchor) anchor.setAttribute('aria-expanded', 'false');
+      clear(s);
+    }
+  }).observe(s, { attributes: true, attributeFilter: ['hidden'] }));
+  const shut = s => { const x = s.querySelector('.sw-x'); if (x) x.click(); else s.hidden = true; };
+  // a press beside the menu folds it (the sheet's own backdrop, now clear)
+  sheets.forEach(s => s.addEventListener('click', e => { if (e.target === s && s.classList.contains('drop')) shut(s); }));
+  // Escape folds the menu and leaves the window open
+  document.addEventListener('keydown', e => {
+    const s = open();
+    if (e.key === 'Escape' && s) { e.stopPropagation(); shut(s); if (anchor) anchor.focus({ preventScroll: true }); }
+  }, true);
+  addEventListener('resize', () => { const s = open(); if (s) place(s); });
+  document.addEventListener('scroll', e => {
+    const s = open();
+    if (s && !s.contains(e.target)) place(s);
+  }, true);
+})();

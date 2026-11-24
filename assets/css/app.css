@@ -3046,3 +3046,25 @@ html.dk .tabs .tab[data-tab="dev"].sel{box-shadow:inset 3px 0 0 #FFB547}
 @media (max-width:520px){.dv-ask{margin-left:14px}.dv-ask-b .btn{flex:1}}
 @media (prefers-reduced-motion:reduce){.dv-sw i,.dv-sw,.dv-sw::before{transition:none}.dv-ask,.dv-new,.tab.dv-new:not([hidden]){animation:none}}
 .dv-ask+.st-row::before{content:"";position:absolute;top:0;left:54px;right:0;height:1px;background:var(--border)}
+
+/* Token pickers in Swap and Send windows: a menu that unfolds under the field
+   (placed by shell.js), not a second window. No dimming: the window stays as
+   it is, and a press anywhere outside the menu folds it. */
+html.dk .sw-sheet.drop:not(#tx-sheet){background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0}
+html.dk .sw-sheet.drop:not(#tx-sheet) .sw-sheet-in{position:fixed;margin:0;max-width:none;padding:10px 8px 6px;
+  border-radius:14px;border:1px solid rgba(0,212,255,.34);
+  background:linear-gradient(180deg,#151a42,#0b0e29);
+  box-shadow:0 26px 60px -18px rgba(0,0,0,.95),0 0 0 1px rgba(124,92,255,.16),0 0 30px -12px rgba(0,212,255,.35);
+  animation:pk-down .24s cubic-bezier(.2,.9,.3,1) both}
+html.dk .sw-sheet.drop.up:not(#tx-sheet) .sw-sheet-in{animation-name:pk-up}
+@keyframes pk-down{from{opacity:.4;clip-path:inset(0 0 100% 0 round 14px);transform:translateY(-4px)}to{opacity:1;clip-path:inset(0 0 0 0 round 14px);transform:none}}
+@keyframes pk-up{from{opacity:.4;clip-path:inset(100% 0 0 0 round 14px);transform:translateY(4px)}to{opacity:1;clip-path:inset(0 0 0 0 round 14px);transform:none}}
+html.dk .sw-sheet.drop .sw-sheet-top{display:none}
+html.dk .sw-sheet.drop .sw-find{margin:0 2px 8px}
+html.dk .sw-sheet.drop .sw-item{padding:9px 10px}
+html.dk .sw-sheet.drop .sw-item:hover{background:linear-gradient(90deg,rgba(124,92,255,.16),transparent 90%);box-shadow:inset 2px 0 0 #3BE3FF}
+/* the field that opened it stays lit, its arrow turned up */
+html.dk :is(.sw-pick,.sd-pick)[aria-expanded="true"]{border-color:rgba(59,227,255,.6)!important;box-shadow:0 0 0 3px rgba(59,227,255,.12)}
+:is(.sw-pick,.sd-pick) svg:last-child{transition:transform .2s}
+html.dk :is(.sw-pick,.sd-pick)[aria-expanded="true"] svg:last-child{transform:rotate(180deg)}
+@media (prefers-reduced-motion:reduce){html.dk .sw-sheet.drop .sw-sheet-in{animation:none}}
