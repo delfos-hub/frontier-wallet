@@ -62,6 +62,19 @@ throws('a bad denom refused', () => tx.devAny(D, { kind: 'exec', contract: C, ms
 throws('an empty wasm refused', () => tx.devAny(D, { kind: 'store', wasm: new Uint8Array(0) }), /no wasm/);
 throws('a code id that is not a whole number refused', () => tx.devAny(D, { kind: 'inst', code: '1.5', label: 'x', msg: '{}' }), /whole number/);
 throws('a contract with no label refused', () => tx.devAny(D, { kind: 'inst', code: 1, label: '', msg: '{}' }), /label/);
+const N = 'terra1n3t028lesg4yhmnk9w3utmdxvehlmx9cr6f4jx';
+check('MsgMigrateContract', hex(tx.devAny(D, { kind: 'migrate', contract: C, code: '11803', msg: '{"version":"2"}' })), "0a242f636f736d7761736d2e7761736d2e76312e4d73674d696772617465436f6e74726163741284010a2c7465727261316a68746d6b6d616b6a76767477757230356b6c63376664373265356e33396d3478373563326c1240746572726131367a7a377274706b7775727465397372667a6e61613363746a3335786b386b33726776706d326e37653673346c7230737373727373786433347a189b5c220f7b2276657273696f6e223a2232227d");
+check('MsgUpdateAdmin', hex(tx.devAny(D, { kind: 'admin', contract: C, admin: N })), "0a202f636f736d7761736d2e7761736d2e76312e4d736755706461746541646d696e129e010a2c7465727261316a68746d6b6d616b6a76767477757230356b6c63376664373265356e33396d3478373563326c122c7465727261316e33743032386c6573673479686d6e6b39773375746d64787665686c6d783963723666346a781a40746572726131367a7a377274706b7775727465397372667a6e61613363746a3335786b386b33726776706d326e37653673346c7230737373727373786433347a");
+check('MsgClearAdmin', hex(tx.devAny(D, { kind: 'clearadmin', contract: C })), "0a1f2f636f736d7761736d2e7761736d2e76312e4d7367436c65617241646d696e12700a2c7465727261316a68746d6b6d616b6a76767477757230356b6c63376664373265356e33396d3478373563326c1a40746572726131367a7a377274706b7775727465397372667a6e61613363746a3335786b386b33726776706d326e37653673346c7230737373727373786433347a");
+throws('a migrate to a code id that is not a number refused', () => tx.devAny(D, { kind: 'migrate', contract: C, code: 'x', msg: '{}' }), /whole number/);
+throws('a new admin that is not an address refused', () => tx.devAny(D, { kind: 'admin', contract: C, admin: 'bob' }), /new admin/);
+// the gas settings of a network profile stay inside their bounds
+{
+  const g1 = tx.devGas({ gasPrice: 28.325, gasAdjust: 1.5 }), g2 = tx.devGas({ gasPrice: 99999, gasAdjust: 9 }), g3 = tx.devGas({});
+  check('profile gas settings are used', g1.price + '/' + g1.adjust, '28.325/1.5');
+  check('out of bounds settings fall back', g2.price + '/' + g2.adjust, '28.325/1.3');
+  check('no settings: the defaults', g3.price + '/' + g3.adjust, '28.325/1.3');
+}
 // columbus-5 is refused before a key is even derived
 {
   let msg = '';

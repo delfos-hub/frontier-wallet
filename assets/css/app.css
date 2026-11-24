@@ -2725,8 +2725,17 @@ html.dk .step.as-modal .qr{margin:20px auto 30px}
    so it is never mistaken for mainnet. */
 .tab[hidden]{display:none!important}
 .tab-t{display:none}
-html.dk .tab[data-tab="dev"] .tab-t{display:inline-flex;order:3;margin-left:auto;width:20px;height:20px;border-radius:50%;align-items:center;justify-content:center;
-  font:700 11px/1 'Rajdhani','Exo 2',sans-serif;color:#1a1000;background:linear-gradient(135deg,#FFB547,#FF7A45);box-shadow:0 0 10px rgba(255,160,70,.45)}
+/* DEV sits at the foot of the rail, apart from the wallet's sections, under a
+   hairline; its mark is the same hexagonal TEST chip as the test coins' logo */
+html.dk .tabs .tab[data-tab="dev"]{order:50;margin-top:auto!important}
+html.dk .tabs .tab[data-tab="dev"]::after{content:'';position:absolute;left:10px;right:10px;top:-11px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,181,71,.35),transparent);pointer-events:none}
+html.dk .tabs .tab[data-tab="dev"]:not([hidden]) ~ .dk-foot{margin-top:18px}
+html.dk .tabs .dk-foot{order:60}
+html.dk .tab[data-tab="dev"] .tab-t{display:inline-flex;order:3;margin-left:auto;height:16px;padding:0 8px;align-items:center;justify-content:center;
+  font:800 8.5px/1 'Exo 2',system-ui,sans-serif;letter-spacing:.14em;color:#1a1000;
+  clip-path:polygon(5px 0,calc(100% - 5px) 0,100% 50%,calc(100% - 5px) 100%,5px 100%,0 50%);background:linear-gradient(90deg,#FFC766,#FF8A45)}
+html.dk .tabs .tab[data-tab="dev"].sel{box-shadow:inset 3px 0 0 #FFB547}
 #st-dev{max-width:1240px}
 #st-tsend{max-width:560px}
 .dv-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin:6px 2px 18px}
@@ -2920,3 +2929,39 @@ html.dk .tab[data-tab="dev"] .tab-t{display:inline-flex;order:3;margin-left:auto
 #tok-list li.dv-trow .sym.dv-tsym i{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);height:13px;padding:0 6px;display:flex;align-items:center;
   font:800 7.5px/1 'Exo 2',system-ui,sans-serif;font-style:normal;letter-spacing:.12em;color:#1a1000;white-space:nowrap;
   clip-path:polygon(4px 0,calc(100% - 4px) 0,100% 50%,calc(100% - 4px) 100%,4px 100%,0 50%);background:linear-gradient(90deg,#FFC766,#FF8A45)}
+
+/* DEV: settings, templates, Admin */
+.dv-gear{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px 0 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.03);color:#C9D2EA;font:600 12px 'Exo 2',system-ui,sans-serif;cursor:pointer;transition:border-color .2s,background .2s}
+.dv-gear svg{width:18px;height:18px;transition:transform .5s cubic-bezier(.3,.7,.2,1)}
+.dv-gear:hover,.dv-gear.on{border-color:rgba(255,181,71,.55);background:rgba(255,181,71,.08);color:#fff}
+.dv-gear:hover svg,.dv-gear.on svg{transform:rotate(60deg)}
+.dv-set{margin:0 0 18px}
+.dv-set[hidden]{display:none}
+.dv-set-h{display:flex;flex-direction:column;gap:3px;margin-bottom:14px}
+.dv-set-h b{font-size:15px}.dv-set-h span{font-size:12px;color:var(--muted)}
+.dv-set-prof{display:flex;align-items:flex-end;gap:8px}
+.dv-set-prof .dv-fl{flex:1;margin-bottom:0}
+.dv-set-prof .dv-hx{height:42px;margin-bottom:1px}
+.dv-set-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;margin-top:14px}
+@media (max-width:700px){.dv-set-grid{grid-template-columns:1fr}}
+.dv-set .dv-row{flex-wrap:wrap}
+.dv-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;text-transform:none;letter-spacing:normal}
+:is(#st-dev) .dv-tools select:is(.dv-tpl,.dv-sv){width:auto;max-width:230px;height:30px;padding:0 28px 0 12px;border-radius:999px;font:12px 'Exo 2',system-ui,sans-serif;box-shadow:none}
+.dv-tools.bad .dv-mini-b[data-fmt]{border-color:rgba(255,122,138,.7);color:#FF9CAA}
+.dv-savebox{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dv-savebox[hidden]{display:none}
+:is(#st-dev) .dv-savebox input:not([type=checkbox]){width:150px;padding:5px 10px;border-radius:999px;font:12px 'Exo 2',system-ui,sans-serif}
+#st-dev .dv-savebox label{display:inline-flex;align-items:center;gap:5px;font-size:11px;letter-spacing:normal;text-transform:none;color:var(--muted);margin:0}
+.dv-minis{display:flex;gap:6px;align-items:center;flex:none!important}
+.dv-tabs{grid-template-columns:repeat(4,1fr)}
+.dv-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;margin:2px 0 14px;border-radius:12px;background:rgba(5,7,26,.5);border:1px solid rgba(255,255,255,.07)}
+.dv-seg button{border:0;background:none;padding:8px 0;font:600 12px 'Exo 2',system-ui,sans-serif;color:var(--muted);cursor:pointer;border-radius:9px}
+.dv-seg button.on{color:#fff;background:linear-gradient(90deg,rgba(124,92,255,.4),rgba(0,184,230,.3))}
+.dv-seg button[data-act="clear"].on{background:linear-gradient(90deg,rgba(255,122,138,.35),rgba(255,181,71,.25))}
+.dv-a-f[hidden]{display:none}
+.dv-note.warn{color:#FFC2A0;margin:0 0 10px}
+.dv-signed{margin-top:8px}
+.dv-signed summary{cursor:pointer;font-size:11.5px;color:#9DF1FF;padding:4px 0}
+.dv-signed .dv-json{margin-top:6px}
+.dv-verify{margin-top:10px}

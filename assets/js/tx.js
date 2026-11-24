@@ -1,8 +1,8 @@
-import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=cb59fe64';
-import { $, buzz, go, sha, tap } from './shell.js?v=cb59fe64';
-import { S } from './state.js?v=cb59fe64';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=cb59fe64';
-import { notify } from './notify.js?v=cb59fe64';
+import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=cb9ac960';
+import { $, buzz, go, sha, tap } from './shell.js?v=cb9ac960';
+import { S } from './state.js?v=cb9ac960';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=cb9ac960';
+import { notify } from './notify.js?v=cb9ac960';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -1047,6 +1047,9 @@ export { MEMO_MAX, VOTE_OPTIONS, dryRunVote, sendVote, voteAny };
      MsgStoreCode            sender 1, wasm_byte_code 2
      MsgInstantiateContract  sender 1, admin 2, code_id 3, label 4, msg 5, funds 6
      MsgExecuteContract      sender 1, contract 2, msg 3, funds 5
+     MsgMigrateContract      sender 1, contract 2, code_id 3, msg 4
+     MsgUpdateAdmin          sender 1, new_admin 2, contract 3
+     MsgClearAdmin           sender 1, contract 3
    These run on a test network and nowhere else: a plan for columbus-5 is
    refused before anything is built, so nothing typed into a developer form
    can be signed for mainnet. Storing code costs several million gas, far over
@@ -1056,8 +1059,12 @@ const DEV_URLS = {
   send:  '/cosmos.bank.v1beta1.MsgSend',
   exec:  '/cosmwasm.wasm.v1.MsgExecuteContract',
   store: '/cosmwasm.wasm.v1.MsgStoreCode',
-  inst:  '/cosmwasm.wasm.v1.MsgInstantiateContract'
+  inst:  '/cosmwasm.wasm.v1.MsgInstantiateContract',
+  migrate: '/cosmwasm.wasm.v1.MsgMigrateContract',
+  admin: '/cosmwasm.wasm.v1.MsgUpdateAdmin',
+  clearadmin: '/cosmwasm.wasm.v1.MsgClearAdmin'
 };
+const ADDR_RE = /^terra1[02-9ac-hj-np-z]{38,58}$/;
 const DEV_MAX_GAS = 60000000;
 const coinsOk = cs => (cs || []).every(c => /^[a-zA-Z][a-zA-Z0-9/:._-]{2,127}$/.test(c.denom) && /^\d+$/.test(String(c.amount)) && String(c.amount) !== '0');
 
@@ -1077,10 +1084,31 @@ function devAny(from, m){
       if (!m.label) throw new Error('a contract needs a label');
       return any(DEV_URLS.inst, cat([fStr(1, from), fStr(2, m.admin || ''), fUint(3, String(m.code)),
         fStr(4, m.label), fBytes(5, enc.encode(m.msg)), ...(m.funds || []).map(c => fBytes(6, coin(c)))]));
+    case 'migrate':
+      if (!ADDR_RE.test(m.contract || '')) throw new Error('the contract is not a terra1 address');
+      if (!/^[1-9]\d*$/.test(String(m.code))) throw new Error('the code id must be a whole number');
+      return any(DEV_URLS.migrate, cat([fStr(1, from), fStr(2, m.contract), fUint(3, String(m.code)), fBytes(4, enc.encode(m.msg))]));
+    case 'admin':
+      if (!ADDR_RE.test(m.contract || '')) throw new Error('the contract is not a terra1 address');
+      if (!ADDR_RE.test(m.admin || '')) throw new Error('the new admin is not a terra1 address');
+      return any(DEV_URLS.admin, cat([fStr(1, from), fStr(2, m.admin), fStr(3, m.contract)]));
+    case 'clearadmin':
+      if (!ADDR_RE.test(m.contract || '')) throw new Error('the contract is not a terra1 address');
+      return any(DEV_URLS.clearadmin, cat([fStr(1, from), fStr(3, m.contract)]));
   }
   throw new Error('unknown developer action ' + m.kind);
 }
 
+/* A test network's gas price and adjustment come from the developer's network
+   profile (dev.js), inside bounds: a typo cannot sign a fee a hundred times
+   too high or a gas limit below what the node measured. */
+function devGas(net){
+  const price = Number(net && net.gasPrice), adjust = Number(net && net.gasAdjust);
+  return {
+    price: price > 0 && price <= 1000 ? price : GAS_PRICE,
+    adjust: adjust >= 1 && adjust <= 3 ? adjust : GAS_SAFETY
+  };
+}
 async function devSimulate(body, auth, net){
   const raw = txRaw(body, auth, [new Uint8Array(64)]);
   const r = await fetch(net.lcd + '/cosmos/tx/v1beta1/simulate', {
@@ -1104,13 +1132,18 @@ async function devPlan(from, msgs, mnemonic, net, memo){
   const body = txBody(anys, memo || '');
   const probe = authInfo(key.pub, acc.seq, [{ denom: 'uluna', amount: '1000000' }], DEV_MAX_GAS);
   const used = await devSimulate(body, probe, net);
-  const gas = Math.ceil(used * GAS_SAFETY);
-  return { acc: acc, key: key, body: body, used: used, gas: gas, gasFee: Math.ceil(gas * GAS_PRICE) };
+  const g = devGas(net);
+  const gas = Math.min(Math.ceil(used * g.adjust), DEV_MAX_GAS);
+  return { acc: acc, key: key, body: body, used: used, gas: gas, gasFee: Math.ceil(gas * g.price), price: g.price, adjust: g.adjust };
 }
 
 async function dryRunDev(from, msgs, mnemonic, net, memo){
   const p = await devPlan(from, msgs, mnemonic, net, memo);
-  return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee };
+  // what would be signed, for the developer to read before signing
+  return { gas: p.gas, gasUsed: p.used, gasFee: p.gasFee,
+           signDoc: { chain_id: net.chain, account_number: p.acc.num, sequence: p.acc.seq, memo: memo || '',
+                      fee: { amount: [{ denom: 'uluna', amount: String(p.gasFee) }], gas: String(p.gas) },
+                      gas_price: p.price, gas_adjustment: p.adjust } };
 }
 
 // Rebuilt at signing, as every other send here: the sequence may have moved.
@@ -1122,4 +1155,4 @@ async function sendDev(from, msgs, mnemonic, net, maxFee, memo){
   const hash = await broadcast(txRaw(p.body, auth, [sig]), net);
   return { hash: hash, gasFee: p.gasFee, wait: function(){ return waitFor(hash, 45, net); } };
 }
-export { DEV_URLS, DEV_MAX_GAS, devAny, dryRunDev, sendDev };
+export { DEV_URLS, DEV_MAX_GAS, devAny, devGas, dryRunDev, sendDev };

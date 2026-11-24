@@ -10,12 +10,12 @@
    everything that would sign is switched off (body.is-watch), and the header
    says "Read only". Importing that address's phrase later turns it into a
    full wallet in place. */
-import { $, go, tap } from './shell.js?v=cb59fe64';
-import { S } from './state.js?v=cb59fe64';
-import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=cb59fe64';
-import { dots } from './onboarding.js?v=cb59fe64';
-import { openWallet } from './tokens.js?v=cb59fe64';
-import { dropWallet } from './sync.js?v=cb59fe64';
+import { $, go, tap } from './shell.js?v=cb9ac960';
+import { S } from './state.js?v=cb9ac960';
+import { activeId, removeWallet, renameWallet, setActive, short, wallets } from './storage.js?v=cb9ac960';
+import { dots } from './onboarding.js?v=cb9ac960';
+import { openWallet } from './tokens.js?v=cb9ac960';
+import { dropWallet } from './sync.js?v=cb9ac960';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 

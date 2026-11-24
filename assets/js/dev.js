@@ -11,14 +11,11 @@
    transaction by hash; contract query, execute, code upload and instantiate;
    and the contracts made from this wallet. Every signed action is simulated
    first, the fee is shown, and signing checks it again (tx.js checkFee). */
-import { esc, fmt } from './chain.js?v=cb59fe64';
-import { $, $$, go } from './shell.js?v=cb59fe64';
-import { S } from './state.js?v=cb59fe64';
-import { dryRunDev, sendDev, toRaw } from './tx.js?v=cb59fe64';
+import { esc, fmt } from './chain.js?v=cb9ac960';
+import { $, $$, go } from './shell.js?v=cb9ac960';
+import { S } from './state.js?v=cb9ac960';
+import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=cb9ac960';
 
-const FAUCET = 'https://frontier-faucet.delfoshub-team.workers.dev';
-const DEFAULT_LCD = 'https://lcd.luncblaze.com';
-const FINDER = 'https://finder.terraclassic.community/';
 const MAINNET = 'columbus-5';
 
 const store = {
@@ -27,10 +24,25 @@ const store = {
 };
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const short = a => a && a.length > 20 ? a.slice(0, 12) + '…' + a.slice(-6) : (a || '');
-const NET = { chain: 'rebel-2', lcd: store.get('fw:dev:lcd', DEFAULT_LCD) };
+/* Network profiles: what a developer sets for each test network they use
+   (Settings in this tab). The chain id is never typed: it is read from the
+   node, and columbus-5 is refused (here and in tx.js). Gas price and
+   adjustment are bounded again in tx.js (devGas). */
+const DEFAULT_PROFILE = {
+  id: 'rebel-2', name: 'rebel-2 (public)', lcd: 'https://lcd.luncblaze.com',
+  gasPrice: 28.325, gasAdjust: 1.3,
+  explorer: 'https://finder.terraclassic.community/{chain}/tx/{hash}',
+  faucet: 'https://frontier-faucet.delfoshub-team.workers.dev'
+};
+const DEFAULT_LCD = DEFAULT_PROFILE.lcd;
+let PROFILES = store.get('fw:dev:profiles', null) ||
+  [Object.assign({}, DEFAULT_PROFILE, { lcd: store.get('fw:dev:lcd', DEFAULT_LCD) })];
+let P = PROFILES.find(x => x.id === store.get('fw:dev:profile', '')) || PROFILES[0];
+const NET = { chain: 'rebel-2', lcd: P.lcd, gasPrice: P.gasPrice, gasAdjust: P.gasAdjust };
+function saveProfiles(){ store.set('fw:dev:profiles', PROFILES); store.set('fw:dev:profile', P.id); }
 const enc = new TextEncoder();
 const b64 = s => { const b = enc.encode(s); let t = ''; for (let i = 0; i < b.length; i++) t += String.fromCharCode(b[i]); return btoa(t); };
-const finder = (kind, id) => FINDER + encodeURIComponent(NET.chain) + '/' + kind + '/' + encodeURIComponent(id);
+const finder = (kind, id) => (P.explorer || DEFAULT_PROFILE.explorer).split('{chain}').join(encodeURIComponent(NET.chain)).split('{hash}').join(encodeURIComponent(id));
 
 /* ---------- Developer mode ---------- */
 const devOn = () => store.get('fw:dev', false) === true;
@@ -109,10 +121,24 @@ const minify = (text, what) => JSON.stringify(parseJSON(text, what));
 function needKey(){
   if (!S.MNEMONIC) throw new Error('this wallet is watch-only here: unlock a wallet with its phrase to sign');
 }
-// a fee line, and the button that signs at that fee
-function feeLine(res){
+// the messages as a developer reads them, for "what will be signed"
+function readable(m){
+  const o = { '@type': DEV_URLS[m.kind] || m.kind };
+  if (m.kind === 'send') { o.to_address = m.to; o.amount = m.coins; }
+  if (m.kind === 'exec') { o.contract = m.contract; o.msg = JSON.parse(m.msg); o.funds = m.funds || []; }
+  if (m.kind === 'store') o.wasm_byte_code = m.wasm.length + ' bytes, gzip';
+  if (m.kind === 'inst') { o.admin = m.admin; o.code_id = String(m.code); o.label = m.label; o.msg = JSON.parse(m.msg); o.funds = m.funds || []; }
+  if (m.kind === 'migrate') { o.contract = m.contract; o.code_id = String(m.code); o.msg = JSON.parse(m.msg); }
+  if (m.kind === 'admin') { o.contract = m.contract; o.new_admin = m.admin; }
+  if (m.kind === 'clearadmin') o.contract = m.contract;
+  return o;
+}
+// a fee line, and under it everything that will be signed
+function feeLine(res, msgs){
+  const doc = Object.assign({}, res.signDoc || {}, { msgs: (msgs || []).map(readable) });
   return '<div class="dv-fee"><span>Network fee</span><b>' + fmt(res.gasFee / 1e6) + ' LUNC</b><small>' +
-    res.gas.toLocaleString() + ' gas · test coins</small></div>';
+    res.gas.toLocaleString() + ' gas · test coins</small></div>' +
+    '<details class="dv-signed"><summary>What will be signed</summary>' + pre(doc) + '</details>';
 }
 function txLink(hash){
   return '<a class="dv-link" href="' + esc(finder('tx', hash)) + '" target="_blank" rel="noopener">' + esc(hash.slice(0, 10) + '…' + hash.slice(-8)) + '</a>';
@@ -151,7 +177,8 @@ function editor(id, key){
 const ED = {
   q: editor('dv-q-msg', 'fw:dev:q'),
   x: editor('dv-x-msg', 'fw:dev:x'),
-  i: editor('dv-i-msg', 'fw:dev:i')
+  i: editor('dv-i-msg', 'fw:dev:i'),
+  m: editor('dv-a-msg', 'fw:dev:m')
 };
 
 /* ---------- the node: chain id, height, block time, endpoints ---------- */
@@ -221,7 +248,7 @@ $('#dv-eps').addEventListener('click', e => {
   useLcd(b.dataset.u);
 });
 async function useLcd(u){
-  NET.lcd = u; store.set('fw:dev:lcd', u);
+  NET.lcd = u; P.lcd = u; saveProfiles();
   $('#dv-host').textContent = u.replace(/^https?:\/\//, '');
   LAST = null;
   await readNode(); ping(); firstBlockTime(); balance(); faucetStatus(); mine();
@@ -348,7 +375,7 @@ $('#dv-send-sim').addEventListener('click', async e => {
     const m = sendMsg();
     const res = await dryRunDev(addrOf(), [m], S.MNEMONIC, NET, $('#dv-memo').value);
     SEND = { m: m, fee: res.gasFee, memo: $('#dv-memo').value };
-    out.innerHTML = feeLine(res);
+    out.innerHTML = feeLine(res, [m]);
     $('#dv-send-go').disabled = false;
   } catch (err) { bad(out, err); }
   busy(btn, false);
@@ -374,7 +401,8 @@ async function faucetStatus(){
   const a = addrOf();
   const go_ = $('#dv-fc-go'), next = $('#dv-fc-next'), hold = $('#dv-fc-hold');
   try {
-    const r = await fetch(FAUCET + '/status?address=' + encodeURIComponent(a));
+    if (!P.faucet) { go_.disabled = true; next.textContent = 'No faucet is set for this network (Settings).'; hold.textContent = ''; return; }
+    const r = await fetch(P.faucet + '/status?address=' + encodeURIComponent(a));
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
     FC = j;
@@ -405,7 +433,7 @@ $('#dv-fc-go').addEventListener('click', async e => {
   const out = $('#dv-fc-out'), btn = e.currentTarget;
   busy(btn, true);
   try {
-    const r = await fetch(FAUCET + '/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addrOf() }) });
+    const r = await fetch(P.faucet + '/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addrOf() }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
     out.innerHTML = '<div class="dv-okl">On its way · ' + txLink(j.hash) + '</div>';
@@ -460,15 +488,15 @@ $('#dv-tx-in').addEventListener('keydown', e => { if (e.key === 'Enter') lookup(
 /* ---------- contracts ---------- */
 $$('.dv-tabs button').forEach(b => b.addEventListener('click', () => {
   $$('.dv-tabs button').forEach(x => x.classList.toggle('on', x === b));
-  ['q', 'x', 'u'].forEach(k => { $('#dv-p-' + k).hidden = k !== b.dataset.dv; });
+  ['q', 'x', 'u', 'a'].forEach(k => { $('#dv-p-' + k).hidden = k !== b.dataset.dv; });
 }));
 const contractOk = c => /^terra1[0-9a-z]{38,58}$/.test(c);
 function setContract(c){
-  $('#dv-q-addr').value = c; $('#dv-x-addr').value = c;
+  $('#dv-q-addr').value = c; $('#dv-x-addr').value = c; $('#dv-a-addr').value = c;
   store.set('fw:dev:contract', c);
 }
 setContract(store.get('fw:dev:contract', ''));
-['#dv-q-addr', '#dv-x-addr'].forEach(s => $(s).addEventListener('change', e => setContract(e.target.value.trim())));
+['#dv-q-addr', '#dv-x-addr', '#dv-a-addr'].forEach(s => $(s).addEventListener('change', e => { setContract(e.target.value.trim()); drawTools(); }));
 
 $('#dv-q-go').addEventListener('click', async e => {
   const out = $('#dv-q-out'), btn = e.currentTarget;
@@ -508,7 +536,7 @@ $('#dv-x-sim').addEventListener('click', async e => {
     const memo = $('#dv-x-memo').value;
     const res = await dryRunDev(addrOf(), [m], S.MNEMONIC, NET, memo);
     EXEC = { m: m, fee: res.gasFee, memo: memo };
-    out.innerHTML = feeLine(res);
+    out.innerHTML = feeLine(res, [m]);
     $('#dv-x-go').disabled = false;
   } catch (err) { bad(out, err); }
   busy(btn, false);
@@ -617,7 +645,7 @@ $('#dv-i-sim').addEventListener('click', async e => {
     const m = instMsg();
     const res = await dryRunDev(addrOf(), [m], S.MNEMONIC, NET);
     INST = { m: m, fee: res.gasFee };
-    out.innerHTML = feeLine(res);
+    out.innerHTML = feeLine(res, [m]);
     $('#dv-i-go').disabled = false;
   } catch (err) { bad(out, err); }
   busy(btn, false);
@@ -698,3 +726,339 @@ whenOn($('#st-dev'), onShow);
 // Home's card and the send form read the test balance as they come on
 whenOn($('#st-home'), () => { if (devOn()) balance(); });
 whenOn($('#st-tsend'), () => { $('#dv-send-out').innerHTML = ''; balance(); });
+
+/* ---------- templates, saved messages, format ----------
+   Above every JSON editor. Templates are the usual CW20 / CW721 messages with
+   this wallet's address filled in; saved messages are the developer's own,
+   named, per editor and per contract (or for any contract), kept here and in
+   the settings export. */
+const ME = () => addrOf() || 'terra1…';
+const TEMPLATES = {
+  q: [
+    ['CW20 · balance', () => ({ balance: { address: ME() } })],
+    ['CW20 · token_info', () => ({ token_info: {} })],
+    ['CW20 · allowance', () => ({ allowance: { owner: ME(), spender: 'terra1…' } })],
+    ['CW20 · all_accounts', () => ({ all_accounts: { limit: 30 } })],
+    ['CW20 · minter', () => ({ minter: {} })],
+    ['CW721 · num_tokens', () => ({ num_tokens: {} })],
+    ['CW721 · tokens of mine', () => ({ tokens: { owner: ME(), limit: 30 } })],
+    ['CW721 · owner_of', () => ({ owner_of: { token_id: '1' } })],
+    ['CW721 · nft_info', () => ({ nft_info: { token_id: '1' } })],
+    ['config', () => ({ config: {} })],
+    ['state', () => ({ state: {} })]
+  ],
+  x: [
+    ['CW20 · transfer', () => ({ transfer: { recipient: ME(), amount: '1000000' } })],
+    ['CW20 · send to a contract', () => ({ send: { contract: 'terra1…', amount: '1000000', msg: '' } })],
+    ['CW20 · increase_allowance', () => ({ increase_allowance: { spender: 'terra1…', amount: '1000000' } })],
+    ['CW20 · mint', () => ({ mint: { recipient: ME(), amount: '1000000' } })],
+    ['CW20 · burn', () => ({ burn: { amount: '1000000' } })],
+    ['CW721 · mint', () => ({ mint: { token_id: '1', owner: ME(), token_uri: null, extension: {} } })],
+    ['CW721 · transfer_nft', () => ({ transfer_nft: { recipient: ME(), token_id: '1' } })],
+    ['CW721 · approve', () => ({ approve: { spender: 'terra1…', token_id: '1' } })]
+  ],
+  i: [
+    ['CW20 base', () => ({ name: 'Test Token', symbol: 'TEST', decimals: 6,
+      initial_balances: [{ address: ME(), amount: '1000000000000' }], mint: { minter: ME() } })],
+    ['CW721 base', () => ({ name: 'Test NFT', symbol: 'TNFT', minter: ME() })],
+    ['empty', () => ({})]
+  ],
+  m: [['empty', () => ({})]]
+};
+const EDIT_OF = { q: 'q', x: 'x', i: 'i', m: 'm' };
+const contractFor = ed => ed === 'q' ? $('#dv-q-addr').value.trim() : ed === 'x' ? $('#dv-x-addr').value.trim() : ed === 'm' ? $('#dv-a-addr').value.trim() : '';
+const SAVED = () => store.get('fw:dev:saved', []);
+// Built once; after that only the saved list is redrawn. Rebuilding the whole
+// bar when the contract field changed (its change fires on blur) replaced the
+// button under a click that had already started, and the click was lost.
+function savedOptions(ed, c){
+  const mine = SAVED().map((x, i) => Object.assign({ i: i }, x)).filter(x => x.ed === ed && (!x.contract || x.contract === c));
+  return '<option value="">' + (mine.length ? 'Saved · ' + mine.length : 'Saved: none yet') + '</option>' +
+    mine.map(x => '<option value="' + x.i + '">' + esc(x.name) + (x.contract ? '' : ' · any contract') + '</option>').join('');
+}
+function drawTools(){
+  $$('.dv-tools').forEach(bar => {
+    const ed = bar.dataset.ed, c = contractFor(ed);
+    if (bar.firstChild) {
+      bar.querySelector('.dv-sv').innerHTML = savedOptions(ed, c);
+      bar.querySelector('[data-del]').hidden = true;
+      const only = bar.querySelector('.dv-savebox input[type=checkbox]');
+      only.disabled = !c; if (!c) only.checked = false;
+      return;
+    }
+    bar.innerHTML =
+      '<select class="dv-tpl" aria-label="Templates"><option value="">Templates</option>' +
+        TEMPLATES[ed].map((t, i) => '<option value="' + i + '">' + esc(t[0]) + '</option>').join('') + '</select>' +
+      '<select class="dv-sv" aria-label="Saved">' + savedOptions(ed, c) + '</select>' +
+      '<button class="dv-mini-b" type="button" data-fmt>Format</button>' +
+      '<button class="dv-mini-b" type="button" data-save>Save</button>' +
+      '<button class="dv-mini-b" type="button" data-del hidden>Delete</button>' +
+      '<span class="dv-savebox" hidden><input placeholder="Name" maxlength="40"><label><input type="checkbox"' + (c ? '' : ' disabled') + '> this contract only</label><button class="dv-mini-b" type="button" data-ok>Save</button></span>';
+  });
+}
+document.addEventListener('change', e => {
+  const bar = e.target.closest('.dv-tools');
+  if (!bar) return;
+  const ed = bar.dataset.ed;
+  if (e.target.classList.contains('dv-tpl') && e.target.value !== '') {
+    ED[EDIT_OF[ed]].set(JSON.stringify(TEMPLATES[ed][Number(e.target.value)][1](), null, 2));
+    e.target.value = '';
+  }
+  if (e.target.classList.contains('dv-sv')) {
+    const x = SAVED()[Number(e.target.value)];
+    bar.querySelector('[data-del]').hidden = !x;
+    if (x) ED[EDIT_OF[ed]].set(x.msg);
+  }
+});
+document.addEventListener('click', e => {
+  const bar = e.target.closest('.dv-tools');
+  if (!bar) return;
+  const ed = bar.dataset.ed, E = ED[EDIT_OF[ed]];
+  if (e.target.matches('[data-fmt]')) {
+    try { E.set(JSON.stringify(JSON.parse(E.get()), null, 2)); } catch (err) { bar.classList.add('bad'); setTimeout(() => bar.classList.remove('bad'), 900); }
+  }
+  if (e.target.matches('[data-save]')) { const box = bar.querySelector('.dv-savebox'); box.hidden = !box.hidden; if (!box.hidden) box.querySelector('input').focus(); }
+  if (e.target.matches('[data-ok]')) {
+    const box = bar.querySelector('.dv-savebox'), name = box.querySelector('input').value.trim();
+    try { JSON.parse(E.get()); } catch (err) { box.querySelector('input').placeholder = 'Not valid JSON'; return; }
+    if (!name) { box.querySelector('input').focus(); return; }
+    const only = box.querySelector('input[type=checkbox]').checked;
+    const list = SAVED();
+    list.push({ ed: ed, name: name, msg: E.get(), contract: only ? contractFor(ed) : '' });
+    store.set('fw:dev:saved', list.slice(-200));
+    box.hidden = true; box.querySelector('input').value = '';
+    drawTools();
+  }
+  if (e.target.matches('[data-del]')) {
+    const i = Number(bar.querySelector('.dv-sv').value);
+    const list = SAVED(); list.splice(i, 1); store.set('fw:dev:saved', list);
+    drawTools();
+  }
+});
+drawTools();
+
+/* ---------- contract history and raw state ---------- */
+const hexOf = b64s => { try { return Array.from(atob(b64s), c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(''); } catch (e) { return b64s; } };
+function textOrHex(b64s){
+  try {
+    const t = decodeURIComponent(escape(atob(b64s)));
+    if (/^[\x20-\x7e]*$/.test(t)) return t;
+  } catch (e) {}
+  return '0x' + hexOf(b64s);
+}
+function valueOf(b64s){
+  try { const t = decodeURIComponent(escape(atob(b64s))); try { return JSON.parse(t); } catch (e) { return t; } }
+  catch (e) { return '0x' + hexOf(b64s); }
+}
+$('#dv-q-hist').addEventListener('click', async e => {
+  const out = $('#dv-q-out'), btn = e.currentTarget, c = $('#dv-q-addr').value.trim();
+  busy(btn, true);
+  try {
+    if (!contractOk(c)) throw new Error('the contract is not a terra1 address');
+    const { j } = await api('/cosmwasm/wasm/v1/contract/' + c + '/history');
+    const rows = (j.entries || []).map(x => ({ operation: String(x.operation || '').replace('CONTRACT_CODE_HISTORY_OPERATION_TYPE_', '').toLowerCase(),
+      code_id: x.code_id, height: x.updated && x.updated.block_height, msg: x.msg }));
+    out.innerHTML = '<div class="dv-sub2">Code history · ' + rows.length + '</div>' + pre(rows);
+  } catch (err) { bad(out, err); }
+  busy(btn, false);
+});
+$('#dv-q-state').addEventListener('click', async e => {
+  const out = $('#dv-q-out'), btn = e.currentTarget, c = $('#dv-q-addr').value.trim();
+  busy(btn, true);
+  try {
+    if (!contractOk(c)) throw new Error('the contract is not a terra1 address');
+    const { j } = await api('/cosmwasm/wasm/v1/contract/' + c + '/state?pagination.limit=50');
+    const rows = (j.models || []).map(x => ({ key: textOrHex(x.key), value: valueOf(x.value) }));
+    const more = j.pagination && j.pagination.next_key ? ' · first 50' : '';
+    out.innerHTML = '<div class="dv-sub2">Raw state · ' + rows.length + more + '</div>' + pre(rows);
+  } catch (err) { bad(out, err); }
+  busy(btn, false);
+});
+
+/* ---------- is this file the code on chain? ----------
+   The chain keeps the sha256 of the uncompressed wasm (code_info.data_hash). */
+$('#dv-v-go').addEventListener('click', async e => {
+  const out = $('#dv-v-out'), btn = e.currentTarget, id = $('#dv-v-code').value.trim();
+  busy(btn, true);
+  try {
+    if (!WASM) throw new Error('choose a .wasm file first');
+    if (!/^[1-9]\d*$/.test(id)) throw new Error('the code id must be a whole number');
+    const { j } = await api('/cosmwasm/wasm/v1/code/' + id);
+    const ci = j.code_info || {};
+    let h = String(ci.data_hash || '');
+    if (!/^[0-9a-fA-F]{64}$/.test(h)) h = hexOf(h);
+    const same = h.toLowerCase() === WASM.sum;
+    out.innerHTML = same
+      ? '<div class="dv-okl">Same code: code ' + esc(id) + ' was built from this file (sha256 ' + esc(WASM.sum.slice(0, 12)) + '…).</div>'
+      : '<div class="dv-err">Different code. On chain: ' + esc(h.toLowerCase().slice(0, 16)) + '…, this file: ' + esc(WASM.sum.slice(0, 16)) + '…</div>';
+  } catch (err) { bad(out, err); }
+  busy(btn, false);
+});
+
+/* ---------- Admin: migrate, change admin, remove admin ---------- */
+let ADM = null, ACT = 'migrate';
+$$('.dv-seg button').forEach(b => b.addEventListener('click', () => {
+  ACT = b.dataset.act;
+  $$('.dv-seg button').forEach(x => x.classList.toggle('on', x === b));
+  $$('.dv-a-f').forEach(f => { f.hidden = f.dataset.for !== ACT; });
+  ADM = null; $('#dv-a-go').disabled = true; $('#dv-a-out').innerHTML = '';
+}));
+['#dv-a-addr', '#dv-a-code', '#dv-a-msg', '#dv-a-new'].forEach(s => $(s).addEventListener('input', () => { ADM = null; $('#dv-a-go').disabled = true; }));
+function admMsg(){
+  const c = $('#dv-a-addr').value.trim();
+  if (!contractOk(c)) throw new Error('the contract is not a terra1 address');
+  if (ACT === 'migrate') return { kind: 'migrate', contract: c, code: $('#dv-a-code').value.trim(), msg: minify(ED.m.get() || '{}', 'the migrate message') };
+  if (ACT === 'admin') return { kind: 'admin', contract: c, admin: $('#dv-a-new').value.trim() };
+  return { kind: 'clearadmin', contract: c };
+}
+$('#dv-a-sim').addEventListener('click', async e => {
+  const out = $('#dv-a-out'), btn = e.currentTarget;
+  busy(btn, true);
+  try {
+    needKey();
+    const m = admMsg();
+    const res = await dryRunDev(addrOf(), [m], S.MNEMONIC, NET);
+    ADM = { m: m, fee: res.gasFee };
+    out.innerHTML = feeLine(res, [m]);
+    $('#dv-a-go').disabled = false;
+  } catch (err) { bad(out, err); }
+  busy(btn, false);
+});
+$('#dv-a-go').addEventListener('click', async e => {
+  if (!ADM) return;
+  const out = $('#dv-a-out'), btn = e.currentTarget;
+  busy(btn, true);
+  try {
+    const r = await sendDev(addrOf(), [ADM.m], S.MNEMONIC, NET, ADM.fee);
+    const m = ADM.m;
+    ADM = null; $('#dv-a-go').disabled = true;
+    out.innerHTML = '<div class="dv-okl">Sent · ' + txLink(r.hash) + '</div>';
+    const res = await r.wait();
+    if (res) {
+      out.insertAdjacentHTML('beforeend', '<div class="dv-okl">In block ' + esc(Number(res.height).toLocaleString()) + '. ' +
+        (m.kind === 'migrate' ? 'The contract now runs code ' + esc(m.code) + '.' : m.kind === 'admin' ? 'The admin is now ' + esc(short(m.admin)) + '.' : 'The contract has no admin now.') + '</div>');
+      // the list of contracts shows the new admin
+      const key = 'fw:dev:mine:' + NET.chain + ':' + addrOf(), list = store.get(key, []);
+      list.forEach(x => { if (x.addr === m.contract) { if (m.kind === 'migrate') x.code = m.code; if (m.kind === 'admin') x.admin = m.admin; if (m.kind === 'clearadmin') x.admin = ''; } });
+      store.set(key, list); mine();
+    }
+    balance();
+  } catch (err) { bad(out, err); }
+  busy(btn, false);
+});
+
+/* ---------- Settings: network profiles, gas, explorer, faucet ---------- */
+const FIELDS = { name: '#dv-s-name', lcd: '#dv-s-lcd', gasPrice: '#dv-s-gp', gasAdjust: '#dv-s-ga', explorer: '#dv-s-exp', faucet: '#dv-s-fc' };
+function drawSettings(){
+  $('#dv-prof').innerHTML = PROFILES.map(x => '<option value="' + esc(x.id) + '"' + (x.id === P.id ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('');
+  for (const k in FIELDS) $(FIELDS[k]).value = P[k] == null ? '' : String(P[k]);
+  $('#dv-prof-del').disabled = PROFILES.length < 2;
+}
+const urlOk = u => /^https?:\/\/[^\s/?#]+[^\s]*$/.test(u);
+// a profile as it may be kept: every field checked, nothing else carried
+function cleanProfile(x, id){
+  const name = String(x.name || '').trim().slice(0, 40);
+  const lcd = String(x.lcd || '').trim().replace(/\/+$/, '');
+  const gp = Number(x.gasPrice), ga = Number(x.gasAdjust);
+  const exp = String(x.explorer || '').trim(), fc = String(x.faucet || '').trim().replace(/\/+$/, '');
+  if (!name) throw new Error('give the profile a name');
+  if (!urlOk(lcd)) throw new Error('the LCD must be an http(s) address');
+  if (!(gp > 0 && gp <= 1000)) throw new Error('the gas price must be above 0 and at most 1000 uluna');
+  if (!(ga >= 1 && ga <= 3)) throw new Error('the gas adjustment must be between 1 and 3');
+  if (exp && (!urlOk(exp) || exp.indexOf('{hash}') < 0)) throw new Error('the explorer must be an http(s) address with {hash} in it');
+  if (fc && !urlOk(fc)) throw new Error('the faucet must be an http(s) address, or empty');
+  return { id: String(id || x.id || ('p' + Date.now())).slice(0, 40), name: name, lcd: lcd, gasPrice: gp, gasAdjust: ga, explorer: exp, faucet: fc };
+}
+async function applyProfile(){
+  NET.lcd = P.lcd; NET.gasPrice = P.gasPrice; NET.gasAdjust = P.gasAdjust;
+  saveProfiles();
+  $('#dv-host').textContent = P.lcd.replace(/^https?:\/\//, '');
+  LAST = null; opened = addrOf() + '|' + NET.lcd;
+  await readNode();
+  ping(); firstBlockTime(); balance(); faucetStatus(); mine();
+}
+$('#dv-gear').addEventListener('click', () => {
+  const box = $('#dv-set'), open = box.hidden;
+  box.hidden = !open;
+  $('#dv-gear').setAttribute('aria-expanded', String(open));
+  $('#dv-gear').classList.toggle('on', open);
+  if (open) { drawSettings(); $('#dv-s-out').innerHTML = ''; }
+});
+$('#dv-prof').addEventListener('change', e => {
+  P = PROFILES.find(x => x.id === e.target.value) || P;
+  drawSettings(); applyProfile();
+});
+$('#dv-prof-new').addEventListener('click', () => {
+  const x = Object.assign({}, P, { id: 'p' + Date.now(), name: P.name + ' copy' });
+  PROFILES.push(x); P = x; saveProfiles(); drawSettings();
+  $('#dv-s-name').focus(); $('#dv-s-name').select();
+});
+$('#dv-prof-del').addEventListener('click', () => {
+  if (PROFILES.length < 2) return;
+  PROFILES = PROFILES.filter(x => x !== P); P = PROFILES[0];
+  drawSettings(); applyProfile();
+});
+$('#dv-s-save').addEventListener('click', async () => {
+  const out = $('#dv-s-out');
+  try {
+    const x = {};
+    for (const k in FIELDS) x[k] = $(FIELDS[k]).value;
+    const clean = cleanProfile(x, P.id);
+    // the node must answer, and must not be mainnet, before it is kept
+    const { j } = await api('/cosmos/base/tendermint/v1beta1/node_info', { base: clean.lcd, ms: 8000 });
+    const net = (j.default_node_info || {}).network;
+    if (!net) throw new Error('that LCD did not say which chain it is');
+    if (net === MAINNET) throw new Error('that LCD is mainnet (columbus-5): developer tools stay on test networks');
+    Object.assign(P, clean);
+    out.innerHTML = '<div class="dv-okl">Saved. Using ' + esc(P.name) + ' on ' + esc(net) + '.</div>';
+    drawSettings(); await applyProfile();
+  } catch (err) { bad(out, err); }
+});
+// one file with everything set here: profiles, saved messages, tracked CW20s
+$('#dv-s-export').addEventListener('click', () => {
+  const data = { app: 'frontier-dev', version: 1, profiles: PROFILES, profile: P.id, saved: SAVED(), cw20: {} };
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (/^fw:dev:cw20:/.test(k)) data.cw20[k.slice(12)] = store.get(k, []);
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = 'frontier-dev-settings.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+$('#dv-s-import').addEventListener('click', () => $('#dv-s-file').click());
+$('#dv-s-file').addEventListener('change', async e => {
+  const out = $('#dv-s-out'), f = e.target.files[0];
+  e.target.value = '';
+  try {
+    if (!f) return;
+    if (f.size > 512 * 1024) throw new Error('that file is too large for settings');
+    const d = JSON.parse(await f.text());
+    if (!d || d.app !== 'frontier-dev') throw new Error('that is not a Frontier developer settings file');
+    const profs = (d.profiles || []).slice(0, 20).map(x => cleanProfile(x));
+    if (!profs.length) throw new Error('the file has no network profiles');
+    const saved = (d.saved || []).filter(x => x && TEMPLATES[x.ed] && typeof x.msg === 'string' && x.msg.length < 20000)
+      .slice(0, 200).map(x => ({ ed: x.ed, name: String(x.name || 'saved').slice(0, 40), msg: x.msg, contract: contractOk(x.contract || '') ? x.contract : '' }));
+    PROFILES = profs; P = PROFILES.find(x => x.id === d.profile) || PROFILES[0];
+    store.set('fw:dev:saved', saved);
+    for (const chain in (d.cw20 || {})) {
+      if (!/^[a-z0-9-]{1,40}$/.test(chain)) continue;
+      const list = (d.cw20[chain] || []).filter(x => contractOk(x.addr || '')).slice(0, 100)
+        .map(x => ({ addr: x.addr, sym: String(x.sym || 'CW20').slice(0, 16), dec: Math.min(Math.max(Number(x.dec) || 0, 0), 18) }));
+      store.set('fw:dev:cw20:' + chain, list);
+    }
+    out.innerHTML = '<div class="dv-okl">Imported ' + profs.length + ' profile(s) and ' + saved.length + ' saved message(s).</div>';
+    drawSettings(); drawTools(); await applyProfile();
+  } catch (err) { bad(out, err); }
+});
+$('#dv-s-reset').addEventListener('click', e => {
+  const b = e.currentTarget;
+  // a second press within a few seconds: no browser dialog
+  if (!b.classList.contains('arm')) { b.classList.add('arm'); b.textContent = 'Press again to reset'; setTimeout(() => { b.classList.remove('arm'); b.textContent = 'Reset'; }, 4000); return; }
+  b.classList.remove('arm'); b.textContent = 'Reset';
+  PROFILES = [Object.assign({}, DEFAULT_PROFILE)]; P = PROFILES[0];
+  store.set('fw:dev:saved', []);
+  drawSettings(); drawTools(); applyProfile();
+  $('#dv-s-out').innerHTML = '<div class="dv-okl">Back to the defaults.</div>';
+});
