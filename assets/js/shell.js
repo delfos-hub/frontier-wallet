@@ -80,13 +80,13 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); dropKeyboard(); }
 });
 
-const WALLET_TABS = ['home','stake','gov','activity','settings'];
+const WALLET_TABS = ['home','stake','gov','activity','dev','settings'];
 /* On a desktop, Receive, Send and Swap open as a window over the screen they
    were opened from (a tab, a token's page, DeFi positions), which stays in
    view under it; closing returns there. They are short and come back to where
    they started, so a whole screen for each was more travel than they need.
    The phone keeps them as screens. */
-const MODAL = ['receive','send','swap'];
+const MODAL = ['receive','send','swap','tsend'];
 const UNDER = WALLET_TABS.concat(['token','earn','epos']);
 const modal = () => document.querySelector('.step.as-modal');
 function closeModal(){
