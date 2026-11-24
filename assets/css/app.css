@@ -2472,3 +2472,94 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 /* desktop: moving between sections takes a quarter of a second, not half;
    with a mouse the long room glide read as a delay */
 html.dk body.has-scene .step:is(.on.room-in,.on.room-out,.on.room-right,.on.room-left,.leave-right,.leave-left,.leave-in,.leave-out){animation-duration:.24s}
+
+/* Home in the faceted style (desktop), as the actions and the rail: the main
+   cards chamfered with a lit rim, one head for every section (a faceted icon,
+   the title, a count), the buttons in Core assets inlaid, the token list one
+   panel. The phone keeps its own layout; the icons and pills are wide-screen. */
+.sh-fx,.cx-i{display:none}
+.cx-cta em{font-style:normal}
+html.dk .sh-fx{display:block;width:20px;height:20px;flex:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.6))}
+html.dk .cx-i{display:block;width:18px;height:18px;flex:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))}
+
+/* section heads */
+html.dk :is(.head,.fav-head,.tl-head){align-items:center;margin-left:2px;margin-right:2px}
+html.dk :is(.head h2,.tl-head h2,.fav-head h3){display:flex;align-items:center;gap:10px;margin:0;
+  font-family:'Exo 2',system-ui,sans-serif;font-size:15.5px;font-weight:700;letter-spacing:.02em;color:#fff}
+html.dk .head h2>span{font-size:inherit;color:inherit;letter-spacing:inherit}
+html.dk .fav-head h3>svg:not(.sh-fx){display:none}
+html.dk .fav-n{font-size:11.5px;letter-spacing:.04em}
+html.dk .tl-n{min-width:22px;height:22px;padding:0 6px;box-sizing:border-box;border-radius:11px;border:0;margin:0;
+  display:inline-flex;align-items:center;justify-content:center;font-family:'Rajdhani','Exo 2',sans-serif;font-size:13px;font-weight:700;
+  color:#E8ECF8;background:rgba(124,92,255,.22);box-shadow:inset 0 0 0 1px rgba(155,130,255,.45)}
+html.dk .tl-n:empty{display:none}
+html.dk .tl-tools .ic-btn{width:34px;height:34px;border-radius:0;color:#B9A6FF;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
+html.dk .tl-tools .ic-btn:hover{color:#fff;background:rgba(124,92,255,.16)}
+html.dk .tl-tools .ic-btn.on{color:var(--accent2);background:rgba(0,212,255,.12)}
+
+/* the address: a chip with a copy mark */
+html.dk .waddr{display:inline-flex;align-items:center;gap:7px;margin-top:3px;padding:4px 10px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#C9D2EA;font-size:12px;cursor:pointer;
+  transition:color .2s,border-color .2s,background .2s}
+html.dk .waddr::after{content:'';width:12px;height:12px;flex:none;background:currentColor;opacity:.8;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M5 15V5a2 2 0 0 1 2-2h10'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M5 15V5a2 2 0 0 1 2-2h10'/%3E%3C/svg%3E") center/contain no-repeat}
+html.dk .waddr:hover{color:#fff;border-color:rgba(59,227,255,.35);background:rgba(59,227,255,.06)}
+
+/* chamfered cards with a lit rim: Core assets, DeFi positions */
+html.dk :is(.core,.earn-entry){--cut:16px;isolation:isolate;border:0!important;border-radius:0;overflow:hidden;
+  clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut))}
+html.dk .core{background:linear-gradient(180deg,rgba(160,140,255,.45),rgba(91,227,255,.18) 55%,rgba(255,255,255,.05))}
+html.dk .core::before{inset:1px;height:auto;z-index:-1;clip-path:inherit;
+  background:radial-gradient(90% 70% at 0% 0%,rgba(124,92,255,.16),transparent 60%),linear-gradient(180deg,#161b44,#0e1230)}
+html.dk .core-seam{background:linear-gradient(180deg,transparent,rgba(255,255,255,.08) 15%,rgba(255,255,255,.08) 85%,transparent)}
+html.dk .core-cell{padding:18px 18px 14px}
+html.dk .core-usd{font-size:28px;margin-top:10px}
+html.dk .cx-mk{margin:auto -18px -14px}
+html.dk .cx-px{padding:0 18px 4px}
+html.dk .earn-entry{--cut:14px;padding:16px 18px;box-shadow:none!important;
+  background:linear-gradient(180deg,rgba(0,255,176,.42),rgba(160,140,255,.32) 55%,rgba(255,255,255,.05))}
+html.dk .earn-entry::before{inset:1px;padding:0;border-radius:0;-webkit-mask:none;mask:none;animation:none;clip-path:inherit;
+  background:radial-gradient(120% 140% at 0% 0%,rgba(0,255,176,.12),transparent 55%),radial-gradient(120% 140% at 100% 100%,rgba(123,92,255,.20),transparent 60%),linear-gradient(180deg,#161b44,#0e1230)}
+html.dk .earn-stack .sym{border-color:#141a40}
+html.dk .earn-mid b{font-size:14.5px}
+
+/* LUNC: staked and free in two colours, diamonds for the legend */
+html.dk .cx-split .cx-bar{height:5px;border-radius:3px;background:linear-gradient(90deg,#1798D6,#3BD8F5)}
+html.dk .cx-split .cx-bar i{border-radius:0;background:linear-gradient(90deg,#7B5CFF,#9C84FF);box-shadow:2px 0 0 #0e1230}
+html.dk .cx-split-l{font-size:11px;margin-top:7px}
+html.dk .cx-split-l i{width:7px;height:7px;border-radius:1.5px;transform:rotate(45deg);background:#3BD8F5}
+html.dk .cx-split-l i.st{background:#9C84FF}
+
+/* the buttons in the cells: inlaid, hexagonal, a faceted icon each */
+html.dk .cx-acts{gap:8px}
+html.dk :is(.cx-cta,.cx-acts button){position:relative;isolation:isolate;display:flex;align-items:center;justify-content:center;gap:8px;
+  height:38px;margin-top:12px;padding:0 16px;border:0;border-radius:0;color:#DDE3F5;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+  clip-path:polygon(10px 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,10px 100%,0 50%);
+  background:linear-gradient(180deg,#05071a,rgba(160,140,255,.5));transition:color .2s,background .25s}
+html.dk .cx-acts button{margin-top:0}
+html.dk :is(.cx-cta,.cx-acts button)::before{content:'';position:absolute;inset:1.5px;z-index:-1;clip-path:inherit;
+  background:linear-gradient(180deg,rgba(0,0,0,.5),transparent 40%),linear-gradient(180deg,#0b0e27,#151a45)}
+html.dk :is(.cx-cta,.cx-acts button):hover{color:#fff;background:linear-gradient(180deg,#05071a,#00D4FF)}
+html.dk :is(.cx-cta,.cx-acts button):active{transform:none}
+html.dk .cx-cta em{color:#3DDC97}
+
+/* Tokens / NFT: a track, the chosen side lit and chamfered */
+html.dk .hm-seg{display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:14px;overflow:visible;
+  background:rgba(5,7,26,.5);border:1px solid rgba(255,255,255,.07)}
+html.dk .hm-seg-b{--cut:8px;padding:10px 6px;font-size:12px;font-weight:700;letter-spacing:.16em;transition:color .18s,background .25s;
+  clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut))}
+html.dk .hm-seg-b:hover{color:#C9D2EA}
+html.dk .hm-seg-b.on{color:#fff;background:linear-gradient(90deg,rgba(124,92,255,.45),rgba(0,184,230,.35));box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+html.dk .hm-seg-b.on::after{display:none}
+
+/* the token list: one panel, rows split by a hairline, a cyan edge on hover */
+html.dk #pane-tok .rows{gap:0;padding:6px 0;border-radius:18px;
+  background:linear-gradient(180deg,rgba(26,31,69,.55),rgba(14,18,38,.75));border:1px solid rgba(255,255,255,.07)}
+html.dk #pane-tok .rows li.row{background:none;border:0;border-radius:0;padding:11px 16px;box-shadow:none}
+html.dk #pane-tok .rows li.row+li.row::before{content:'';position:absolute;left:68px;right:16px;top:0;height:1px;background:rgba(255,255,255,.06);pointer-events:none}
+html.dk #pane-tok .rows li.row:hover{background:linear-gradient(90deg,rgba(124,92,255,.14),transparent 85%)!important;
+  box-shadow:inset 3px 0 0 #3BE3FF!important;transform:none!important}
+html.dk #pane-tok .rows li.row:hover::before,html.dk #pane-tok .rows li.row:hover+li.row::before{opacity:0}
+html.dk #pane-tok .rows li.empty{background:none;border:0}

@@ -12,11 +12,11 @@
        of a dash that reads like an error.
    It only adds elements next to the ones tokens.js owns and never writes into
    those, so the two cannot fight over the same text. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=d25116a2';
-import { $ } from './shell.js?v=d25116a2';
-import { S } from './state.js?v=d25116a2';
-import { stakingApr } from './stake.js?v=d25116a2';
-import { refreshBalances } from './tokens.js?v=d25116a2';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=a2345860';
+import { $ } from './shell.js?v=a2345860';
+import { S } from './state.js?v=a2345860';
+import { stakingApr } from './stake.js?v=a2345860';
+import { refreshBalances } from './tokens.js?v=a2345860';
 
 const MARKETS = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=terra-luna,terrausd' +
   '&sparkline=true&price_change_percentage=24h';
@@ -100,6 +100,10 @@ function slot(cell, cls, where){
 // several times a second for as long as Home was open (Pablo, review of #38).
 const LAST = new WeakMap();
 const put = (el, html) => { if (LAST.get(el) !== html) { LAST.set(el, html); el.innerHTML = html; } };
+// faceted icons for the buttons in the cells; shown on a wide screen only (app.css)
+const I_STAKE = '<svg class="cx-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.6 12 20.6l9-5v2l-9 5-9-5z" fill="url(#fw-dv)"/><path d="M3 11.6l9 5 9-5v2l-9 5-9-5z" fill="url(#fw-lv)"/><path d="M12 2.6 21 7.6l-9 5-9-5z" fill="url(#fw-cy)"/></svg>';
+const I_SWAP = '<svg class="cx-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.4h11V3.4l6.5 4.6-6.5 4.6v-3h-11z" fill="url(#fw-lv)"/><path d="M20.5 14.4h-11v-3L3 16l6.5 4.6v-3h11z" fill="url(#fw-cy)"/></svg>';
+const I_RECV = '<svg class="cx-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15h5l1.5 2.5h5L16 15h5v4.2a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 19.2z" fill="url(#fw-dv)"/><path d="M10.4 2.8h3.2v6.4h3.6L12 14.6 6.8 9.2h3.6z" fill="url(#fw-cy)"/></svg>';
 
 function qtyOf(cell){
   const t = (cell.querySelector('.core-qty') || {}).textContent || '';
@@ -117,7 +121,7 @@ function paintEmpty(){
     const box = slot(cell, 'cx-empty');
     const sym = cell.getAttribute('data-sym');
     put(box, zero ? '<span>No ' + sym + ' yet</span><span class="cx-acts">' +
-      '<button type="button" data-go="swap">Swap</button><button type="button" data-go="recv">Receive</button></span>' : '');
+      '<button type="button" data-go="swap">' + I_SWAP + 'Swap</button><button type="button" data-go="recv">' + I_RECV + 'Receive</button></span>' : '');
   });
 }
 
@@ -155,7 +159,7 @@ async function update(){
         const nudge = free >= IDLE_MIN && APR > 0;
         put(box, '<div class="cx-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
           '<div class="cx-split-l"><span><i class="st"></i>Staked ' + fmt(s) + '</span><span><i></i>Free ' + fmt(free) + '</span></div>' +
-          (nudge ? '<button class="cx-cta" type="button" data-go="stake">Stake \u00b7 ' + (APR * 100).toFixed(1) + '% APR</button>' : ''));
+          (nudge ? '<button class="cx-cta" type="button" data-go="stake">' + I_STAKE + 'Stake <em>\u00b7 ' + (APR * 100).toFixed(1) + '% APR</em></button>' : ''));
       } else put(box, '');
     }
     if (sym === 'USTC') {

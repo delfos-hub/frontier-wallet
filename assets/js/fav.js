@@ -13,15 +13,17 @@
    in the list, so a token starred later already has its line: the change and
    the line are this device's own record, labelled with how far back it
    reaches. The line shows from 15 min of record, the % change from an hour. LUNC and USTC are Core assets already. */
-import { $ } from './shell.js?v=d25116a2';
-import { S } from './state.js?v=d25116a2';
-import { esc, iconHTML, paintIcons } from './chain.js?v=d25116a2';
-import { fiatOf, heldTokens, tokKey } from './tokens.js?v=d25116a2';
-import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=d25116a2';
+import { $ } from './shell.js?v=a2345860';
+import { S } from './state.js?v=a2345860';
+import { esc, iconHTML, paintIcons } from './chain.js?v=a2345860';
+import { fiatOf, heldTokens, tokKey } from './tokens.js?v=a2345860';
+import { changed as synced, section as syncSection, syncOn, offer as offerSync } from './sync.js?v=a2345860';
 
 const MAX = 6;
 const CORE = ['native:uluna', 'native:uusd'];
 const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.8 5.8 6.4.9-4.6 4.5 1.1 6.4L12 17.4l-5.7 3 1.1-6.4L2.8 9.5l6.4-.9z"/></svg>';
+// the head's star on a wide screen: faceted, as the other section heads (app.css shows one of the two)
+const STAR_FX = '<svg class="sh-fx" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 16.9 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z" fill="url(#fw-lv)"/><path d="M12 2v14.9L5.9 20.4l1.5-6.8L2.2 9l6.9-.7z" fill="url(#fw-dv)" opacity=".6"/></svg>';
 const now = () => Math.floor(Date.now() / 1000);
 const addr = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 // the home list's tokens, only when they are this wallet's: right after a
@@ -153,7 +155,7 @@ function render(){
   let changed = false;
   favs.forEach(f => { const t = held[f.k]; if (t && (f.sym !== t.sym || f.logo !== t.logo)) { f.sym = t.sym; f.logo = t.logo; changed = true; } });
   if (changed) save(favs);
-  const head = '<div class="fav-head"><h3>' + STAR + '<span>Favorites</span></h3>' +
+  const head = '<div class="fav-head"><h3>' + STAR + STAR_FX + '<span>Favorites</span></h3>' +
     (favs.length ? '<span class="fav-n">' + favs.length + '/' + MAX + '<span class="fav-drag"> \u00b7 <span>drag to reorder</span></span></span>' : '') + '</div>';
   // every priced token in the list, not only the favorites (one write), and
   // before the empty state: the first token starred then already has its line
