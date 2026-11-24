@@ -2563,3 +2563,122 @@ html.dk #pane-tok .rows li.row:hover{background:linear-gradient(90deg,rgba(124,9
   box-shadow:inset 3px 0 0 #3BE3FF!important;transform:none!important}
 html.dk #pane-tok .rows li.row:hover::before,html.dk #pane-tok .rows li.row:hover+li.row::before{opacity:0}
 html.dk #pane-tok .rows li.empty{background:none;border:0}
+
+/* The screens behind Home in the same faceted style (desktop): Receive, Send,
+   Swap, DeFi positions, one position and one token. A faceted icon by each
+   title, an octagon to go back, chamfered cards with a lit rim, inputs set
+   into the card, hexagonal small buttons, chamfered main buttons. The token
+   page's three actions are inlaid octagons, as Home's (the shared four-column
+   grid left an empty, lit fourth cell there). The phone keeps its layout. */
+.fx{display:none}
+html.dk .scr-fx{width:28px;height:28px}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) h1:has(.scr-fx),html.dk #st-swap>.head h2{display:flex;align-items:center;gap:12px}
+html.dk #st-swap>.head h2{font-size:24px}
+html.dk #st-earn .ea-h{font-size:24px}
+
+/* back: an inlaid octagon */
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .bar .back{position:relative;isolation:isolate;width:40px;height:40px;border:0;border-radius:0;display:grid;place-items:center;cursor:pointer;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);background:linear-gradient(180deg,#05071a,rgba(160,140,255,.5));transition:background .25s}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .bar .back::before{content:'';position:absolute;inset:1.5px;z-index:-1;clip-path:inherit;background:linear-gradient(180deg,rgba(0,0,0,.5),transparent 40%),linear-gradient(180deg,#0b0e27,#151a45)}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .bar .back svg{stroke:#B9A6FF;width:17px;height:17px}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .bar .back:hover{background:linear-gradient(180deg,#05071a,#00D4FF)}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .bar .back:hover svg{stroke:#fff}
+
+/* chamfered cards with a lit rim */
+html.dk :is(#st-earn,#st-epos,#st-token) .tk-balcard,html.dk #st-swap .sw-pane{--cut:16px;position:relative;isolation:isolate;border:0;border-radius:0;
+  clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut));background:linear-gradient(180deg,rgba(160,140,255,.45),rgba(91,227,255,.18) 55%,rgba(255,255,255,.05))}
+html.dk :is(#st-earn,#st-epos,#st-token) .tk-balcard::before,html.dk #st-swap .sw-pane::before{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;background:radial-gradient(90% 80% at 0% 0%,rgba(124,92,255,.20),transparent 60%),radial-gradient(80% 80% at 100% 100%,rgba(0,212,255,.08),transparent 60%),linear-gradient(180deg,#161b44,#0e1230)}
+html.dk :is(#st-earn,#st-epos,#st-token) .tk-balcard{padding:20px 22px}
+html.dk #st-earn .tk-balcard{background:linear-gradient(180deg,rgba(0,255,176,.42),rgba(160,140,255,.32) 55%,rgba(255,255,255,.05))}
+html.dk :is(#st-earn,#st-epos,#st-token) .tk-balcard>b{font-size:34px}
+
+/* panels: glass, rows split by a hairline, a cyan edge on the rows you can open */
+html.dk :is(#st-earn,#st-epos,#st-token) .tk-card{border-radius:18px;border:1px solid rgba(255,255,255,.07);
+  background:linear-gradient(180deg,rgba(26,31,69,.55),rgba(14,18,38,.75))}
+html.dk :is(#st-earn,#st-epos,#st-token) :is(.tk-line,.ea-pos){border-bottom-color:rgba(255,255,255,.06)}
+html.dk #st-earn .ea-card{padding:4px 0}
+html.dk #st-earn .ea-pos{padding:14px 18px;transition:background .15s,box-shadow .15s}
+html.dk #st-earn .ea-pos:hover,html.dk #st-token .tk-pos.tap:hover{background:linear-gradient(90deg,rgba(124,92,255,.14),transparent 85%);box-shadow:inset 3px 0 0 #3BE3FF}
+html.dk #st-earn .ea-holds,html.dk #st-earn .ea-rew,html.dk #st-earn .ea-note{margin-left:48px}
+html.dk #earn-list .head h2::before{content:'';width:9px;height:9px;flex:none;border-radius:1.5px;transform:rotate(45deg);
+  background:linear-gradient(180deg,#E4D8FF,#9C84FF);box-shadow:0 0 8px rgba(156,132,255,.5)}
+html.dk #st-earn .ea-logos .sym,html.dk #st-epos .ea-logos .sym{border-color:#121638}
+
+/* small buttons: inlaid hexagons */
+html.dk :is(#st-earn .ea-rescan,#st-send .dust,#st-swap .sw-pct,#st-swap .sw-slip-opts button,#st-epos .ep-act){position:relative;isolation:isolate;border:0;border-radius:0;
+  clip-path:polygon(9px 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,9px 100%,0 50%);background:linear-gradient(180deg,#05071a,rgba(160,140,255,.5));color:#C9D2EA;font-weight:600;cursor:pointer;transition:color .2s,background .25s}
+html.dk :is(#st-earn .ea-rescan,#st-send .dust,#st-swap .sw-pct,#st-swap .sw-slip-opts button,#st-epos .ep-act)::before{content:'';position:absolute;inset:1.5px;z-index:-1;clip-path:inherit;background:linear-gradient(180deg,rgba(0,0,0,.5),transparent 40%),linear-gradient(180deg,#0b0e27,#151a45)}
+html.dk :is(#st-earn .ea-rescan,#st-send .dust,#st-swap .sw-pct,#st-swap .sw-slip-opts button,#st-epos .ep-act):hover:not(:disabled),
+html.dk :is(#st-send .dust.on,#st-swap .sw-slip-opts button.on,#st-epos .ep-act.on){color:#fff;background:linear-gradient(180deg,#05071a,#00D4FF)}
+html.dk #st-earn .ea-rescan{padding:6px 16px;color:#9DF1FF}
+html.dk #st-send .dust{padding:0 16px;height:40px}
+html.dk #st-swap .sw-pct{padding:8px 0}
+html.dk #st-swap .sw-slip-opts button{padding:6px 14px}
+html.dk #st-epos .ep-act{padding:13px 18px;min-height:46px}
+html.dk :is(#st-send .dust,#st-swap .sw-pct,#st-epos .ep-act):active{transform:none}
+
+/* main buttons: chamfered; the outlined ones get a lit rim; quiet ones are text */
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn{--cut:12px;position:relative;isolation:isolate;min-height:50px;border:0;border-radius:0;clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut));
+  background:linear-gradient(180deg,rgba(160,140,255,.45),rgba(91,227,255,.18) 55%,rgba(255,255,255,.05));color:#DDE3F5;transition:filter .2s,background .25s}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn::before{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;background:linear-gradient(180deg,#141a40,#0d1130)}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn.solid{color:#fff;background:linear-gradient(90deg,#5B3DF5,#7B5CFF 45%,#00A8D6);box-shadow:none}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn.solid::before{inset:0;background:linear-gradient(180deg,rgba(255,255,255,.22),transparent 45%,rgba(20,10,80,.25))}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn.quiet{background:none;color:var(--muted);min-height:42px}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn.quiet::before{display:none}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn:hover:not(:disabled){filter:brightness(1.12)}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn.quiet:hover:not(:disabled){color:#fff;filter:none}
+html.dk :is(#st-receive,#st-send,#st-swap,#st-earn,#st-epos,#st-token) .btn:active{transform:none}
+
+/* inputs set into the card */
+html.dk #st-send .field :is(input,textarea),html.dk #st-send .sd-pick,html.dk #st-receive .rc-addr{border-radius:12px;border:1px solid rgba(160,140,255,.18);
+  background:linear-gradient(180deg,#05071a,#0c1030);box-shadow:inset 0 2px 6px rgba(0,0,0,.55),0 1px 0 rgba(160,140,255,.10)}
+html.dk #st-send .field :is(input,textarea):focus{border-color:rgba(59,227,255,.55);box-shadow:inset 0 2px 6px rgba(0,0,0,.55),0 0 0 3px rgba(59,227,255,.12)}
+html.dk #st-send .sd-pick:hover{border-color:rgba(59,227,255,.45)}
+html.dk #st-send .grow{display:none}
+html.dk #st-send #send-review{margin-top:6px}
+
+/* swap: two wells in the card, an octagon to flip, chips to pick the tokens */
+html.dk #st-swap .sw-pane{padding:12px;gap:10px}
+html.dk #st-swap .sw-side{border-radius:12px;border:1px solid rgba(160,140,255,.14);background:linear-gradient(180deg,#05071a,#0c1030);box-shadow:inset 0 2px 8px rgba(0,0,0,.5)}
+html.dk #st-swap .sw-flip{position:relative;isolation:isolate;width:44px;height:44px;margin:-27px 0;border:0;border-radius:0;display:grid;place-items:center;cursor:pointer;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);background:linear-gradient(180deg,rgba(160,140,255,.6),#05071a);transition:background .25s}
+html.dk #st-swap .sw-flip::before{content:'';position:absolute;inset:1.5px;z-index:-1;clip-path:inherit;background:linear-gradient(180deg,#151a45,#0b0e27)}
+html.dk #st-swap .sw-flip:hover{background:linear-gradient(180deg,#00D4FF,#05071a)}
+html.dk #st-swap .sw-pick{border-radius:999px;border:1px solid rgba(155,130,255,.4);background:rgba(124,92,255,.14)}
+html.dk #st-swap .sw-pick:hover{border-color:rgba(59,227,255,.55)}
+html.dk #st-swap .sw-pcts{gap:8px}
+
+/* receive: the code in a frame with lit corners */
+html.dk #st-receive .qr{position:relative;overflow:visible}
+html.dk #st-receive .qr::before{content:'';position:absolute;inset:-12px;pointer-events:none;
+  background:linear-gradient(#9C84FF,#9C84FF) left top/26px 2px,linear-gradient(#9C84FF,#9C84FF) left top/2px 26px,
+    linear-gradient(#3BD8F5,#3BD8F5) right top/26px 2px,linear-gradient(#3BD8F5,#3BD8F5) right top/2px 26px,
+    linear-gradient(#3BD8F5,#3BD8F5) left bottom/26px 2px,linear-gradient(#3BD8F5,#3BD8F5) left bottom/2px 26px,
+    linear-gradient(#9C84FF,#9C84FF) right bottom/26px 2px,linear-gradient(#9C84FF,#9C84FF) right bottom/2px 26px;
+  background-repeat:no-repeat;filter:drop-shadow(0 0 6px rgba(59,227,255,.45))}
+html.dk #st-receive .qr{margin-top:18px;margin-bottom:30px}
+
+/* the token page: Send, Receive, Swap as inlaid octagons in one panel */
+html.dk #st-token .tk-acts{display:flex;gap:4px;padding:14px 18px;margin-bottom:22px;border-radius:22px;
+  background:linear-gradient(180deg,#171c40,#0f1330);border:1px solid rgba(255,255,255,.07);box-shadow:none}
+html.dk #st-token .tk-acts .act{flex:none;width:100px;padding:2px 0;gap:9px;background:none;border:0;border-radius:0;box-shadow:none;filter:none;
+  font-size:11.5px;letter-spacing:.08em;color:#C9D2EA;overflow:visible}
+html.dk #st-token .tk-acts .act[hidden]{display:none}
+html.dk #st-token .tk-acts .act::before,html.dk #st-token .tk-acts .act::after{display:none}
+html.dk #st-token .tk-acts .act>i{position:relative;width:58px;height:58px;display:flex;align-items:center;justify-content:center;
+  background:none;border:0;border-radius:0;box-shadow:none;transition:transform .25s cubic-bezier(.3,.7,.2,1)}
+html.dk #st-token .tk-acts .act>i::before,html.dk #st-token .tk-acts .act>i::after{content:'';position:absolute;clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
+html.dk #st-token .tk-acts .act>i::before{inset:0;background:linear-gradient(180deg,#05071a,#0a0d26 45%,rgba(160,140,255,.55));transition:background .25s}
+html.dk #st-token .tk-acts .act>i::after{inset:2px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent 35%),radial-gradient(circle at 50% 120%,rgba(0,212,255,.18),transparent 60%),linear-gradient(180deg,#0b0e27,#151a45)}
+html.dk #st-token .tk-acts .act>i>svg{display:none}
+html.dk #st-token .tk-acts .act>i>svg.fx{display:block;position:relative;z-index:1;width:28px;height:28px;stroke:none;
+  filter:drop-shadow(0 2px 1.5px rgba(0,0,0,.7)) drop-shadow(0 0 7px rgba(91,227,255,.35))}
+html.dk #st-token .tk-acts .act:hover:not(:disabled){color:#fff}
+html.dk #st-token .tk-acts .act:hover:not(:disabled)>i{transform:translateY(-2px)}
+html.dk #st-token .tk-acts .act:hover:not(:disabled)>i::before{background:linear-gradient(180deg,#05071a,#0a0d26 40%,#00D4FF)}
+html.dk #st-token .tk-acts .act:disabled{opacity:.4;cursor:default}
+@media (prefers-reduced-motion:reduce){html.dk #st-token .tk-acts .act>i{transition:none}}
+/* the main button follows the form on a desktop, not the bottom of the window */
+html.dk #st-swap #sw-go{margin-top:18px}
+html.dk #st-epos .ep-btns{gap:10px}
+html.dk #st-epos .ep-act{flex:0 0 auto;min-width:0;white-space:nowrap;padding:0 26px}
