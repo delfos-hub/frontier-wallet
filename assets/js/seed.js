@@ -9,10 +9,10 @@
    owns sd-sheet and sd-x, and sharing them opened that hidden picker instead.
    There is no copy button: a phrase on the clipboard can be read by any app
    that looks. A watched address has no phrase, so the row is hidden there. */
-import { $, buzz, libs, tap } from './shell.js?v=5bd0e71a';
-import { S } from './state.js?v=5bd0e71a';
-import { decryptSeed } from './storage.js?v=5bd0e71a';
-import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=5bd0e71a';
+import { $, buzz, libs, tap } from './shell.js?v=f69e3e31';
+import { S } from './state.js?v=f69e3e31';
+import { decryptSeed } from './storage.js?v=f69e3e31';
+import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=f69e3e31';
 
 const PIN_LEN = 8;
 let TIMER = null;

@@ -1,16 +1,16 @@
-import { amt, fmt } from './chain.js?v=5bd0e71a';
-import { finish } from './crypto.js?v=5bd0e71a';
-import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=5bd0e71a';
+import { amt, fmt } from './chain.js?v=f69e3e31';
+import { finish } from './crypto.js?v=f69e3e31';
+import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=f69e3e31';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=5bd0e71a';
-import { S } from './state.js?v=5bd0e71a';
-import { activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore, Store, wallets } from './storage.js?v=5bd0e71a';
-import { dropWallet } from './sync.js?v=5bd0e71a';
-import { enter, switchLink } from './wallets.js?v=5bd0e71a';
-import { paintSendTok } from './tx.js?v=5bd0e71a';
-import { luncRaw, openWallet } from './tokens.js?v=5bd0e71a';
-import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=5bd0e71a';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=f69e3e31';
+import { S } from './state.js?v=f69e3e31';
+import { activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore, Store, wallets } from './storage.js?v=f69e3e31';
+import { dropWallet } from './sync.js?v=f69e3e31';
+import { enter, switchLink } from './wallets.js?v=f69e3e31';
+import { paintSendTok } from './tx.js?v=f69e3e31';
+import { luncRaw, openWallet } from './tokens.js?v=f69e3e31';
+import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=f69e3e31';
 
 /* ---------------- unlock ---------------- */
 let tries = 0;
