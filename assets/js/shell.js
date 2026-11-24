@@ -81,7 +81,34 @@ document.addEventListener('keydown', e => {
 });
 
 const WALLET_TABS = ['home','stake','gov','activity','settings'];
+/* On a desktop, Receive, Send and Swap open as a window over the screen they
+   were opened from (a tab, a token's page, DeFi positions), which stays in
+   view under it; closing returns there. They are short and come back to where
+   they started, so a whole screen for each was more travel than they need.
+   The phone keeps them as screens. */
+const MODAL = ['receive','send','swap'];
+const UNDER = WALLET_TABS.concat(['token','earn','epos']);
+const modal = () => document.querySelector('.step.as-modal');
+function closeModal(){
+  const m = modal();
+  if (!m) return false;
+  m.classList.remove('on', 'as-modal');
+  document.body.classList.remove('modal-open');
+  return true;
+}
 function go(name){
+  const dk = document.documentElement.classList.contains('dk');
+  const base = [...document.querySelectorAll('.step.on')].find(s => !s.classList.contains('as-modal'));
+  if (dk && MODAL.includes(name) && base && UNDER.includes(base.id.slice(3))) {
+    tap();
+    const m = modal();
+    if (m && m.id !== 'st-' + name) m.classList.remove('on', 'as-modal');
+    // as-modal before on, in one write: the room move (scene.js) leaves it alone
+    $('#st-' + name).classList.add('as-modal', 'on');
+    document.body.classList.add('modal-open');
+    return;
+  }
+  closeModal();
   tap();
   const t = $('#tabs');
   if (t) {
@@ -94,7 +121,30 @@ function go(name){
   $('#st-' + name).classList.add('on');
   window.scrollTo(0,0);
 }
-$$('[data-go]').forEach(el => el.addEventListener('click', () => go(el.dataset.go)));
+$$('[data-go]').forEach(el => el.addEventListener('click', () => {
+  // inside a window, going "home" (Back, Done, the arrow) means closing it:
+  // back to whatever was under it, which need not be Home
+  if (el.closest('.step.as-modal') && el.dataset.go === 'home') { tap(); closeModal(); return; }
+  go(el.dataset.go);
+}));
+// a window closes on Escape and on a press outside it (a sheet it opened is
+// part of it); pointerdown, so the click that opened it cannot close it
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !modal()) return;
+  if (modal().querySelector('.sw-sheet:not([hidden])')) return;   // the sheet closes first
+  closeModal();
+});
+document.addEventListener('pointerdown', e => {
+  const m = modal();
+  if (!m || m.contains(e.target) || e.target.closest('.sw-sheet, .nt-card, .sync-ask, .crash, .fav-flash')) return;
+  closeModal();
+});
+// the window turning back into a screen when the window narrows to a phone
+new MutationObserver(() => {
+  const m = modal();
+  if (m && !document.documentElement.classList.contains('dk')) { m.classList.remove('as-modal'); document.body.classList.remove('modal-open');
+    $$('.step').forEach(s => { if (s !== m) s.classList.remove('on'); }); }
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
 // One promise, not a flag. Two callers arriving together used to start two
 // imports, and the second could run on a half-filled set of bindings - which

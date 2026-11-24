@@ -2682,3 +2682,39 @@ html.dk #st-token .tk-acts .act:disabled{opacity:.4;cursor:default}
 html.dk #st-swap #sw-go{margin-top:18px}
 html.dk #st-epos .ep-btns{gap:10px}
 html.dk #st-epos .ep-act{flex:0 0 auto;min-width:0;white-space:nowrap;padding:0 26px}
+
+/* Receive, Send and Swap as a window over the screen they came from (desktop,
+   shell.js go). The screen under it stays in view, dimmed; the window is a
+   card with a lit rim. No transform, filter or clip on the window itself:
+   the sheets it opens (token list, confirm) are fixed to the viewport and
+   must stay so. */
+html.dk body.modal-open::before{content:'';position:fixed;inset:0 0 0 var(--rail);z-index:54;
+  background:radial-gradient(70% 60% at 50% 45%,rgba(20,16,60,.55),rgba(4,6,16,.78));
+  backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);animation:modal-dim .2s ease both}
+html.dk body .step.as-modal:is(#st-receive,#st-send,#st-swap){position:fixed!important;z-index:55;inset:0 0 0 var(--rail)!important;margin:auto!important;
+  width:min(560px,calc(100vw - var(--rail) - 64px))!important;max-width:none!important;height:fit-content;max-height:calc(100vh - 64px);
+  min-height:0!important;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;padding:22px 26px 20px!important;
+  border-radius:22px;border:1px solid rgba(160,140,255,.30);
+  background:radial-gradient(90% 60% at 0% 0%,rgba(124,92,255,.18),transparent 60%),radial-gradient(70% 60% at 100% 100%,rgba(0,212,255,.08),transparent 60%),linear-gradient(180deg,#151a42,#0c1029);
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.03) inset,0 1px 0 rgba(255,255,255,.08) inset;
+  animation:modal-in .22s cubic-bezier(.22,1,.36,1) both!important}
+@keyframes modal-dim{from{opacity:0}to{opacity:1}}
+@keyframes modal-in{from{opacity:0}to{opacity:1}}
+/* the head of the window: the title on the left, the close on the right */
+html.dk .step.as-modal>.bar{position:absolute;top:16px;right:18px;margin:0;min-height:0;z-index:2}
+html.dk .step.as-modal>.bar .back svg{display:none}
+html.dk .step.as-modal>.bar .back::after{content:'';width:14px;height:14px;background:#B9A6FF;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E") center/contain no-repeat}
+html.dk .step.as-modal>.bar .back:hover::after{background:#fff}
+html.dk .step.as-modal h1{margin-top:0;padding-right:52px}
+html.dk #st-swap.as-modal>.head{margin:0 56px 14px 0!important}
+/* Swap has no arrow of its own: a close in the same place, only in the window */
+.sw-bar{display:none}
+html.dk #st-swap.as-modal>.sw-bar{display:flex}
+html.dk #st-swap.as-modal>.btn.quiet[data-go="home"]{display:none}
+/* the main button closes the form, not the window */
+html.dk .step.as-modal :is(#sw-go,#send-review){margin-top:16px}
+html.dk .step.as-modal #rc-copy{margin-top:0}
+html.dk .step.as-modal .qr{margin:20px auto 30px}
+@media (prefers-reduced-motion:reduce){html.dk body.modal-open::before,html.dk body .step.as-modal:is(#st-receive,#st-send,#st-swap){animation:none!important}}
