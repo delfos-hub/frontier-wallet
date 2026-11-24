@@ -11,10 +11,10 @@
    transaction by hash; contract query, execute, code upload and instantiate;
    and the contracts made from this wallet. Every signed action is simulated
    first, the fee is shown, and signing checks it again (tx.js checkFee). */
-import { esc, fmt } from './chain.js?v=bade985a';
-import { $, $$, go } from './shell.js?v=bade985a';
-import { S } from './state.js?v=bade985a';
-import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=bade985a';
+import { esc, fmt } from './chain.js?v=2f0876f8';
+import { $, $$, go } from './shell.js?v=2f0876f8';
+import { S } from './state.js?v=2f0876f8';
+import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=2f0876f8';
 
 const MAINNET = 'columbus-5';
 
@@ -203,9 +203,13 @@ function editor(id, key){
   ta.addEventListener('keydown', e => {
     if (e.key === 'Tab') { e.preventDefault(); const p = ta.selectionStart; ta.setRangeText('  ', p, ta.selectionEnd, 'end'); draw(); }
   });
-  if (key) ta.value = store.get(key, '');
+  // The example starts as real text, ready to edit or run. Cleared, the
+  // editor shows it greyed out again - and what is shown is what runs, so
+  // Run on a blank editor sends the example rather than failing on "".
+  const example = ta.getAttribute('placeholder') || '';
+  ta.value = (key && store.get(key, '')) || example;
   draw();
-  return { set(v){ ta.value = v; draw(); }, get: () => ta.value };
+  return { set(v){ ta.value = v; draw(); }, get: () => ta.value.trim() ? ta.value : example };
 }
 const ED = {
   q: editor('dv-q-msg', 'fw:dev:q'),
