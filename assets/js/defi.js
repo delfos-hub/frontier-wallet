@@ -20,14 +20,14 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=ba8afbb2';
-import { DEC, knownAsset, mapLimit, mapPrice, poolPrice, reserves, txCandidates } from './market.js?v=ba8afbb2';
-import { $, buzz, go, tap } from './shell.js?v=ba8afbb2';
-import { S } from './state.js?v=ba8afbb2';
-import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=ba8afbb2';
-import * as P from './defi-parse.js?v=ba8afbb2';
-import { dryRunSwap, sendSwap } from './tx.js?v=ba8afbb2';
-import { notify } from './notify.js?v=ba8afbb2';
+import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=a42946b4';
+import { DEC, knownAsset, mapLimit, mapPrice, poolPrice, reserves, txCandidates } from './market.js?v=a42946b4';
+import { $, buzz, go, tap } from './shell.js?v=a42946b4';
+import { S } from './state.js?v=a42946b4';
+import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=a42946b4';
+import * as P from './defi-parse.js?v=a42946b4';
+import { dryRunSwap, sendSwap } from './tx.js?v=a42946b4';
+import { notify } from './notify.js?v=a42946b4';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -634,26 +634,43 @@ function draw(){
   }), est);
 
   if (!list.length) {
+    DRAWN = '';
+    drawClaimAll();
     box.innerHTML = BUSY ? skel() : '<div class="tk-none">No staking, farm or pool positions found on Garuda, Terraport or Juris for this address.</div>';
     return;
   }
   const by = {};
   list.forEach(p => { (by[p.platform] = by[p.platform] || []).push(p); });
-  box.innerHTML = Object.keys(by).sort().map(function (plat) {
+  const html = Object.keys(by).sort().map(function (plat) {
     const ps = by[plat].sort((a, b) => worth(b).usd - worth(a).usd);
     const sub = ps.reduce((a, p) => a + worth(p).usd, 0);
     return '<div class="head"><h2>' + esc(plat) + '</h2><span class="ea-sum">' + (sub > 0 ? usd(sub) : '') + '</span></div>' +
       '<div class="tk-card ea-card">' + ps.map(card).join('') + '</div>';
   }).join('');
-  paintIcons(box);
+  drawClaimAll();
+  // Redrawn every few seconds as prices and positions arrive. Nothing changed:
+  // nothing touched. Something did: the logos already on screen are moved
+  // into the new cards as they are, because a fresh one starts as a letter
+  // and only then loads its picture - the blinking around the logos.
+  if (html === DRAWN) return;
+  DRAWN = html;
+  const had = {};
+  box.querySelectorAll('.ea-logos[data-k]').forEach(n => { (had[n.dataset.k] = had[n.dataset.k] || []).push(n); });
+  box.innerHTML = html;
+  box.querySelectorAll('.ea-logos[data-k]').forEach(n => {
+    const o = had[n.dataset.k] && had[n.dataset.k].shift();
+    if (o) n.replaceWith(o); else paintIcons(n);
+  });
 }
+let DRAWN = '';
 
 // one or two token logos, the second tucked under the first like a pair badge
 function logos(p, big){
   let keys = p.holds.map(x => x.key);
   if (p.kind === 'order') keys = [p.holds[0] && p.holds[0].key, p.wants && p.wants[0] && p.wants[0].key];
   keys = keys.filter(Boolean).filter((k, i, a) => a.indexOf(k) === i).slice(0, 2);
-  return '<span class="ea-logos' + (keys.length > 1 ? ' two' : '') + (big ? ' big' : '') + '">' +
+  const id = keys.map(k => { const r = rowOf(k); return k + '~' + r.sym + '~' + (r.logo || ''); }).join(',') + (big ? '~big' : '');
+  return '<span class="ea-logos' + (keys.length > 1 ? ' two' : '') + (big ? ' big' : '') + '" data-k="' + esc(id) + '">' +
     keys.map(k => iconHTML(rowOf(k))).join('') + '</span>';
 }
 
@@ -856,6 +873,137 @@ async function confirm(){
   else if (OPEN_POS === p.contract) go('earn');
 }
 
+/* ---------------- every reward at once ----------------
+   One transaction with a claim for each position that has something waiting:
+   the same claim messages each position page sends, checked the same way (a
+   dry run, the fee shown, a second press to sign). A claim the contract
+   would refuse is left out and named, so one stuck position does not hold
+   up the rest. */
+let ALL = null;           // { sig, items, steps, plan, skipped, armed, err, checking, sending }
+const hasReward = p => p.rewards.some(x => { try { return BigInt(x.raw || '0') > 0n; } catch (e) { return Number(x.raw) > 0; } });
+function claimables(){
+  return Object.values(FOUND).map(function (p) {
+    if (!hasReward(p)) return null;
+    const a = actionsOf(p).filter(a => a.id === 'claim')[0];
+    return a ? { p: p, a: a } : null;
+  }).filter(Boolean).sort((x, y) => rewardWorth(y.p) - rewardWorth(x.p));
+}
+// what all of it adds up to, token by token
+function rewardSum(items){
+  const by = {};
+  items.forEach(it => it.p.rewards.forEach(function (x) {
+    let r = 0n;
+    try { r = BigInt(x.raw || '0'); } catch (e) {}
+    by[x.key] = (by[x.key] || 0n) + r;
+  }));
+  return Object.keys(by).filter(k => by[k] > 0n).map(k => ({ key: k, raw: by[k].toString() }));
+}
+function drawClaimAll(){
+  const box = $('#earn-claim');
+  if (!box) return;
+  const items = claimables();
+  const sig = items.map(it => it.p.contract).join(',');
+  // the positions moved under a checked plan: it is checked again
+  if (ALL && ALL.sig !== sig && !ALL.sending) ALL = null;
+  if (items.length < 2 && !(ALL && ALL.sending)) { box.hidden = true; box.innerHTML = ''; box.dataset.drawn = ''; return; }
+  const worthAll = items.reduce((a, it) => a + rewardWorth(it.p), 0);
+  const sums = rewardSum(items);
+  let h = '<div class="ea-ca-row"><div class="ea-ca-t"><b>Rewards waiting' + (worthAll >= 0.01 ? ' · ' + usd(worthAll) : '') + '</b>' +
+    '<span>' + items.length + ' positions · ' + sums.map(x => fmt(human(x)) + ' ' + esc((META[x.key] || {}).sym || '')).join(' + ') + '</span></div>' +
+    '<button class="ea-ca-btn' + (ALL ? ' on' : '') + '" type="button" data-ca="open">Claim all</button></div>';
+  if (ALL) {
+    h += '<div class="ea-ca-panel">';
+    h += '<div class="ea-ca-list">' + items.map(it => '<div class="tk-line"><span>' + esc(it.p.platform) + ' · ' + esc(titleOf(it.p)) + '</span><b>' +
+      it.p.rewards.filter(x => x.raw && x.raw !== '0').map(x => fmt(human(x)) + ' ' + esc((META[x.key] || {}).sym || '')).join(' + ') +
+      ((ALL.skipped || []).indexOf(it.p.contract) >= 0 ? ' <i class="ea-ca-skip">left out</i>' : '') + '</b></div>').join('') + '</div>';
+    if (ALL.skipped && ALL.skipped.length) h += '<p class="tk-note">The contract refused the claim for the position marked "left out" right now; claim it from its own page.</p>';
+    if (ALL.err) h += '<div class="sbad">' + esc(ALL.err) + '</div>';
+    if (ALL.plan) h += '<div class="tk-line"><span>Network fee, one transaction</span><b>' + fmt(amt(ALL.plan.gasFee, 6)) + ' LUNC</b></div>';
+    if (ALL.sending) h += '<button class="btn" type="button" disabled>' + esc(ALL.sending) + '</button>';
+    else if (ALL.plan) h += '<button class="btn solid' + (ALL.armed ? ' danger' : '') + '" type="button" data-ca="go">' +
+      (ALL.armed ? 'Press again to confirm' : 'Claim from ' + (ALL.use || []).length + ' positions') + '</button>';
+    else h += '<button class="btn solid" type="button" data-ca="check"' + (ALL.checking ? ' disabled' : '') + '>' +
+      (ALL.checking ? 'Checking…' : 'Check what this would cost') + '</button>';
+    h += '</div>';
+  }
+  box.hidden = false;
+  if (box.dataset.drawn !== h) { box.dataset.drawn = h; box.innerHTML = h; }
+}
+const withFunds = st => Object.assign({ funds: [] }, st);
+async function checkAll(){
+  if (!S.MNEMONIC) { ALL.err = 'Unlock the wallet first.'; drawClaimAll(); return; }
+  const items = claimables();
+  ALL.checking = true; ALL.err = ''; ALL.skipped = []; drawClaimAll();
+  try {
+    let use = items;
+    let steps = use.map(it => it.a.steps().map(withFunds)).flat();
+    let plan = null;
+    try { plan = await dryRunSwap(me(), steps, S.MNEMONIC); }
+    catch (e) {
+      // which one: each asked alone, the ones that pass go together
+      const ok = [];
+      for (const it of items) {
+        try { await dryRunSwap(me(), it.a.steps().map(withFunds), S.MNEMONIC); ok.push(it); }
+        catch (e2) { ALL.skipped.push(it.p.contract); }
+      }
+      if (!ok.length) throw e;
+      use = ok;
+      steps = use.map(it => it.a.steps().map(withFunds)).flat();
+      plan = await dryRunSwap(me(), steps, S.MNEMONIC);
+    }
+    ALL.use = use; ALL.steps = steps; ALL.plan = plan;
+  } catch (e) {
+    ALL.err = String(e.message || e);
+  }
+  ALL.checking = false;
+  drawClaimAll();
+}
+async function confirmAll(){
+  if (!ALL.armed) {
+    ALL.armed = true; drawClaimAll();
+    const mine = ALL;
+    setTimeout(() => { if (ALL === mine && ALL.armed && !ALL.sending) { ALL.armed = false; drawClaimAll(); } }, 8000);
+    return;
+  }
+  const use = ALL.use || [];
+  ALL.sending = 'Signing and sending…'; drawClaimAll();
+  let sent;
+  try {
+    for (const it of use) await confirmCode(it.p.contract, it.p.src);
+    sent = await sendSwap(me(), ALL.steps, S.MNEMONIC, undefined, '', ALL.plan && ALL.plan.gasFee);
+  } catch (e) { ALL.sending = ''; ALL.armed = false; ALL.plan = null; ALL.err = String(e.message || e); buzz('error'); drawClaimAll(); return; }
+  buzz('success');
+  ALL.sending = 'Waiting for the block…'; drawClaimAll();
+  let res = null, err = null;
+  try { res = await sent.wait(); } catch (e) { err = e; }
+  if (err || !res) {
+    notify({ key: 'earn:' + sent.hash, kind: err ? 'warn' : 'info', label: 'DeFi', title: err ? 'Not done: claim all rewards' : 'Still on its way',
+      text: err ? String(err.message || err).replace(/^failed on chain \(code \d+\):\s*/, '').slice(0, 160)
+                : 'Accepted by the network, not in a block yet.' });
+  } else {
+    notify({ key: 'earn:' + sent.hash, kind: 'success', label: 'DeFi', title: 'Rewards claimed from ' + use.length + ' positions',
+      text: 'Done in block ' + res.height + '. Balances and positions are being read again.' });
+  }
+  ALL = null;
+  document.dispatchEvent(new CustomEvent('frontier:tx', { detail: { hash: sent.hash } }));
+  refreshBalances(true);
+  await Promise.all(use.map(async function (it) {
+    const again = await readJob({ kind: it.p.src, contract: it.p.contract }, me());
+    if (again && again !== FAILED) { await Promise.all(again.holds.concat(again.rewards).map(x => meta(x.key))); FOUND[it.p.contract] = again; }
+    else if (!again) delete FOUND[it.p.contract];
+  }));
+  draw();
+}
+(document.getElementById('earn-claim') || { addEventListener(){} }).addEventListener('click', function (e) {
+  const b = e.target.closest('[data-ca]');
+  if (!b || b.disabled) return;
+  tap();
+  const what = b.dataset.ca;
+  if (what === 'open') { ALL = ALL ? null : { sig: claimables().map(it => it.p.contract).join(',') }; drawClaimAll(); }
+  else if (what === 'check') checkAll();
+  else if (what === 'go') confirmAll();
+});
+
 let OPEN_POS = '';
 
 function amountRow(x, cls){
@@ -912,13 +1060,19 @@ function homeLine(n, total, rewards, rows, est){
   // cards; with nothing known yet, the plain mark stays
   if (st) {
     if (rows && rows.length) {
-      st.innerHTML = rows.map(x => iconHTML(x)).join('') + (n > rows.length ? '<span class="earn-more">+' + (n - rows.length) + '</span>' : '');
-      st.classList.add('logos');
-      paintIcons(st);
+      const h = rows.map(x => iconHTML(x)).join('') + (n > rows.length ? '<span class="earn-more">+' + (n - rows.length) + '</span>' : '');
+      // the same logos as last time stay as they are, pictures loaded
+      if (st.dataset.drawn !== h) {
+        st.dataset.drawn = h;
+        st.innerHTML = h;
+        st.classList.add('logos');
+        paintIcons(st);
+      }
     } else {
       // nothing to show (no positions, or positions whose logos are not
       // known): the plain mark, never the previous wallet's logos
       st.classList.remove('logos');
+      st.dataset.drawn = '';
       st.innerHTML = STACK0;
     }
   }
