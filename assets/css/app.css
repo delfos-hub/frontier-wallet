@@ -2468,3 +2468,7 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 
 /* the send review names the recipient in full (tx.js review) */
 .sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}
+
+/* desktop: moving between sections takes a quarter of a second, not half;
+   with a mouse the long room glide read as a delay */
+html.dk body.has-scene .step:is(.on.room-in,.on.room-out,.on.room-right,.on.room-left,.leave-right,.leave-left,.leave-in,.leave-out){animation-duration:.24s}
