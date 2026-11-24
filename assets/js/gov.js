@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=ef16c24d';
-import { $, buzz, go } from './shell.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=ef16c24d';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=a9477c0d';
+import { $, buzz, go } from './shell.js?v=a9477c0d';
+import { S } from './state.js?v=a9477c0d';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=a9477c0d';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -628,6 +628,10 @@ function badgeFromData(){
 setTimeout(badge, 3000);
 setInterval(badge, 10 * 60000);
 
+// Work a screen starts when it comes on waits for the move onto it to finish
+// (0.24 s on a desktop, 0.42 s on a phone): run in the same frame as the
+// switch, a repaint of a long list held the first frame of the move back.
+const later = fn => setTimeout(fn, document.documentElement.classList.contains('dk') ? 280 : 460);
 // Read whenever the tab comes on screen, so the tally is never stale.
 (function () {
   const st = document.getElementById('st-gov');
@@ -635,7 +639,7 @@ setInterval(badge, 10 * 60000);
   let was = st.classList.contains('on');
   new MutationObserver(() => {
     const on = st.classList.contains('on');
-    if (on && !was) loadGov();
+    if (on && !was) later(loadGov);
     was = on;
   }).observe(st, { attributes: true, attributeFilter: ['class'] });
 })();

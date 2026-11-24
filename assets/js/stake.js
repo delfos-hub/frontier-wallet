@@ -9,11 +9,11 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=ef16c24d';
-import { $, buzz } from './shell.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { luncRaw, refreshBalances } from './tokens.js?v=ef16c24d';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=ef16c24d';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=a9477c0d';
+import { $, buzz } from './shell.js?v=a9477c0d';
+import { S } from './state.js?v=a9477c0d';
+import { luncRaw, refreshBalances } from './tokens.js?v=a9477c0d';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=a9477c0d';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -655,6 +655,10 @@ async function confirm(btn, f){
 
 // Opened before this module loaded, or reopened: read now.
 if (addrOf() && S.MNEMONIC) loadStaking();
+// Work a screen starts when it comes on waits for the move onto it to finish
+// (0.24 s on a desktop, 0.42 s on a phone): run in the same frame as the
+// switch, a repaint of a long list held the first frame of the move back.
+const later = fn => setTimeout(fn, document.documentElement.classList.contains('dk') ? 280 : 460);
 // And again whenever the Stake tab comes on screen, so it is never stale.
 (function () {
   const st = document.getElementById('st-stake');
@@ -662,7 +666,7 @@ if (addrOf() && S.MNEMONIC) loadStaking();
   let was = st.classList.contains('on');
   new MutationObserver(() => {
     const on = st.classList.contains('on');
-    if (on && !was && addrOf()) loadStaking();
+    if (on && !was && addrOf()) later(() => loadStaking());
     was = on;
   }).observe(st, { attributes: true, attributeFilter: ['class'] });
 })();

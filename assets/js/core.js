@@ -12,11 +12,11 @@
        of a dash that reads like an error.
    It only adds elements next to the ones tokens.js owns and never writes into
    those, so the two cannot fight over the same text. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=ef16c24d';
-import { $ } from './shell.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { stakingApr } from './stake.js?v=ef16c24d';
-import { refreshBalances } from './tokens.js?v=ef16c24d';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=a9477c0d';
+import { $ } from './shell.js?v=a9477c0d';
+import { S } from './state.js?v=a9477c0d';
+import { stakingApr } from './stake.js?v=a9477c0d';
+import { refreshBalances } from './tokens.js?v=a9477c0d';
 
 const MARKETS = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=terra-luna,terrausd' +
   '&sparkline=true&price_change_percentage=24h';
@@ -172,6 +172,10 @@ async function update(){
   });
 }
 
+// Work a screen starts when it comes on waits for the move onto it to finish
+// (0.24 s on a desktop, 0.42 s on a phone): run in the same frame as the
+// switch, a repaint of a long list held the first frame of the move back.
+const later = fn => setTimeout(fn, document.documentElement.classList.contains('dk') ? 280 : 460);
 const core = $('#core');
 if (core) {
   core.addEventListener('click', e => {
@@ -200,7 +204,7 @@ if (core) {
     let was = home.classList.contains('on');
     new MutationObserver(() => {
       const on = home.classList.contains('on');
-      if (on && !was) { STK = null; refreshBalances(false); }
+      if (on && !was) { STK = null; later(() => refreshBalances(false)); }
       was = on;
     }).observe(home, { attributes: true, attributeFilter: ['class'] });
   }

@@ -4,12 +4,12 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=ef16c24d';
-import { DEC, knownAsset as marketAsset } from './market.js?v=ef16c24d';
-import { $, go } from './shell.js?v=ef16c24d';
-import { fiatOf, heldTokens } from './tokens.js?v=ef16c24d';
-import { S } from './state.js?v=ef16c24d';
-import { NETS } from './gram-net.js?v=ef16c24d';
+import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=a9477c0d';
+import { DEC, knownAsset as marketAsset } from './market.js?v=a9477c0d';
+import { $, go } from './shell.js?v=a9477c0d';
+import { fiatOf, heldTokens } from './tokens.js?v=a9477c0d';
+import { S } from './state.js?v=a9477c0d';
+import { NETS } from './gram-net.js?v=a9477c0d';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -924,9 +924,13 @@ $('#tx-copy').addEventListener('click', async function () {
   setTimeout(() => { this.textContent = back; }, 1500);
 });
 
+// Work a screen starts when it comes on waits for the move onto it to finish
+// (0.24 s on a desktop, 0.42 s on a phone): run in the same frame as the
+// switch, a repaint of a long list held the first frame of the move back.
+const later = fn => setTimeout(fn, document.documentElement.classList.contains('dk') ? 280 : 460);
 // loaded when the tab is opened, not on boot: the home screen has enough to do
 document.querySelectorAll('[data-tab="activity"]').forEach(b =>
-  b.addEventListener('click', () => { load(); }));
+  b.addEventListener('click', () => { later(load); }));
 
 /* A transaction from somewhere else in the wallet: a send that just landed,
    a notification's Details button. Read by hash if the list has not got it. */

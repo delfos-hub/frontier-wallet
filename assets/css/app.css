@@ -2335,3 +2335,8 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 
 /* the send review names the recipient in full (tx.js review) */
 .sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}
+
+/* desktop: the screen being left goes at once instead of sliding out over
+   the page. Moving it meant pinning and repainting a whole second screen
+   (a long vote table, a long activity list) for every frame of the change. */
+html.dk body.has-scene .step:is(.leave-right,.leave-left,.leave-in,.leave-out){display:none!important;animation:none!important}
