@@ -47,14 +47,14 @@ function rail(on){
     const bal = document.createElement('div');
     bal.className = 'dk-bal'; bal.title = 'Refresh';
     bal.tabIndex = 0; bal.setAttribute('role', 'button');
-    bal.innerHTML = '<span class="dk-sr">Refresh balance. </span><div class="dk-bal-l"><span>Total balance</span><span class="dk-bal-upd" aria-hidden="true">Updated</span></div><div class="dk-bal-v"></div><div class="dk-bal-s"></div>';
+    bal.innerHTML = '<span class="dk-sr">Refresh balance. </span><div class="dk-bal-l"><span>Total balance</span><span class="dk-bal-upd" aria-hidden="true">Updated</span></div><div class="dk-bal-v"></div><div class="dk-bal-s"></div><div class="dk-bal-bar" hidden><i></i><i></i></div>';
     bal.addEventListener('click', () => { const r = document.getElementById('bal-refresh'); if (r) r.click(); });
     bal.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bal.click(); } });
     logo.after(bal);
     mirror();
     foot = document.createElement('div');
     foot.className = 'dk-foot';
-    foot.innerHTML = '<b>FRONTIER WEB</b>Non-custodial. Your keys stay in this browser.';
+    foot.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg><b>FRONTIER WEB</b><span>Non-custodial. Your keys stay in this browser.</span>';
     tabs.append(foot);
   }
   if (!on) { if (logo) logo.remove(); if (foot) foot.remove(); const b = tabs.querySelector('.dk-bal'); if (b) b.remove(); }
@@ -78,6 +78,14 @@ function mirror(){
   }
   const s = box.querySelector('.dk-bal-s');
   s.innerHTML = split && !split.hidden ? split.innerHTML : '';
+  // the bar under them: wallet and DeFi as shares of the total
+  const bar = box.querySelector('.dk-bal-bar');
+  if (bar) {
+    const num = el => { const m = el && el.textContent.replace(/,/g, '').match(/[\d.]+/); return m ? Number(m[0]) : 0; };
+    const b = s.querySelectorAll('b'), w = num(b[0]), d = num(b[1]);
+    bar.hidden = !(w + d > 0);
+    if (w + d > 0) { bar.children[0].style.width = (100 * w / (w + d)) + '%'; bar.children[1].style.width = (100 * d / (w + d)) + '%'; }
+  }
 }
 ['bal-total', 'bal-split', 'bal-upd'].forEach(id => {
   const el = document.getElementById(id);
