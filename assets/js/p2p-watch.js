@@ -16,12 +16,12 @@
    The contract is p2p.js's P2P_CONTRACT (columbus-5, deployed 2026-10-28).
    For a test on another network: localStorage
    fw:p2p:watch = {"lcd":"...","contract":"...","seller":"..."}. */
-import { KNOWN_IBC, LCD, getJSON } from './chain.js?v=683e2b1f';
-import { notify, badge } from './notify.js?v=683e2b1f';
-import { P2P_CONTRACT, openMarket } from './p2p.js?v=683e2b1f';
-import { $ } from './shell.js?v=683e2b1f';
-import { S } from './state.js?v=683e2b1f';
-import { diffOrders } from './p2p-orders.js?v=683e2b1f';
+import { KNOWN_IBC, LCD, getJSON } from './chain.js?v=a030bc00';
+import { notify, badge } from './notify.js?v=a030bc00';
+import { P2P_CONTRACT, openMarket } from './p2p.js?v=a030bc00';
+import { $ } from './shell.js?v=a030bc00';
+import { S } from './state.js?v=a030bc00';
+import { diffOrders } from './p2p-orders.js?v=a030bc00';
 
 function target(){
   let o = null;
