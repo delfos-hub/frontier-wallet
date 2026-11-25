@@ -2357,3 +2357,6 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 @media (max-width:420px){.ea-ca-row{flex-wrap:wrap}.ea-ca-btn{width:100%}}
 /* the bar under the card tucks up into it (-6px); under the rewards block it keeps its distance */
 #st-earn .ea-claimall:not([hidden])+.ea-bar{margin-top:10px}
+/* a sum valued with a kept price (market not readable just now) */
+.ea-usd .ea-old{display:block;font-style:normal;font-size:10.5px;font-weight:500;color:#FFB547;opacity:.85;margin-top:2px;cursor:help}
+.ea-ca-btn:disabled{opacity:.5;cursor:default;filter:none}

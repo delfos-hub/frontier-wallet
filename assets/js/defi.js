@@ -20,14 +20,14 @@
    mainnet answers (tests/defi.mjs). This screen only reads; claiming,
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
-import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=a42946b4';
-import { DEC, knownAsset, mapLimit, mapPrice, poolPrice, reserves, txCandidates } from './market.js?v=a42946b4';
-import { $, buzz, go, tap } from './shell.js?v=a42946b4';
-import { S } from './state.js?v=a42946b4';
-import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=a42946b4';
-import * as P from './defi-parse.js?v=a42946b4';
-import { dryRunSwap, sendSwap } from './tx.js?v=a42946b4';
-import { notify } from './notify.js?v=a42946b4';
+import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js?v=d808ed93';
+import { DEC, knownAsset, mapLimit, mapPrice, poolPrice, reserves, txCandidates } from './market.js?v=d808ed93';
+import { $, buzz, go, tap } from './shell.js?v=d808ed93';
+import { S } from './state.js?v=d808ed93';
+import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js?v=d808ed93';
+import * as P from './defi-parse.js?v=d808ed93';
+import { dryRunSwap, sendSwap } from './tx.js?v=d808ed93';
+import { notify } from './notify.js?v=d808ed93';
 
 const FINDER = 'https://finder.terraclassic.community/columbus-5/address/';
 const JURIS = 'cw20:terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2';
@@ -220,9 +220,13 @@ function keptUnit(key){
 }
 function unitUsd(key){
   const u = fiatOf(Object.assign({}, rowOf(key), { v: 1 }));
-  if (u !== null && u > 0) { keepUnit(key, u); return u; }
-  return keptUnit(key);
+  if (u !== null && u > 0) { keepUnit(key, u); OLD[key] = false; return u; }
+  const k = keptUnit(key);
+  OLD[key] = k !== null;
+  return k;
 }
+// a token whose dollar price is the kept one, not a fresh read (#80 review)
+const OLD = {};
 function dollars(x){
   const u = unitUsd(x.key);
   return u === null ? null : u * human(x);
@@ -596,15 +600,15 @@ const ICON = {
 };
 
 function worth(p){
-  let sum = 0, priced = 0;
-  for (const x of p.holds) { const d = dollars(x); if (d !== null) { sum += d; priced++; } }
+  let sum = 0, priced = 0, old = false;
+  for (const x of p.holds) { const d = dollars(x); if (d !== null) { sum += d; priced++; if (OLD[x.key]) old = true; } }
   // A constant-product pool holds equal value on each side, so a pair with one
   // side unpriced is worth twice the other: what the exchange itself shows
   // (IDEV/LTK on Garuda), marked as an estimate rather than "at least".
   if ((p.kind === 'farm' || p.kind === 'pool') && p.holds.length === 2 && priced === 1 && sum > 0) {
-    return { usd: sum * 2, complete: false, est: true };
+    return { usd: sum * 2, complete: false, est: true, old: old };
   }
-  return { usd: sum, complete: priced === p.holds.length && p.holds.length > 0 };
+  return { usd: sum, complete: priced === p.holds.length && p.holds.length > 0, old: old };
 }
 function rewardWorth(p){
   let sum = 0;
@@ -701,7 +705,8 @@ function card(p){
     '<div class="ea-top">' + logos(p) +
       '<div class="ea-mid"><b>' + esc(titleOf(p)) + '</b><span>' + esc(p.label) +
         (p.share ? ' \u00b7 ' + pct(p.share) + ' of pool' : '') + tag + '</span></div>' +
-      '<div class="ea-usd">' + (w.usd > 0 ? (w.complete ? '' : w.est ? '\u2248 ' : '\u2265 ') + usd(w.usd) : '') + '</div>' +
+      '<div class="ea-usd">' + (w.usd > 0 ? (w.complete ? '' : w.est ? '\u2248 ' : '\u2265 ') + usd(w.usd) +
+        (w.old ? '<i class="ea-old" title="The market could not be read just now: this uses the last price seen, up to a day old">earlier price</i>' : '') : '') + '</div>' +
       '<svg class="ea-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>' +
     (p.missing ? '<div class="ea-note">Could not value the LP right now</div>' : '<div class="ea-holds">' + holds + '</div>') +
     rew +
@@ -910,7 +915,7 @@ function drawClaimAll(){
   const sums = rewardSum(items);
   let h = '<div class="ea-ca-row"><div class="ea-ca-t"><b>Rewards waiting' + (worthAll >= 0.01 ? ' · ' + usd(worthAll) : '') + '</b>' +
     '<span>' + items.length + ' positions · ' + sums.map(x => fmt(human(x)) + ' ' + esc((META[x.key] || {}).sym || '')).join(' + ') + '</span></div>' +
-    '<button class="ea-ca-btn' + (ALL ? ' on' : '') + '" type="button" data-ca="open">Claim all</button></div>';
+    '<button class="ea-ca-btn' + (ALL ? ' on' : '') + '" type="button" data-ca="open"' + (ALL && (ALL.sending || ALL.checking) ? ' disabled' : '') + '>Claim all</button></div>';
   if (ALL) {
     h += '<div class="ea-ca-panel">';
     h += '<div class="ea-ca-list">' + items.map(it => '<div class="tk-line"><span>' + esc(it.p.platform) + ' · ' + esc(titleOf(it.p)) + '</span><b>' +
@@ -931,9 +936,11 @@ function drawClaimAll(){
 }
 const withFunds = st => Object.assign({ funds: [] }, st);
 async function checkAll(){
-  if (!S.MNEMONIC) { ALL.err = 'Unlock the wallet first.'; drawClaimAll(); return; }
+  const A = ALL;
+  if (!A) return;
+  if (!S.MNEMONIC) { A.err = 'Unlock the wallet first.'; drawClaimAll(); return; }
   const items = claimables();
-  ALL.checking = true; ALL.err = ''; ALL.skipped = []; drawClaimAll();
+  A.checking = true; A.err = ''; A.skipped = []; drawClaimAll();
   try {
     let use = items;
     let steps = use.map(it => it.a.steps().map(withFunds)).flat();
@@ -944,36 +951,39 @@ async function checkAll(){
       const ok = [];
       for (const it of items) {
         try { await dryRunSwap(me(), it.a.steps().map(withFunds), S.MNEMONIC); ok.push(it); }
-        catch (e2) { ALL.skipped.push(it.p.contract); }
+        catch (e2) { A.skipped.push(it.p.contract); }
       }
       if (!ok.length) throw e;
       use = ok;
       steps = use.map(it => it.a.steps().map(withFunds)).flat();
       plan = await dryRunSwap(me(), steps, S.MNEMONIC);
     }
-    ALL.use = use; ALL.steps = steps; ALL.plan = plan;
+    A.use = use; A.steps = steps; A.plan = plan;
   } catch (e) {
-    ALL.err = String(e.message || e);
+    A.err = String(e.message || e);
   }
-  ALL.checking = false;
+  A.checking = false;
   drawClaimAll();
 }
 async function confirmAll(){
-  if (!ALL.armed) {
-    ALL.armed = true; drawClaimAll();
-    const mine = ALL;
-    setTimeout(() => { if (ALL === mine && ALL.armed && !ALL.sending) { ALL.armed = false; drawClaimAll(); } }, 8000);
+  // A local reference: whatever happens to ALL meanwhile (a press on Claim all,
+  // the positions moving), the claim in flight still reports and refreshes.
+  const A = ALL;
+  if (!A) return;
+  if (!A.armed) {
+    A.armed = true; drawClaimAll();
+    setTimeout(() => { if (A.armed && !A.sending) { A.armed = false; drawClaimAll(); } }, 8000);
     return;
   }
-  const use = ALL.use || [];
-  ALL.sending = 'Signing and sending…'; drawClaimAll();
+  const use = A.use || [];
+  A.sending = 'Signing and sending…'; drawClaimAll();
   let sent;
   try {
     for (const it of use) await confirmCode(it.p.contract, it.p.src);
-    sent = await sendSwap(me(), ALL.steps, S.MNEMONIC, undefined, '', ALL.plan && ALL.plan.gasFee);
-  } catch (e) { ALL.sending = ''; ALL.armed = false; ALL.plan = null; ALL.err = String(e.message || e); buzz('error'); drawClaimAll(); return; }
+    sent = await sendSwap(me(), A.steps, S.MNEMONIC, undefined, '', A.plan && A.plan.gasFee);
+  } catch (e) { A.sending = ''; A.armed = false; A.plan = null; A.err = String(e.message || e); buzz('error'); drawClaimAll(); return; }
   buzz('success');
-  ALL.sending = 'Waiting for the block…'; drawClaimAll();
+  A.sending = 'Waiting for the block…'; drawClaimAll();
   let res = null, err = null;
   try { res = await sent.wait(); } catch (e) { err = e; }
   if (err || !res) {
@@ -984,7 +994,7 @@ async function confirmAll(){
     notify({ key: 'earn:' + sent.hash, kind: 'success', label: 'DeFi', title: 'Rewards claimed from ' + use.length + ' positions',
       text: 'Done in block ' + res.height + '. Balances and positions are being read again.' });
   }
-  ALL = null;
+  if (ALL === A) ALL = null;
   document.dispatchEvent(new CustomEvent('frontier:tx', { detail: { hash: sent.hash } }));
   refreshBalances(true);
   await Promise.all(use.map(async function (it) {
@@ -999,7 +1009,8 @@ async function confirmAll(){
   if (!b || b.disabled) return;
   tap();
   const what = b.dataset.ca;
-  if (what === 'open') { ALL = ALL ? null : { sig: claimables().map(it => it.p.contract).join(',') }; drawClaimAll(); }
+  // while a claim is checked, signed or on its way the block stays open (#80 review)
+  if (what === 'open') { if (ALL && (ALL.sending || ALL.checking)) return; ALL = ALL ? null : { sig: claimables().map(it => it.p.contract).join(',') }; drawClaimAll(); }
   else if (what === 'check') checkAll();
   else if (what === 'go') confirmAll();
 });
