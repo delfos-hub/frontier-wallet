@@ -224,8 +224,25 @@ textarea{resize:none;min-height:110px;line-height:1.8}
 .pinbox label{margin-bottom:14px}
 .tiny{font-size:11.5px;color:var(--muted);text-align:center;line-height:1.6;margin-top:10px}
 .wtop{display:flex;align-items:center;gap:11px;margin-bottom:16px}
-.wava{width:40px;height:40px;border-radius:50%;flex:none;
-  background:linear-gradient(135deg,var(--accent-dark),var(--accent2))}
+/* The wallet's mark: the Frontier bolt on a dark disc, ringed by an arc in
+   the wallet's own two colours (--wa, --wb, from its address) that turns
+   slowly around it, a glow trailing at its head. */
+.wava,.wl-ava{position:relative;width:40px;height:40px;border-radius:50%;flex:none;isolation:isolate;
+  --wa:var(--accent);--wb:var(--accent2);
+  background:radial-gradient(circle at 50% 38%,#1d2352 0%,#0d1124 72%)}
+.wava::before,.wl-ava::before{content:"";position:absolute;inset:0;border-radius:50%;z-index:-1;
+  background:conic-gradient(from 0deg,transparent 0deg,transparent 40deg,var(--wa) 150deg,var(--wb) 300deg,#fff 340deg,transparent 344deg);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2.5px));
+          mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2.5px));
+  filter:drop-shadow(0 0 3px var(--wb));
+  animation:wava-turn 7s linear infinite}
+.wava::after,.wl-ava::after{content:"";position:absolute;inset:22%;
+  background:url(../frontier-mark.svg) center/contain no-repeat;
+  filter:drop-shadow(0 0 4px rgba(124,92,255,.55))}
+@keyframes wava-turn{to{transform:rotate(360deg)}}
+/* one ring turning at a time is enough: the list's rings stand still until hovered */
+.wl-ava::before{animation-play-state:paused}
+.wl-row:hover .wl-ava::before,.wl-row.on .wl-ava::before{animation-play-state:running}
 .wwho{flex:1;min-width:0}
 .wname{font-weight:600;font-size:15px;line-height:1.2}
 .waddr{font-size:12px;color:var(--muted);margin-top:1px;font-family:ui-monospace,monospace}
@@ -1585,7 +1602,7 @@ button.wname svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-wid
 .wl-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:10px;padding:11px 10px;
   border:1px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer}
 .wl-row.on{border-color:rgba(0,212,255,.45);background:rgba(0,212,255,.06)}
-.wl-ava{width:34px;height:34px;border-radius:50%}
+.wl-ava{width:34px;height:34px}
 .wl-mid{min-width:0;display:flex;flex-direction:column}
 .wl-mid b{font-size:14px;color:var(--text);display:flex;align-items:center;gap:6px}
 .wl-mid span{font-size:11.5px;color:var(--muted);font-family:ui-monospace,monospace}
@@ -2364,6 +2381,73 @@ html.dk .tabs .dk-bal-s b{color:#E6ECFF;font-weight:600}
 /* the wordmark over the PIN on a wide screen, as the rail is not shown there */
 html.dk #st-unlock::before{content:'';display:block;width:220px;height:46px;margin:0 auto 34px;
   background:url(../frontier-wordmark.png) center/contain no-repeat;filter:drop-shadow(0 0 18px rgba(59,227,255,.35))}
+/* ---- unlock: the wallet's mark, the PIN, the wait (phone and wide) ---- */
+.ul-ava{width:72px;height:72px;margin:0 auto 18px}
+.ul-ava::before{animation-duration:7s}
+.ul-ava.fast::before{animation-duration:.9s}
+.ul-ava.err::before{background:conic-gradient(from 0deg,transparent 0deg,transparent 40deg,#ff5d7a 150deg,#ff9a6b 300deg,#fff 340deg,transparent 344deg);
+  filter:drop-shadow(0 0 6px #ff5d7a)}
+.ul-who{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}
+.ul-addr{padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);
+  color:#C9D2EA;font-family:ui-monospace,monospace;font-size:12.5px;cursor:pointer;transition:border-color .15s}
+.ul-addr:hover{border-color:rgba(0,212,255,.4)}
+.ul-addr.ok{border-color:var(--green);color:var(--green)}
+@keyframes ul-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+.ul-shake{animation:ul-shake .42s ease}
+.ul-bar{height:4px;border-radius:4px;background:rgba(232,200,64,.14);margin-top:10px;overflow:hidden}
+.ul-bar[hidden]{display:none}
+.ul-bar i{display:block;height:100%;width:100%;border-radius:4px;background:linear-gradient(90deg,var(--gold),#FFB347);transition:width 1s linear}
+.ul-wait .pinrow{opacity:.45}
+/* the phone tries at the eighth digit; the button is a wide screen's */
+.ul-go,.ul-ws,.ul-foot{display:none}
+@media (prefers-reduced-motion:reduce){.ul-shake{animation:none}}
+
+/* wide screens: the card of the mockup */
+html.dk #st-unlock{max-width:480px!important;padding-top:9vh!important}
+html.dk #st-unlock::before{margin-bottom:26px}
+html.dk .ul-ava{width:92px;height:92px;margin-bottom:20px}
+html.dk .ul-ava::before{inset:-4px;-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3.5px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3.5px))}
+html.dk #st-unlock h1{font-size:30px}
+html.dk #st-unlock .pinbox{position:relative;padding:26px 26px 22px;border:0;border-radius:22px;margin-bottom:0;
+  background:linear-gradient(180deg,rgba(26,31,69,.72),rgba(14,18,38,.82));box-shadow:0 20px 60px rgba(0,0,0,.45)}
+html.dk #st-unlock .pinbox::before{content:"";position:absolute;inset:0;border-radius:22px;padding:1px;pointer-events:none;
+  background:linear-gradient(135deg,rgba(123,92,255,.65),rgba(0,212,255,.35) 50%,rgba(255,255,255,.06));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+html.dk #st-unlock .pinbox label{letter-spacing:.2em;font-size:11.5px}
+/* the eight dots become eight cells, the next one lit while typing */
+html.dk #pinrowU{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;margin:16px 0 0}
+html.dk #pinrowU .pindot{position:relative;width:auto;height:52px;border-radius:12px;border:1px solid rgba(255,255,255,.10);
+  background:rgba(8,11,24,.55);box-shadow:none;transition:border-color .15s,box-shadow .15s}
+html.dk #pinrowU .pindot.on{border-color:rgba(123,92,255,.55);background:rgba(8,11,24,.55)}
+html.dk #pinrowU .pindot.on::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;
+  background:linear-gradient(135deg,#B08CFF,#00D4FF);box-shadow:0 0 10px rgba(0,212,255,.45)}
+html.dk #pinboxU:focus-within #pinrowU .pindot:not(.on):first-child,
+html.dk #pinboxU:focus-within #pinrowU .pindot.on+.pindot:not(.on){border-color:#00D4FF;box-shadow:0 0 0 3px rgba(0,212,255,.15)}
+html.dk #pinrowU .pindot.bad{border-color:rgba(255,93,122,.8);box-shadow:0 0 0 3px rgba(255,93,122,.12);background:rgba(8,11,24,.55)}
+html.dk #pinrowU .pindot.bad::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#ff5d7a}
+html.dk #umsg{min-height:20px!important;margin-top:14px;font-size:13px}
+html.dk .ul-go{display:block;width:100%;margin-top:16px;height:50px;border:0;border-radius:14px;font-weight:700;color:#fff;
+  background:linear-gradient(90deg,#6A4BFF,#7B5CFF 40%,#00B8E6);box-shadow:0 8px 26px rgba(123,92,255,.35)}
+html.dk .ul-go:disabled{color:rgba(255,255,255,.55);background:rgba(123,92,255,.18);box-shadow:none}
+html.dk .ul-ws:not([hidden]){display:block;margin-top:26px}
+html.dk .ul-ws-h{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+html.dk .ul-ws-row{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+html.dk .ul-chip{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:5px 14px 5px 5px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:var(--text);font-size:13px;cursor:pointer}
+html.dk .ul-chip:hover{border-color:rgba(0,212,255,.45);background:rgba(0,212,255,.06)}
+html.dk .ul-chip .wl-ava{width:32px;height:32px}
+html.dk .ul-chip small{color:var(--muted);font-family:ui-monospace,monospace;font-size:11.5px}
+html.dk .ul-chip.ul-add{padding-left:14px;color:var(--muted)}
+html.dk .ul-chip svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+/* the list replaces the Switch button; Forget becomes a quiet link */
+html.dk #st-unlock #unlock-switch{display:none}
+html.dk #st-unlock #btn-forget{width:auto;margin:26px auto 0;padding:10px 0;background:none;border:0;box-shadow:none;
+  font-size:12.5px;font-weight:500;color:var(--muted);text-decoration:underline;text-decoration-color:rgba(107,130,168,.4);text-underline-offset:3px}
+html.dk #st-unlock #btn-forget:hover{color:#FF8FA3;text-decoration-color:rgba(255,143,163,.6)}
+html.dk .ul-foot{display:flex;justify-content:center;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--muted)}
+html.dk .ul-foot svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+
 /* the rail's balance: the "Updated" note after a refresh, and dimmed while
    the figure is still loading, like Home's own */
 html.dk .tabs .dk-bal-l{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -2563,3 +2647,112 @@ html.dk #pane-tok .rows li.row:hover{background:linear-gradient(90deg,rgba(124,9
   box-shadow:inset 3px 0 0 #3BE3FF!important;transform:none!important}
 html.dk #pane-tok .rows li.row:hover::before,html.dk #pane-tok .rows li.row:hover+li.row::before{opacity:0}
 html.dk #pane-tok .rows li.empty{background:none;border:0}
+/* Swap network switcher beside the GRAM card (Nov 2026): TON live, Tron coming.
+   Phone: a row inside the card. Desktop: a column at the card's left edge,
+   or out in the margin beside it when the screen leaves room (>= 1880px).
+   Faceted, as the home actions: a chamfered track, chamfered tabs, octagon coins. */
+.xch{--cut:10px;position:relative;isolation:isolate;display:flex;gap:6px;padding:5px;align-self:flex-start;
+  clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut));
+  background:linear-gradient(180deg,#05071a,rgba(160,140,255,.42))}
+.xch::before{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;
+  background:linear-gradient(180deg,rgba(0,0,0,.45),transparent 30%),linear-gradient(180deg,#0a0d26,#11163b)}
+.xch-b{--c:#0098EA;--g:rgba(0,152,234,.75);--t:rgba(0,152,234,.26);--cut:8px;
+  position:relative;isolation:isolate;display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 13px 4px 5px;
+  border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;transition:color .2s}
+.xch-b[data-chain=tron]{--c:#FF2D3A;--g:rgba(255,60,72,.75);--t:rgba(255,45,58,.24)}
+/* the lit tab: a chamfered rim in the chain's colour, the face inside it */
+.xch-b::before,.xch-b::after{content:'';position:absolute;z-index:-1;opacity:0;transition:opacity .25s;
+  clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut))}
+.xch-b::before{inset:0;background:linear-gradient(180deg,var(--g),rgba(255,255,255,.06) 70%)}
+.xch-b::after{inset:1px;background:linear-gradient(180deg,var(--t),rgba(11,14,39,.92) 75%)}
+.xch-b.on{color:#fff}
+.xch-b.on::before,.xch-b.on::after{opacity:1}
+.xch-b:hover{color:#fff}
+.xch-b:hover:not(.on)::after{opacity:.5;background:rgba(160,140,255,.10)}
+/* octagon coin in an inlaid octagon frame */
+.xch-logo{position:relative;width:32px;height:32px;flex:none;display:block;padding:2px;box-sizing:border-box;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);
+  background:linear-gradient(180deg,#05071a,rgba(160,140,255,.5));transition:filter .25s,background .25s}
+.xch-logo svg{width:100%;height:100%;display:block;clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
+.xch-logo::after{content:'';position:absolute;inset:2px;pointer-events:none;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);
+  background:linear-gradient(160deg,rgba(255,255,255,.35),rgba(255,255,255,0) 45%,rgba(0,0,0,.25))}
+.xch-n{font-family:'Rajdhani','Exo 2',sans-serif;font-weight:700;font-size:13px;letter-spacing:.14em;line-height:1}
+.xch-b:not(.on) .xch-logo{filter:grayscale(.65) brightness(.72)}
+.xch-b:hover .xch-logo{filter:none}
+.xch-b.on .xch-logo{background:linear-gradient(180deg,#fff,var(--c))}
+.xch-b:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
+
+/* "Soon": a hexagonal chip under the chain name, its rim a slowly flowing gradient, with a spark */
+.xch-soon{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;height:16px;padding:0 9px;box-sizing:border-box;flex:none;
+  clip-path:polygon(5px 0,calc(100% - 5px) 0,100% 50%,calc(100% - 5px) 100%,5px 100%,0 50%);
+  background:linear-gradient(90deg,#FFD54A,#FF4D8D,#7B5CFF,#00D4FF,#FFD54A);background-size:300% 100%;
+  animation:xch-flow 5s linear infinite;pointer-events:none}
+.xch-soon::after{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;background:#0B0F1A}
+.xch-soon b{display:block;font-size:8.5px;font-weight:800;letter-spacing:.18em;line-height:1;margin-right:-.18em;
+  background:linear-gradient(90deg,#FFE9A3,#FF9CC0 50%,#9EE8FF);-webkit-background-clip:text;background-clip:text;color:transparent}
+@keyframes xch-flow{to{background-position:300% 0}}
+
+/* what the card shows per chain; the GRAM parts keep their own [hidden] */
+.xg[data-chain=tron]>:not(.xch):not(.xg-tron){display:none!important}
+.xg:not([data-chain=tron])>.xg-tron{display:none}
+.xg[data-chain=tron]{background:linear-gradient(120deg,rgba(255,45,58,.15),rgba(123,92,255,.12) 50%,rgba(0,212,255,.07)),var(--surface);
+  border-color:rgba(255,90,100,.32)}
+
+/* the Tron preview */
+.xg-tron{display:flex;flex-direction:column;gap:14px;animation:xt-in .35s ease-out}
+@keyframes xt-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.xt-head{cursor:default}
+.xt-soon{position:relative;isolation:isolate;margin-left:auto;flex:none;align-self:center;display:inline-flex;align-items:center;height:30px;padding:0 18px;box-sizing:border-box;line-height:1;
+  font-size:11.5px;font-weight:700;letter-spacing:.06em;color:#fff;
+  clip-path:polygon(9px 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,9px 100%,0 50%);
+  background:linear-gradient(90deg,#FFD54A,#FF4D8D,#7B5CFF,#00D4FF,#FFD54A);background-size:300% 100%;animation:xch-flow 5s linear infinite}
+.xt-soon::after{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;background:linear-gradient(180deg,#0d1130,#0B0F1A)}
+.xt-ok{color:#34D399}
+/* progress as slanted segments, one per step */
+.xt-road{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.xt-step{display:flex;flex-direction:column;gap:7px;font-size:11px;letter-spacing:.04em;color:var(--muted);min-width:0}
+.xt-step span{white-space:nowrap}
+.xt-step i{height:6px;background:rgba(255,255,255,.10);clip-path:polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%)}
+.xt-step.done{color:#C8F5E2}
+.xt-step.done i{background:linear-gradient(90deg,#1FA97A,#34D399)}
+.xt-step.now{color:#fff}
+.xt-step.now i{background:linear-gradient(90deg,#FF4D6A,#FFD54A,#FF4D6A);background-size:200% 100%;animation:xt-run 2.2s linear infinite}
+@keyframes xt-run{to{background-position:-200% 0}}
+@media (max-width:560px){
+  .xt-head{flex-wrap:wrap;row-gap:12px}
+  .xt-head .xc-txt{flex:1 1 calc(100% - 90px)}
+  .xt-soon{margin-left:0}
+  .xt-step{font-size:10.5px;letter-spacing:0}
+}
+/* phone: the switcher spans the card, two equal tabs, contents centred */
+html:not(.dk) .xch{align-self:stretch}
+html:not(.dk) .xch-b{flex:1 1 0;justify-content:center;padding:5px 14px}
+html:not(.dk) .xch-soon{position:relative;top:1px}
+@media (prefers-reduced-motion:reduce){
+  .xch-soon,.xt-soon,.xt-step.now i,.xg-tron{animation:none}
+}
+
+/* desktop: a column at the card's left edge */
+html.dk .xg{position:relative;padding-left:108px}
+html.dk .xch{--cut:12px;position:absolute;left:14px;top:14px;bottom:14px;width:80px;align-self:stretch;display:grid;grid-auto-rows:1fr;align-content:stretch;gap:8px;padding:6px}
+html.dk .xch-b{--cut:10px;flex-direction:column;justify-content:center;gap:7px;min-height:0;padding:10px 4px}
+html.dk .xch-logo{width:38px;height:38px}
+html.dk .xch-n{font-size:11.5px}
+html.dk .xch-soon{margin-top:-1px}
+/* a wide screen leaves a margin left of the card: the switcher moves out there */
+@media (min-width:1880px){
+  html.dk .xg{padding-left:18px}
+  /* as tall as the card, top and bottom level with it */
+  html.dk .xch{left:auto;right:calc(100% + 16px);top:0;bottom:0;width:84px;padding:5px;gap:6px}
+  html.dk .xch-b{gap:5px;padding:7px 4px}
+  html.dk .xch-logo{width:34px;height:34px}
+}
+
+/* The card and its switcher are two things. Cards lift and brighten on hover,
+   and the switcher, inside this one, went up with it; clicking a chain shrank
+   the whole card. This card stays still: its edge lights only while the
+   pointer is on the card itself, and the switcher has its own hover. */
+html .xc.xg:hover,html .xc.xg:active{transform:none!important;filter:none!important}
+.xc.xg:has(.xch:hover){border-color:rgba(120,140,255,.28)!important;box-shadow:none!important}
+.xc.xg[data-chain=tron]:has(.xch:hover){border-color:rgba(255,90,100,.32)!important}
