@@ -2154,6 +2154,10 @@ textarea::-webkit-scrollbar{width:6px}
    right), and every other screen gets room to breathe. The 3D room behind
    stays the backdrop of everything. */
 html.dk{--rail:240px}
+/* the rail's width while it is on screen: 0 on a screen without it (the token
+   page), so windows, their backdrop and sheets centre on what is visible */
+html.dk body{--rail-now:0px}
+html.dk body:has(#tabs.on){--rail-now:var(--rail)}
 /* the room for the rail only while it is shown: the lock, welcome and setup
    screens have no rail and stay centred on the whole window */
 html.dk body:has(#tabs.on){padding-left:var(--rail)}
@@ -2332,7 +2336,7 @@ html.dk #home-acts .act-p2p .nt-badge{position:static;margin-left:8px}
   html.dk #home-acts .p2p-live i{animation:none;opacity:1}}
 
 /* sheets open as panels in the middle, not from the bottom edge */
-html.dk .sw-sheet{left:var(--rail)!important}
+html.dk .sw-sheet{left:var(--rail-now)!important}
 
 /* the balance in the rail, under the wordmark; mirrors Home's own figures */
 /* the balance: a chamfered card in the actions' cut, a lit rim, the total
@@ -2688,11 +2692,11 @@ html.dk #st-epos .ep-act{flex:0 0 auto;min-width:0;white-space:nowrap;padding:0 
    card with a lit rim. No transform, filter or clip on the window itself:
    the sheets it opens (token list, confirm) are fixed to the viewport and
    must stay so. */
-html.dk body.modal-open::before{content:'';position:fixed;inset:0 0 0 var(--rail);z-index:54;
+html.dk body.modal-open::before{content:'';position:fixed;inset:0 0 0 var(--rail-now);z-index:54;
   background:radial-gradient(70% 60% at 50% 45%,rgba(20,16,60,.55),rgba(4,6,16,.78));
   backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);animation:modal-dim .2s ease both}
-html.dk body .step.as-modal:is(#st-receive,#st-send,#st-swap){position:fixed!important;z-index:55;inset:0 0 0 var(--rail)!important;margin:auto!important;
-  width:min(560px,calc(100vw - var(--rail) - 64px))!important;max-width:none!important;height:fit-content;max-height:calc(100vh - 64px);
+html.dk body .step.as-modal:is(#st-receive,#st-send,#st-swap){position:fixed!important;z-index:55;inset:0 0 0 var(--rail-now)!important;margin:auto!important;
+  width:min(560px,calc(100vw - var(--rail-now) - 64px))!important;max-width:none!important;height:fit-content;max-height:calc(100vh - 64px);
   min-height:0!important;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;padding:22px 26px 20px!important;
   border-radius:22px;border:1px solid rgba(160,140,255,.30);
   background:radial-gradient(90% 60% at 0% 0%,rgba(124,92,255,.18),transparent 60%),radial-gradient(70% 60% at 100% 100%,rgba(0,212,255,.08),transparent 60%),linear-gradient(180deg,#151a42,#0c1029);
