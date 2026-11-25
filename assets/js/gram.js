@@ -12,16 +12,16 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=d808ed93';
-import { GRAM_NET, TERMS } from './gram-net.js?v=d808ed93';
-import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=d808ed93';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=d808ed93';
-import { S } from './state.js?v=d808ed93';
-import { decryptSeed } from './storage.js?v=d808ed93';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=d808ed93';
-import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=d808ed93';
-import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=d808ed93';
-import { chime, notify } from './notify.js?v=d808ed93';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=357c9755';
+import { GRAM_NET, TERMS } from './gram-net.js?v=357c9755';
+import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=357c9755';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=357c9755';
+import { S } from './state.js?v=357c9755';
+import { decryptSeed } from './storage.js?v=357c9755';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=357c9755';
+import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=357c9755';
+import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=357c9755';
+import { chime, notify } from './notify.js?v=357c9755';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -219,9 +219,50 @@ if (card && LABS) { card.hidden = false; paintCard(); }
 // the card opens the swap; its two buttons open it on their tab
 function openSwap(name){ if (name) tab(name); go('gram'); load(); }
 if (card) card.addEventListener('click', e => {
+  if (e.target.closest('.xch, .xg-tron')) return;   // the chain switcher and the Tron preview open nothing
   const b = e.target.closest('[data-tab]');
   openSwap(b ? b.dataset.tab : (e.target.closest('#xc-gram-deal-go') ? HOME_TAB : ''));
 });
+
+/* The chain switcher beside the card: GRAM on TON (live) or USDT on Tron
+   (coming, a preview). It only flips what the card shows; the GRAM parts keep
+   their own hidden flags, so a deal running on TON is still there on the way
+   back. Always opens on TON. */
+function paintTron(){
+  const ico = $('#xc-tron-ico');
+  if (ico && !ico.dataset.done) {
+    ico.dataset.done = '1';
+    ico.innerHTML = iconHTML({ sym: 'USDT' }) + iconHTML({ sym: 'LUNC' });
+    paintIcons(ico);
+  }
+}
+function setChain(c, focus){
+  if (!card) return;
+  card.dataset.chain = c;
+  card.querySelectorAll('.xch-b').forEach(b => {
+    const on = b.dataset.chain === c;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+    b.tabIndex = on ? 0 : -1;
+    if (on && focus) b.focus();
+  });
+  if (c === 'tron') paintTron();
+}
+{
+  const sw = $('#xc-chains');
+  if (sw) {
+    sw.addEventListener('click', e => {
+      const b = e.target.closest('.xch-b');
+      if (b && b.dataset.chain !== card.dataset.chain) setChain(b.dataset.chain);
+    });
+    // arrows move between the two, as in any tab list
+    sw.addEventListener('keydown', e => {
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+      e.preventDefault();
+      setChain(card.dataset.chain === 'ton' ? 'tron' : 'ton', true);
+    });
+  }
+}
 
 /* The home card, as on the agreed design: with no deal running it shows the
    market (offers live, the best price, the deal size) and both directions;
