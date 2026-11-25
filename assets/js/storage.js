@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=a9477c0d';
-import { S } from './state.js?v=a9477c0d';
+import { $, report, tg } from './shell.js?v=bbd88b0a';
+import { S } from './state.js?v=bbd88b0a';
 
 /* ---------------- storage ----------------
    The encrypted key is kept on this device only, in the best place the client
@@ -266,7 +266,15 @@ function useActive(){
   S.SAVED = w ? (w.watch ? { addr: w.addr, watch: true, name: w.name, id: w.id }
                          : { addr: w.addr, blob: w.blob, name: w.name, id: w.id }) : null;
   const ua = $('#unlock-addr');
-  if (ua && w) ua.textContent = w.name + ' \u00b7 ' + short(w.addr);
+  if (ua && w) {
+    // the name, then the address as a chip that copies it
+    ua.textContent = '';
+    const n = document.createElement('span'); n.textContent = w.name;
+    const a = document.createElement('button');
+    a.type = 'button'; a.className = 'ul-addr'; a.title = 'Copy address'; a.textContent = short(w.addr);
+    a.addEventListener('click', () => { try { navigator.clipboard.writeText(w.addr); a.classList.add('ok'); setTimeout(() => a.classList.remove('ok'), 1200); } catch (e) {} });
+    ua.append(n, a);
+  }
   return S.SAVED;
 }
 

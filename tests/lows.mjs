@@ -70,7 +70,12 @@ group('wrong PINs');
   ok('a garbled record reads as none', pg.pinWait(t0) === 0);
   ok('wait text', pg.waitText(30000) === '30 s' && pg.waitText(120000) === '2 min');
   const boot = read('boot.js'), seed = read('seed.js');
-  ok('the unlock screen refuses while waiting', /const wait = pinWait\(\);\s*if \(wait > 0\)[\s\S]{0,300}return;/.test(boot) && /pinFail\(/.test(boot) && /pinOk\(/.test(boot));
+  ok('the unlock screen refuses while waiting', /if \(pinWait\(\) > 0\) \{ waitView\(\); return; \}/.test(boot) && /pu\.disabled = true;/.test(boot) && /pinFail\(/.test(boot) && /pinOk\(/.test(boot));
+  ok('the wait is shown as a countdown with the field closed', /Next try in ' \+ clock\(left\)/.test(boot) && /setInterval\(paint, 1000\)/.test(boot));
+  ok('a wait still running shows as soon as the screen opens', /if \(\$\('#st-unlock'\)\.classList\.contains\('on'\)\) waitView\(\);/.test(boot));
+  ok('tries left before a wait, and the length of a wait', pg.pinLeft && pg.pinSpan && (localStorage.clear(), pg.pinLeft() === 5) && (pg.pinFail(1e12), pg.pinLeft() === 4) &&
+    ([1, 2, 3, 4].forEach(() => pg.pinFail(1e12)), pg.pinSpan() === 30000));
+  pg.pinOk();
   ok('the show-phrase sheet counts too', /pinFail\(/.test(seed) && /pinWait\(/.test(seed));
 }
 
