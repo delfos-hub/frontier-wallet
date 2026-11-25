@@ -119,7 +119,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   #fw-splash.gone{opacity:0}
 }
 </style>
-<link rel="stylesheet" href="assets/css/app.css?v=a030bc00">
+<link rel="stylesheet" href="assets/css/app.css?v=7a0969e1">
 </head>
 <body>
 <!-- gradients for the faceted icons (home actions, side rail). At the top of the
@@ -152,7 +152,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   </div>
   <div class="fw-load"><i></i></div>
 </div>
-<script src="assets/js/splash.js?v=a030bc00"></script>
+<script src="assets/js/splash.js?v=7a0969e1"></script>
 
 <div class="orb"></div>
 
@@ -974,6 +974,130 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   </div>
 </section>
 
+<!-- developer tools on a test network (dev.js); shown with Developer mode in Settings -->
+<section class="step wpad" id="st-dev">
+  <div class="dv-head">
+    <h1><svg class="dv-hfx" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5.2 2.4 12l6.2 6.8 1.9-1.8L5.9 12l4.6-5z" fill="url(#fw-lv)"/><path d="M15.4 5.2 21.6 12l-6.2 6.8-1.9-1.8 4.6-5-4.6-5z" fill="url(#fw-dv)"/><path d="M13.6 3.2h2.2L10.4 20.8H8.2z" fill="url(#fw-cy)"/></svg><span>Developer</span></h1>
+    <span class="dv-net" data-no-i18n><i></i><b id="dv-chain">rebel-2</b>&nbsp;· testnet</span>
+    <span class="dv-sub">Test coins only. Nothing here touches your mainnet LUNC.</span>
+    <span class="dv-live" id="dv-live" data-no-i18n><span class="dv-dot" id="dv-dot"></span>Block <b id="dv-height">…</b> · <span id="dv-btime">…</span> · <span id="dv-host">…</span></span>
+    <button class="dv-gear" id="dv-gear" type="button" aria-label="Developer settings" aria-expanded="false" title="Settings: networks, gas, explorer, faucet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2h3.4l.6 2.7 1.9.8 2.3-1.5 2.4 2.4-1.5 2.3.8 1.9 2.7.6v3.4l-2.7.6-.8 1.9 1.5 2.3-2.4 2.4-2.3-1.5-1.9.8-.6 2.7h-3.4l-.6-2.7-1.9-.8-2.3 1.5-2.4-2.4 1.5-2.3-.8-1.9L2 13.7v-3.4l2.7-.6.8-1.9L4 5.5l2.4-2.4 2.3 1.5 1.9-.8z" fill="url(#fw-dv)"/><circle cx="12" cy="12" r="3.6" fill="url(#fw-cy)"/></svg><span>Settings</span></button>
+  </div>
+  <section class="dv-card dv-set" id="dv-set" hidden>
+    <div class="dv-set-h"><b>Developer settings</b><span>Kept in this browser. Export them to move to another computer or share with your team.</span></div>
+    <div class="dv-set-prof"><label class="dv-fl"><span>Network profile</span><select id="dv-prof" data-no-i18n></select></label><button class="dv-hx" id="dv-prof-new" type="button">New</button><button class="dv-hx" id="dv-prof-del" type="button">Delete</button></div>
+    <div class="dv-set-grid">
+      <label class="dv-fl"><span>Name</span><input id="dv-s-name" placeholder="rebel-2 (public)" spellcheck="false" autocomplete="off"></label>
+      <label class="dv-fl"><span>LCD</span><input id="dv-s-lcd" placeholder="https://lcd.luncblaze.com" spellcheck="false" autocomplete="off"></label>
+      <label class="dv-fl"><span>Gas price · uluna</span><input id="dv-s-gp" placeholder="28.325" spellcheck="false" autocomplete="off" inputmode="decimal"></label>
+      <label class="dv-fl"><span>Gas adjustment · 1 to 3</span><input id="dv-s-ga" placeholder="1.3" spellcheck="false" autocomplete="off" inputmode="decimal"></label>
+      <label class="dv-fl"><span>Explorer · {chain} {hash}</span><input id="dv-s-exp" placeholder="https://finder.terraclassic.community/{chain}/tx/{hash}" spellcheck="false" autocomplete="off"></label>
+      <label class="dv-fl"><span>Faucet · empty for none</span><input id="dv-s-fc" placeholder="https://…" spellcheck="false" autocomplete="off"></label>
+    </div>
+    <p class="dv-note">The chain id is never typed: it is read from the node, and a node on columbus-5 is refused. Gas price and adjustment apply to everything signed here.</p>
+    <div class="dv-row"><button class="dv-btn" id="dv-s-save" type="button">Save and use</button><button class="dv-btn q" id="dv-s-export" type="button">Export JSON</button><button class="dv-btn q" id="dv-s-import" type="button">Import JSON</button><button class="dv-btn q" id="dv-s-reset" type="button">Reset</button></div>
+    <input type="file" id="dv-s-file" accept=".json,application/json" hidden>
+    <div class="dv-out" id="dv-s-out" data-no-i18n></div>
+  </section>
+  <div class="dv-grid">
+    <div class="dv-col">
+      <section class="dv-card dv-tn">
+        <div class="dv-lbl">Test balance · same address, test network</div>
+        <div class="dv-big"><span id="dv-lunc" data-no-i18n>…</span><small>LUNC</small></div>
+        <button class="dv-chip" id="dv-addr" type="button" title="Copy address" data-no-i18n></button>
+        <div class="dv-mini" id="dv-coins" data-no-i18n></div>
+        <div class="dv-inline"><input id="dv-cw-in" placeholder="Track a CW20 by contract address" spellcheck="false" autocomplete="off"><button class="dv-hx" id="dv-cw-add" type="button">Track</button></div>
+        <div class="dv-acts"><button class="dv-pill" id="dv-send-open" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15h5l1.5 2.5h5L16 15h5v4.2a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 19.2z" fill="url(#fw-dv)"/><path d="M10.4 15.2h3.2V8.6h3.6L12 3 6.8 8.6h3.6z" fill="url(#fw-cy)"/></svg>Send test coins</button><button class="dv-pill" id="dv-copy" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="12" height="12" rx="2" fill="url(#fw-dv)"/><path d="M5.5 15.5h-1A1.5 1.5 0 0 1 3 14V4.5A1.5 1.5 0 0 1 4.5 3H14a1.5 1.5 0 0 1 1.5 1.5v1" stroke="url(#fw-cy)" stroke-width="2" fill="none"/></svg>Copy address</button></div>
+      </section>
+
+      <section class="dv-card dv-fc">
+        <div class="dv-fcw"><span class="dv-oct"><svg class="dv-drop" viewBox="0 0 24 24" aria-hidden="true"><g class="dd-fall"><path d="M12 2.5 18.5 11a7 7 0 1 1-13 0z" fill="url(#fw-cy)"/><path d="M12 2.5 18.5 11a7 7 0 0 1-6.5 10.5z" fill="url(#fw-dv)" opacity=".55"/><path d="M8.6 14.2a3.6 3.6 0 0 0 2.6 3.4" stroke="#fff" stroke-width="1.6" stroke-linecap="round" fill="none" opacity=".8"/></g><ellipse class="dd-ring" cx="12" cy="20.6" rx="7" ry="1.7" fill="none" stroke="#5BE3FF" stroke-width="1.1"/><circle class="dd-s dd-s1" cx="12" cy="20" r="1.2" fill="#9DF1FF"/><circle class="dd-s dd-s2" cx="12" cy="20" r="1.2" fill="#9DF1FF"/><circle class="dd-s dd-s3" cx="12" cy="20" r="0.9" fill="#E6FCFF"/><circle class="dd-s dd-s4" cx="12" cy="20" r="0.9" fill="#E6FCFF"/></svg></span><span class="dv-fct"><b>Faucet</b><p id="dv-fc-txt">Test LUNC for this address, once a day. For building and testing; test coins have no value.</p></span></div>
+        <button class="dv-btn cy" id="dv-fc-go" type="button" disabled>Get test LUNC</button>
+        <div class="dv-fmeta" data-no-i18n><span id="dv-fc-next"></span><span id="dv-fc-hold"></span></div>
+        <div class="dv-out" id="dv-fc-out" data-no-i18n></div>
+      </section>
+
+      <div class="dv-sh"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="3" fill="url(#fw-cy)"/><circle cx="5" cy="18" r="3" fill="url(#fw-lv)"/><circle cx="19" cy="18" r="3" fill="url(#fw-lv)"/><path d="M11 7.5 6 15.5M13 7.5l5 8M8 18h8" stroke="url(#fw-dv)" stroke-width="2" fill="none"/></svg><h3>Network</h3><button class="dv-hx sm" id="dv-ping" type="button">Check</button></div>
+      <section class="dv-panel">
+        <div class="dv-kv" id="dv-kv" data-no-i18n></div>
+        <div id="dv-eps" data-no-i18n></div>
+        <div class="dv-inline"><input id="dv-ep-in" placeholder="Another LCD: https://…" spellcheck="false" autocomplete="off"><button class="dv-hx" id="dv-ep-add" type="button">Add</button></div>
+        <p class="dv-note">The wallet signs with the chain id the node reports, and refuses columbus-5 here. A local node works too.</p>
+      </section>
+
+      <div class="dv-sh"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="url(#fw-dv)"/><circle cx="10.5" cy="10.5" r="4" fill="url(#fw-cy)" opacity=".5"/><path d="M15.5 15.5 21 21" stroke="url(#fw-lv)" stroke-width="3" stroke-linecap="round"/></svg><h3>Transaction</h3></div>
+      <section class="dv-panel">
+        <div class="dv-inline"><input id="dv-tx-in" placeholder="Transaction hash" spellcheck="false" autocomplete="off"><button class="dv-hx" id="dv-tx-go" type="button">Look up</button></div>
+        <div class="dv-out" id="dv-tx-out" data-no-i18n></div>
+      </section>
+    </div>
+
+    <div class="dv-col">
+      <div class="dv-sh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7z" fill="url(#fw-dv)"/><path d="M12 2 21 7l-9 5-9-5z" fill="url(#fw-lv)"/><path d="M12 12v10l9-5V7z" fill="url(#fw-cy)" opacity=".7"/></svg><h3>Contracts</h3></div>
+      <section class="dv-card">
+        <div class="dv-tabs" role="tablist"><button class="on" type="button" data-dv="q">Query</button><button type="button" data-dv="x">Execute</button><button type="button" data-dv="u">Upload</button><button type="button" data-dv="a">Admin</button></div>
+        <div class="dv-pane" id="dv-p-q">
+          <label class="dv-fl"><span>Contract</span><input id="dv-q-addr" placeholder="terra1…" spellcheck="false" autocomplete="off" list="dv-mine-list"></label>
+          <div class="dv-fl"><span>Query message · JSON</span><div class="dv-tools" data-ed="q"></div><div class="dv-code"><div class="dv-ln" aria-hidden="true">1</div><textarea id="dv-q-msg" rows="6" spellcheck="false" autocomplete="off" placeholder='{"config":{}}' data-no-i18n></textarea></div></div>
+          <div class="dv-row"><div class="dv-minis"><button class="dv-hx sm" id="dv-q-info" type="button">Info</button><button class="dv-hx sm" id="dv-q-hist" type="button">History</button><button class="dv-hx sm" id="dv-q-state" type="button">State</button></div><button class="dv-btn" id="dv-q-go" type="button">Run query</button></div>
+          <div class="dv-out" id="dv-q-out" data-no-i18n></div>
+        </div>
+        <div class="dv-pane" id="dv-p-x" hidden>
+          <label class="dv-fl"><span>Contract</span><input id="dv-x-addr" placeholder="terra1…" spellcheck="false" autocomplete="off" list="dv-mine-list"></label>
+          <div class="dv-fl"><span>Execute message · JSON</span><div class="dv-tools" data-ed="x"></div><div class="dv-code"><div class="dv-ln" aria-hidden="true">1</div><textarea id="dv-x-msg" rows="6" spellcheck="false" autocomplete="off" placeholder='{"increment":{}}' data-no-i18n></textarea></div></div>
+          <div class="dv-two"><label class="dv-fl"><span>Funds, optional</span><input id="dv-x-funds" placeholder="1000000uluna" spellcheck="false" autocomplete="off"></label><label class="dv-fl"><span>Memo, optional</span><input id="dv-x-memo" placeholder="" spellcheck="false" autocomplete="off"></label></div>
+          <div class="dv-row"><button class="dv-btn q" id="dv-x-sim" type="button">Check the fee</button><button class="dv-btn" id="dv-x-go" type="button" disabled>Sign and send</button></div>
+          <div class="dv-out" id="dv-x-out" data-no-i18n></div>
+        </div>
+        <div class="dv-pane" id="dv-p-u" hidden>
+          <label class="dv-zone" id="dv-zone"><span class="dv-oct sm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7z" fill="url(#fw-dv)"/><path d="M12 2 21 7l-9 5-9-5z" fill="url(#fw-lv)"/><path d="M12 12v10l9-5V7z" fill="url(#fw-cy)" opacity=".7"/></svg></span><span class="dv-ff"><b id="dv-wasm-name">Choose or drop a .wasm file</b><small id="dv-wasm-meta" data-no-i18n>An optimized build (cosmwasm/optimizer) keeps the fee low.</small></span><span class="dv-hx">Choose</span><input type="file" id="dv-wasm" accept=".wasm,application/wasm" hidden></label>
+          <div class="dv-inline dv-verify"><input id="dv-v-code" placeholder="Compare the file with a code id on chain" spellcheck="false" autocomplete="off" inputmode="numeric"><button class="dv-hx" id="dv-v-go" type="button">Verify</button></div>
+          <div class="dv-out" id="dv-v-out" data-no-i18n></div>
+          <div class="dv-step"><span class="dv-nb" id="dv-s1-nb">1</span><span><b>Store code</b><small id="dv-s1-txt" data-no-i18n>Uploads the file; the chain gives it a code id.</small></span><span class="dv-sbtns"><button class="dv-hx" id="dv-s1-sim" type="button" disabled>Fee</button><button class="dv-hx go" id="dv-s1-go" type="button" disabled>Store</button></span></div>
+          <div class="dv-step last"><span class="dv-nb" id="dv-s2-nb">2</span><span><b>Instantiate</b><small id="dv-s2-txt">Makes a contract from a code id.</small></span></div>
+          <div class="dv-two"><label class="dv-fl"><span>Code id</span><input id="dv-i-code" placeholder="11802" spellcheck="false" autocomplete="off" inputmode="numeric"></label><label class="dv-fl"><span>Label</span><input id="dv-i-label" placeholder="my-contract" spellcheck="false" autocomplete="off"></label></div>
+          <div class="dv-fl"><span>Init message · JSON</span><div class="dv-tools" data-ed="i"></div><div class="dv-code"><div class="dv-ln" aria-hidden="true">1</div><textarea id="dv-i-msg" rows="4" spellcheck="false" autocomplete="off" placeholder='{"count":0}' data-no-i18n></textarea></div></div>
+          <div class="dv-two"><label class="dv-fl"><span>Admin</span><input id="dv-i-admin" placeholder="terra1… (can migrate)" spellcheck="false" autocomplete="off"></label><label class="dv-fl"><span>Funds, optional</span><input id="dv-i-funds" placeholder="0uluna" spellcheck="false" autocomplete="off"></label></div>
+          <label class="dv-chk"><input type="checkbox" id="dv-i-noadmin"><span>No admin: the contract can never be migrated</span></label>
+          <div class="dv-row"><button class="dv-btn q" id="dv-i-sim" type="button">Check the fee</button><button class="dv-btn" id="dv-i-go" type="button" disabled>Instantiate</button></div>
+          <div class="dv-out" id="dv-u-out" data-no-i18n></div>
+        </div>
+        <div class="dv-pane" id="dv-p-a" hidden>
+          <label class="dv-fl"><span>Contract</span><input id="dv-a-addr" placeholder="terra1…" spellcheck="false" autocomplete="off" list="dv-mine-list"></label>
+          <div class="dv-seg" role="radiogroup"><button type="button" class="on" data-act="migrate">Migrate</button><button type="button" data-act="admin">Change admin</button><button type="button" data-act="clear">Remove admin</button></div>
+          <div class="dv-a-f" data-for="migrate">
+            <label class="dv-fl"><span>New code id</span><input id="dv-a-code" placeholder="11803" spellcheck="false" autocomplete="off" inputmode="numeric"></label>
+            <div class="dv-fl"><span>Migrate message · JSON</span><div class="dv-tools" data-ed="m"></div><div class="dv-code"><div class="dv-ln" aria-hidden="true">1</div><textarea id="dv-a-msg" rows="4" spellcheck="false" autocomplete="off" placeholder='{}' data-no-i18n></textarea></div></div>
+          </div>
+          <div class="dv-a-f" data-for="admin" hidden><label class="dv-fl"><span>New admin</span><input id="dv-a-new" placeholder="terra1…" spellcheck="false" autocomplete="off"></label></div>
+          <p class="dv-a-f dv-note warn" data-for="clear" hidden>After this nobody can migrate the contract again, you included. It cannot be undone.</p>
+          <p class="dv-note">Only the contract's current admin can do these. Contract info in Query shows who that is.</p>
+          <div class="dv-row"><button class="dv-btn q" id="dv-a-sim" type="button">Check the fee</button><button class="dv-btn" id="dv-a-go" type="button" disabled>Sign and send</button></div>
+          <div class="dv-out" id="dv-a-out" data-no-i18n></div>
+        </div>
+      </section>
+
+      <div class="dv-sh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7z" fill="url(#fw-dv)"/><path d="M12 2 21 7l-9 5-9-5z" fill="url(#fw-lv)"/><path d="M12 12v10l9-5V7z" fill="url(#fw-cy)" opacity=".7"/></svg><h3>Your contracts</h3><span class="dv-cnt" id="dv-mine-n" data-no-i18n></span></div>
+      <section class="dv-panel flush"><div id="dv-mine" data-no-i18n></div><datalist id="dv-mine-list"></datalist></section>
+    </div>
+  </div>
+</section>
+
+<!-- sending test coins (dev.js): a window over Home or the DEV tab on a desktop -->
+<section class="step wpad" id="st-tsend">
+  <div class="bar"><div class="back" data-go="home" role="button" aria-label="Back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div></div>
+  <h1><svg class="sh-fx scr-fx" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15h5l1.5 2.5h5L16 15h5v4.2a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 19.2z" fill="url(#fw-dv)"/><path d="M10.4 15.2h3.2V8.6h3.6L12 3 6.8 8.6h3.6z" fill="url(#fw-cy)"/></svg><span>Send test coins</span></h1>
+  <p class="dv-tsub"><span class="dv-net" data-no-i18n><i></i><b class="dv-chain-n">rebel-2</b>&nbsp;· testnet</span><span>Test coins only. Mainnet is not touched.</span></p>
+  <div class="dv-tform">
+          <label class="dv-fl"><span>Recipient</span><input id="dv-to" placeholder="terra1…" spellcheck="false" autocomplete="off"></label>
+          <div class="dv-two"><label class="dv-fl"><span>Amount</span><input id="dv-amt" placeholder="0" spellcheck="false" autocomplete="off" inputmode="decimal"></label><label class="dv-fl"><span>Asset</span><select id="dv-denom" data-no-i18n></select></label></div>
+          <div class="dv-avail" id="dv-avail" data-no-i18n></div>
+          <label class="dv-fl"><span>Memo, optional</span><input id="dv-memo" placeholder="" spellcheck="false" autocomplete="off"></label>
+          <div class="dv-row"><button class="dv-btn q" id="dv-send-sim" type="button">Check the fee</button><button class="dv-btn" id="dv-send-go" type="button" disabled>Send</button></div>
+          <div class="dv-out" id="dv-send-out" data-no-i18n></div>
+  </div>
+</section>
+
 <section class="step wpad" id="st-settings">
   <div class="head st-head"><h2>Settings</h2></div>
   <div class="st-vault">
@@ -1011,6 +1135,29 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
       <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 0 1 12.8-5.3L19.5 9"/><path d="M19.5 4.5V9H15"/><path d="M19.5 12a7.5 7.5 0 0 1-12.8 5.3L4.5 15"/><path d="M4.5 19.5V15H9"/></svg>
       <span class="st-txt"><b>Sync favorites</b><small>Encrypted, between your devices</small></span>
       <b class="st-val" id="sync-cur">Off</b>
+    </button>
+    <div class="st-row st-dev" id="set-dev">
+      <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="d" d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5Z"/><path d="m8.5 9-3 3 3 3"/><path d="m15.5 9 3 3-3 3"/><path d="m13 7-2 10"/></svg>
+      <span class="st-txt"><b>Developer mode</b><small id="dev-cur">Test network, faucet, contract tools</small></span>
+      <button class="dv-sw" id="dev-sw" type="button" role="switch" aria-checked="false" aria-label="Developer mode"><i></i></button>
+    </div>
+    <div class="dv-ask" id="dev-ask" role="dialog" aria-labelledby="dev-ask-h" hidden>
+      <b class="dv-ask-h" id="dev-ask-h">Turn on Developer mode?</b>
+      <ul class="dv-ask-l">
+        <li><i></i><span>A section marked TEST appears at the foot of the menu: faucet, network, contracts</span></li>
+        <li><i></i><span>It works on the rebel-2 test network only. Test coins have no value</span></li>
+        <li><i></i><span>This wallet signs there with the same key; it never signs on columbus-5 from that section</span></li>
+        <li><i></i><span>Your balances and the rest of the wallet stay as they are</span></li>
+      </ul>
+      <div class="dv-ask-b">
+        <button class="btn quiet" id="dev-no" type="button">Cancel</button>
+        <button class="btn dv-yes" id="dev-yes" type="button">Turn on</button>
+      </div>
+    </div>
+    <button class="st-row st-sub" id="dev-open" type="button" hidden>
+      <span class="st-txt"><b>Open developer tools</b></span>
+      <span class="dv-open-t" data-no-i18n>TEST</span>
+      <svg class="st-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
     </button>
     <div class="st-row st-info" id="set-network">
       <svg class="st-ico" viewBox="0 0 24 24" aria-hidden="true"><circle class="d" cx="12" cy="5.5" r="2.5"/><circle class="d" cx="5" cy="18" r="2.5"/><circle class="d" cx="19" cy="18" r="2.5"/><circle cx="12" cy="5.5" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M10.8 7.7 6.2 15.8M13.2 7.7l4.6 8.1M7.5 18h9"/></svg>
@@ -1082,6 +1229,7 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
   <button class="tab" data-tab="stake"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 16 9 5 9-5"/></svg><svg class="tab-fx" viewBox="0 0 24 24" aria-hidden="true"><path class="fx-l3" d="M3 15.6 12 20.6l9-5v2l-9 5-9-5z" fill="url(#fw-dv)"/><path class="fx-l2" d="M3 11.6l9 5 9-5v2l-9 5-9-5z" fill="url(#fw-lv)"/><path class="fx-l1" d="M12 2.6 21 7.6l-9 5-9-5z" fill="url(#fw-cy)"/></svg><span data-i18n="tab.stake">Stake</span></button>
   <button class="tab" data-tab="gov"><svg viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><path d="M5 7h14v13H5z"/><path d="M8 3h8v4H8z"/></svg><svg class="tab-fx" viewBox="0 0 24 24" aria-hidden="true"><path class="fx-paper" d="M8 2.8h8v9H8z" fill="url(#fw-cy)"/><path class="fx-paper" d="m10 7.2 1.5 1.5 2.6-2.8" stroke="#0b1a3a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M3 11h18v2.6H3z" fill="url(#fw-lv)"/><path d="M4 13.6h16v6.4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" fill="url(#fw-dv)"/><path d="M9.5 11.9h5" stroke="#0b0e27" stroke-width="1.2" stroke-linecap="round"/></svg><span class="tab-badge" id="gov-badge" hidden></span><span data-i18n="tab.vote">Vote</span></button>
   <button class="tab" data-tab="activity"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><svg class="tab-fx" viewBox="0 0 24 24" aria-hidden="true"><path class="fx-b1" d="M3.5 13h4.2v8H3.5z" fill="url(#fw-dv)"/><path class="fx-b2" d="M9.9 6h4.2v15H9.9z" fill="url(#fw-cy)"/><path class="fx-b3" d="M16.3 9.5h4.2V21h-4.2z" fill="url(#fw-lv)"/></svg><span data-i18n="tab.activity">Activity</span></button>
+  <button class="tab" data-tab="dev" hidden><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg><svg class="tab-fx" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5.2 2.4 12l6.2 6.8 1.9-1.8L5.9 12l4.6-5z" fill="url(#fw-lv)"/><path d="M15.4 5.2 21.6 12l-6.2 6.8-1.9-1.8 4.6-5-4.6-5z" fill="url(#fw-dv)"/><path d="M13.6 3.2h2.2L10.4 20.8H8.2z" fill="url(#fw-cy)"/></svg><span class="tab-t" data-no-i18n>TEST</span><span>Dev</span></button>
   <button class="tab" data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8 1.6 1.6 0 0 0-1.1-2.7 2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8 1.6 1.6 0 0 0 2.7-1.1 2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8 1.6 1.6 0 0 0 1.1 2.7 2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.4 1Z"/></svg><svg class="tab-fx" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.9h18v2.2H3zM3 11.9h18v2.2H3zM3 17.9h18v2.2H3z" fill="url(#fw-dv)"/><circle class="fx-k1" cx="8" cy="7" r="2.7" fill="url(#fw-lv)"/><circle class="fx-k2" cx="15.5" cy="13" r="2.7" fill="url(#fw-cy)"/><circle class="fx-k3" cx="10" cy="19" r="2.7" fill="url(#fw-lv)"/></svg><span data-i18n="tab.settings">Settings</span></button>
 </nav>
 
@@ -1113,23 +1261,24 @@ body.fw-enter .step.on>*:nth-child(n+5){animation-delay:.56s}
     <div class="nt-btns" id="nt-btns"></div>
   </div>
 </div>
-<script type="module" src="assets/js/app.js?v=a030bc00"></script>
-<script src="assets/js/ads.js?v=a030bc00"></script>
-<script type="module" src="assets/js/swap.js?v=a030bc00"></script>
-<script type="module" src="assets/js/activity.js?v=a030bc00"></script>
-<script type="module" src="assets/js/nft.js?v=a030bc00"></script>
-<script type="module" src="assets/js/wallets.js?v=a030bc00"></script>
-<script type="module" src="assets/js/seed.js?v=a030bc00"></script>
-<script type="module" src="assets/js/home-tools.js?v=a030bc00"></script>
-<script type="module" src="assets/js/p2p.js?v=a030bc00"></script>
-<script type="module" src="assets/js/p2p-watch.js?v=a030bc00"></script>
-<script type="module" src="assets/js/gram.js?v=a030bc00"></script>
-<script type="module" src="assets/js/incoming.js?v=a030bc00"></script>
-<script type="module" src="assets/js/token.js?v=a030bc00"></script>
-<script type="module" src="assets/js/defi.js?v=a030bc00"></script>
-<script type="module" src="assets/js/gov.js?v=a030bc00"></script>
-<script type="module" src="assets/js/stake.js?v=a030bc00"></script>
-<script type="module" src="assets/js/fav.js?v=a030bc00"></script>
-<script type="module" src="assets/js/desktop.js?v=a030bc00"></script>
+<script type="module" src="assets/js/app.js?v=7a0969e1"></script>
+<script src="assets/js/ads.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/swap.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/activity.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/nft.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/wallets.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/seed.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/home-tools.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/dev.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/p2p.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/p2p-watch.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/gram.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/incoming.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/token.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/defi.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/gov.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/stake.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/fav.js?v=7a0969e1"></script>
+<script type="module" src="assets/js/desktop.js?v=7a0969e1"></script>
 </body>
 </html>
