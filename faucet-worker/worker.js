@@ -105,7 +105,13 @@ async function faucetBalance(env, addr){
   return BigInt((j.balance || {}).amount || '0');
 }
 
-async function send(env, to, amount){
+/* The send, in steps that tell the caller what is known:
+   - signed(hash) is awaited before every broadcast: the claim's row then
+     names the transaction before it can exist on the chain;
+   - a node that answers with a code refused it: nothing was sent;
+   - a broadcast that fails without an answer (timeout, network) may still
+     have gone through: the error carries unknown = true and the hash. */
+async function send(env, to, amount, signed){
   const k = keyOf(env);
   await checkChain(env);
   let last;
@@ -121,8 +127,18 @@ async function send(env, to, amount){
     const auth = authInfo(k.pub, a.sequence || '0', [{ denom: 'uluna', amount: String(Math.ceil(gas * GAS_PRICE)) }], gas);
     const sig = k.node.sign(sha256(signDoc(body, auth, env.CHAIN, a.account_number || '0')));
     const raw = txRaw(body, auth, [sig]);
-    const res = (await lcd(env, '/cosmos/tx/v1beta1/txs', { tx_bytes: b64(raw), mode: 'BROADCAST_MODE_SYNC' })).tx_response || {};
-    if (!res.code) return hex(sha256(raw)).toUpperCase();
+    const hash = hex(sha256(raw)).toUpperCase();
+    if (signed) await signed(hash);
+    let res;
+    try {
+      res = (await lcd(env, '/cosmos/tx/v1beta1/txs', { tx_bytes: b64(raw), mode: 'BROADCAST_MODE_SYNC' })).tx_response || {};
+    } catch (e) {
+      // a 4xx with a message is the node saying no; anything else is silence
+      if (e.status >= 400 && e.status < 500) throw e;
+      e.unknown = true; e.hash = hash;
+      throw e;
+    }
+    if (!res.code) return hash;
     last = new Error('the node refused the send (code ' + res.code + '): ' + (res.raw_log || ''));
     if (!/sequence/i.test(res.raw_log || '')) break;
     await new Promise(z => setTimeout(z, 1500));
@@ -196,6 +212,7 @@ async function claim(env, request, origin){
   const st = await status(env, to);
   if (!st.open) return json({ error: st.why }, 503, origin);
   const now = Date.now(), ip = clientKey(request);
+  await reconcile(env, to, now);
   // the reservation: inserted only if this address and this client are under
   // their limits and the day's cap holds, all in one statement
   const r = await env.DB.prepare(
@@ -210,13 +227,39 @@ async function claim(env, request, origin){
     return json({ error: 'Not now: one claim per address a day, and a few per connection.' + again }, 429, origin);
   }
   const id = r.meta.last_row_id;
+  // The row is the reservation, and it stays as soon as a transaction may
+  // exist: 'p:HASH' before each broadcast, the bare hash once the node took it.
+  // It is removed only when nothing can have been paid (#76 review).
+  let hash;
   try {
-    const hash = await send(env, to, c.amount);
-    await env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(hash, id).run();
-    return json({ hash: hash, amount: c.amount }, 200, origin);
+    hash = await send(env, to, c.amount, h => env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(PENDING + h, id).run());
   } catch (e) {
-    await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(id).run();
-    return json({ error: 'The faucet could not send: ' + String(e.message || e).slice(0, 300) }, 502, origin);
+    if (!e.unknown) {
+      await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(id).run().catch(() => {});
+      return json({ error: 'The faucet could not send: ' + String(e.message || e).slice(0, 300) }, 502, origin);
+    }
+    return json({ error: 'The faucet sent, but the node did not confirm it. It is checked again before this address can claim: look for ' + e.hash + ' on the explorer.', hash: e.hash, pending: true }, 502, origin);
+  }
+  // paid: a failed write here leaves 'p:HASH', which the next claim reconciles
+  await env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(hash, id).run().catch(() => {});
+  return json({ hash: hash, amount: c.amount }, 200, origin);
+}
+
+/* Claims whose outcome was not known ('p:HASH'), asked about before the same
+   address may claim again: included and successful -> a normal paid claim;
+   included and failed, or still unknown well after its timeout -> nothing was
+   paid, the row goes; otherwise it stays and keeps blocking the address. */
+const PENDING = 'p:';
+const SETTLE_MS = 10 * 60 * 1000;
+async function reconcile(env, address, now){
+  const rows = (await env.DB.prepare("SELECT id, at, hash FROM claims WHERE address = ?1 AND hash LIKE 'p:%'").bind(address).all()).results || [];
+  for (const row of rows) {
+    const h = row.hash.slice(PENDING.length);
+    let tx = null;
+    try { tx = (await lcd(env, '/cosmos/tx/v1beta1/txs/' + h)).tx_response || null; }
+    catch (e) { if (e.status !== 404 && e.status !== 400) continue; }   // the node did not answer: keep it
+    if (tx && !tx.code) await env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(h, row.id).run();
+    else if (tx || now - row.at > SETTLE_MS) await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(row.id).run();
   }
 }
 
@@ -255,3 +298,6 @@ export default {
     }
   }
 };
+
+// for tests/faucet.mjs
+export const __test = { send: send, claim: claim, reconcile: reconcile, PENDING: PENDING };
