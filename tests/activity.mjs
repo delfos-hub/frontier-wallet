@@ -273,9 +273,10 @@ group('approvals before the action do not name it');
 group('network fees: top-level events and logs');
 {
   const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
-  const fx = new Function(
-    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
-    lift(src, 'function feeEvents(') + '\n' + lift(src, 'function feePaid(') + '\nreturn feePaid;')();
+  const fx0 = new Function(
+    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function taxEvents(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
+    lift(src, 'function feeEvents(') + '\n' + lift(src, 'function feePaid(') + '\nreturn { feePaid, taxPaid };')();
+  const fees = fx0; const fx = (t, me) => fees.feePaid(t, me);
   const tr = (from, to, amount) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }] });
   const msgLogs = [{ events: [tr('me', 'terra1bob', '200000000uluna')] }];
   const feeOnly = [tr('me', FEE, '10000000uluna')];
@@ -287,6 +288,22 @@ group('network fees: top-level events and logs');
   const taxed = [tr('me', FEE, '10000000uluna'), tr('me', FEE, '5000000uluna'), tax];
   ok('the burn tax in the same events is left out', fx({ logs: [], events: taxed }, 'me') === 10000000, fx({ logs: [], events: taxed }, 'me'));
   ok('only logs (an old node): still read', fx({ logs: [{ events: feeOnly }] }, 'me') === 10000000);
+
+  // #68 review 2: the tax listed only at the top level, the logs holding the
+  // ordinary transfer: the summary and the detail both say 10 LUNC
+  const top = [tr('me', FEE, '10000000uluna'), tr('me', FEE, '5000000uluna'), tax];
+  const t1 = { logs: msgLogs, events: top };
+  ok('tax only at the top level, logs with the transfer: fee 10 LUNC, not 15', fx(t1, 'me') === 10000000, fx(t1, 'me'));
+  ok('and the detail still finds the 5 LUNC burn tax', fees.taxPaid(t1, 'me').map(c => c.amount).join() === '5000000');
+  // split the other way: fee at the top, tax in the logs
+  const t2 = { logs: [{ events: [tr('me', 'terra1bob', '200000000uluna'), tr('me', FEE, '5000000uluna'), tax] }], events: feeOnly };
+  ok('fee at the top, tax only in the logs: 10 LUNC', fx(t2, 'me') === 10000000, fx(t2, 'me'));
+  ok('and the detail finds the tax in the logs', fees.taxPaid(t2, 'me').map(c => c.amount).join() === '5000000');
+  // duplicated: the top level repeats the logs' events
+  const t3 = { logs: [{ events: [tr('me', 'terra1bob', '200000000uluna'), tr('me', FEE, '5000000uluna'), tax] }],
+               events: [tr('me', FEE, '10000000uluna'), tr('me', 'terra1bob', '200000000uluna'), tr('me', FEE, '5000000uluna'), tax] };
+  ok('events duplicated between the logs and the top level: 10 LUNC', fx(t3, 'me') === 10000000, fx(t3, 'me'));
+  ok('a tax_payment with no transfer of its own is not taken off the fee', fx({ logs: [], events: [tr('me', FEE, '10000000uluna'), tax] }, 'me') === 10000000);
 }
 
 group('the period: whole local days, like the bars');
@@ -310,19 +327,77 @@ group('the period: whole local days, like the bars');
 
 group('rows: approvals to others, grouped unstakes, wallet switch');
 {
+  // #68 review 4: an allowance raised or lowered for a third party, both views
+  const al = new Function('short', [liftLine(src, 'const PREP ='), lift(src, 'function spenderOf('), lift(src, 'function isPrep('),
+    lift(src, 'function intentOf('), lift(src, 'function alsoOf('), lift(src, 'function alsoTitle('), lift(src, 'function alsoRow('),
+    'return { alsoOf, alsoTitle, alsoRow };'].join('\n'))(x => String(x).slice(0, 8) + '…');
+  const ex = (contract, msg) => ({ '@type': '/cosmwasm.wasm.v1.MsgExecuteContract', contract, msg });
+  const dep = ex('terra1pool', { provide_liquidity: {} });
+  const up = [ex('terra1tok', { increase_allowance: { spender: 'terra1stranger', amount: '1' } }), dep];
+  const dn = [ex('terra1tok', { decrease_allowance: { spender: 'terra1stranger', amount: '1' } }), dep];
+  const own = [ex('terra1tok', { increase_allowance: { spender: 'terra1pool', amount: '1' } }), dep];
+  const aUp = al.alsoOf(up, dep), aDn = al.alsoOf(dn, dep);
+  ok('a raised allowance for a stranger: "+approval" in the row', al.alsoTitle(aUp) === ' +approval', al.alsoTitle(aUp));
+  ok('and "Also approved: spending by" in the detail', al.alsoRow(aUp[0])[0] === 'Also approved' && /^spending by /.test(al.alsoRow(aUp[0])[1]));
+  ok('a lowered allowance: "+allowance lowered" in the row', al.alsoTitle(aDn) === ' +allowance lowered', al.alsoTitle(aDn));
+  ok('and "Also lowered: allowance of" in the detail, never "approved"', al.alsoRow(aDn[0])[0] === 'Also lowered' && /^allowance of /.test(al.alsoRow(aDn[0])[1]));
+  ok('one of each: counted as changes', al.alsoTitle(al.alsoOf([up[0], dn[0], dep], dep)) === ' +2 allowance changes');
+  ok('the pool’s own allowance is part of the deposit, nothing added', al.alsoOf(own, dep).length === 0 && al.alsoTitle([]) === '');
   const lk = lift(src, 'function look(');
-  ok('an approval to another spender stays in the row title', /const also = msgs\.filter\(x => x !== m && PREP\.test\(intentOf\(x\)\) && !isPrep\(x, msgs\)\)/.test(lk) && /if \(also\.length\) title \+= ' \+'/.test(lk));
-  ok('and the detail names it', /for \(const sp of l\.also\) html \+= row\('Also approved'/.test(src));
-  const foldSrc = src.slice(src.indexOf('const sameKey = main.every'), src.indexOf('// otherwise only the count'));
-  const fold = new Function('fmt', 'human', 'symOfKey', 'amountText', 'run', 'main',
-    foldSrc + '\nreturn fold;');
-  const H = f => f.raw / 1e6;
-  const unst = [{ key: 'native:uluna', raw: 0, req: 20e6 }, { key: 'native:uluna', raw: 0, req: 30e6 }];
-  const f1 = fold(x => String(x), H, () => 'LUNC', f => String(f.raw), unst.map(m => ({ l: { usd: 0 } })), unst);
-  ok('two unstakes of 20 and 30 fold to 50 LUNC, not -0', f1.top === '50 LUNC', f1.top);
-  const odd = [{ key: 'native:uluna', raw: 0 }, { key: 'native:uluna', raw: 0 }];
-  const f2 = fold(x => String(x), H, () => 'LUNC', f => String(f.raw), odd.map(m => ({ l: {} })), odd);
-  ok('with no amount to add up, only the count', f2.top === undefined);
+  ok('the row title and the detail use these', /title \+= alsoTitle\(also\)/.test(lk) && /const r = alsoRow\(a\); html \+= row\(r\[0\], r\[1\]/.test(src));
+
+  // folded runs (#68 review 3 and 5)
+  const foldSrc = src.slice(src.indexOf('let fold = { n: run.length };'), src.indexOf('// otherwise only the count'));
+  const H = f => Math.abs(f.raw) / 1e6;
+  const sym = k => k === 'native:uusd' ? 'USTC' : 'LUNC';
+  const amountText = f => (f.raw > 0 ? '+' : '-') + H(f) + ' ' + sym(f.key);
+  const fold = new Function('fmt', 'human', 'symOfKey', 'amountText', 'run', 'main', 'sameKey', foldSrc + '\nreturn fold;');
+  const F = (rows) => { const main = rows.map(r => r.main); return fold(x => String(x), H, sym, amountText, rows.map(r => ({ l: r })), main, main.every(f => f && f.key === main[0].key)); };
+  const unst = [{ main: { key: 'native:uluna', raw: 0, req: 20e6 } }, { main: { key: 'native:uluna', raw: 0, req: 30e6 } }];
+  ok('two unstakes of 20 and 30 fold to 50 LUNC, not -0', F(unst).top === '50 LUNC', F(unst).top);
+  const odd = [{ main: { key: 'native:uluna', raw: 0 } }, { main: { key: 'native:uluna', raw: 0 } }];
+  ok('with no amount to add up, only the count', F(odd).top === undefined);
+  const sw = [{ kind: 'swap', main: { key: 'native:uluna', raw: -20e6 }, second: { key: 'native:uusd', raw: 2e6 }, usd: 0 },
+              { kind: 'swap', main: { key: 'native:uluna', raw: -30e6 }, second: { key: 'native:uusd', raw: 3e6 }, usd: 0 }];
+  const fs2 = F(sw);
+  ok('two swaps fold to +5 USTC received', fs2.top === '+5 USTC' && fs2.topIn === true, JSON.stringify(fs2));
+  ok('and -50 LUNC spent below it', fs2.below === '-50 LUNC', fs2.below);
+  const outs = [{ main: { key: 'native:uluna', raw: -20e6 } }, { main: { key: 'native:uluna', raw: -30e6 } }];
+  ok('two sends fold to -50 LUNC, styled as going out', F(outs).top === '-50 LUNC' && F(outs).topIn === false);
+  const mixed = [sw[0], { kind: 'swap', main: { key: 'native:uluna', raw: -30e6 }, second: { key: 'cw20:terra1x', raw: 3e6 }, usd: 0 }];
+  ok('swaps into two different tokens: no total, only the count', F(mixed).top === undefined, JSON.stringify(F(mixed)));
+
+  // the folded header itself, drawn by rowHTML: native undelegations 20 + 30
+  const row = new Function('TXS', 'look', 'dayName', 'clock', 'usd', 'short', 'esc', 'face',
+    lift(src, 'function rowHTML(') + '\nreturn rowHTML;')({},
+    t => Object.assign({ title: 'Undelegated', kind: 'stake', group: 'staking', sub: 'terra1val', usd: 0, place: '', below: '', topIn: false }, t.l),
+    () => 'Today', () => '12:00', v => '$' + v.toFixed(2), x => x, x => String(x), () => '');
+  const one = { txhash: 'A', code: 0, timestamp: '', l: { top: '20 LUNC' } };
+  const head = row(one, 'me', false, { n: 2, top: '50 LUNC' });
+  ok('the folded undelegation header shows 50 LUNC', /Undelegated ×2/.test(head) && />50 LUNC</.test(head) && !/>20 LUNC</.test(head), head);
+  const headNo = row(one, 'me', false, { n: 2 });
+  ok('without a total it shows only the count, not the first row’s 20', /Undelegated ×2/.test(headNo) && !/20 LUNC/.test(headNo), headNo);
+  ok('the expanded rows keep their own amounts', />20 LUNC</.test(row(one, 'me')));
+  const swHead = row({ txhash: 'B', code: 0, timestamp: '', l: { title: 'Swapped', kind: 'swap', top: '+2 USTC', topIn: true, below: '-20 LUNC' } }, 'me', false, { n: 2, top: '+5 USTC', topIn: true, below: '-50 LUNC' });
+  ok('the folded swap header: +5 USTC in, -50 LUNC below', /class="ac-v in">\+5 USTC</.test(swHead) && /-50 LUNC/.test(swHead), swHead);
+  ok('a native undelegation carries its amount for the fold', /if \(!msgKey && coin && STAKING_MSG\.test\(type\)\) \{ msgKey = 'native:' \+ coin\.denom; req = Number\(coin\.amount\); \}/.test(lk));
+
+  // #68 review 1: the summary is the open wallet's only
+  const doc = { box: { hidden: false, innerHTML: 'A: -$123', dataset: { for: 'A' } } };
+  const sumFns = new Function('document', 'S', 'isDesk', 'ALL', 'LOADED_FOR',
+    lift(src, 'function clearSummary(') + '\n' + lift(src, 'function summary(') + '\nreturn { clearSummary, summary };');
+  const D = { getElementById: id => id === 'ac-sum' ? doc.box : null };
+  const B = sumFns(D, { ADDR: 'B' }, () => true, [{}], 'A');
+  B.summary('A');
+  ok('A’s summary is not drawn once B is the open wallet (A’s late read): hidden and emptied', doc.box.hidden === true && doc.box.innerHTML === '', JSON.stringify(doc.box));
+  doc.box = { hidden: false, innerHTML: 'A: -$123', dataset: { for: 'A' } };
+  B.summary('B');
+  ok('nor while B’s history is still being read (ALL is not B’s yet)', doc.box.hidden === true && doc.box.innerHTML === '', JSON.stringify(doc.box));
+  doc.box = { hidden: false, innerHTML: 'A: -$123', dataset: { for: 'A' } };
+  B.clearSummary();
+  ok('clearSummary empties it', doc.box.hidden && doc.box.innerHTML === '' && doc.box.dataset.for === '');
+  const wl = src.slice(src.indexOf("document.addEventListener('frontier:wallet'"), src.indexOf('function openLink('));
+  ok('the wallet-change event clears it at once', /if \(LOADED_FOR && LOADED_FOR !== me\) \{[\s\S]*clearSummary\(\);/.test(wl));
   const rd = lift(src, 'async function read(');
-  ok('switching wallet clears the last one’s summary first', /sumBox\.dataset\.for !== me\) \{ sumBox\.hidden = true; sumBox\.innerHTML = ''/.test(rd) && /box\.dataset\.for = me;/.test(src));
+  ok('and read() clears it before waiting for the old wallet’s read', rd.indexOf('clearSummary()') >= 0 && rd.indexOf('clearSummary()') < rd.indexOf('while (FETCH_P)'));
 }

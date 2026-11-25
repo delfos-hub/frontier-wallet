@@ -4,12 +4,12 @@
 // решает, что попадёт в выборку. message.sender находит всё, что адрес
 // подписывал - переводы, свапы, стейкинг. Полученное он не видит вовсе, его
 // приходится спрашивать отдельно по получателю, а потом склеивать по хешу.
-import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=30db946b';
-import { DEC, knownAsset as marketAsset } from './market.js?v=30db946b';
-import { $, go } from './shell.js?v=30db946b';
-import { fiatOf, heldTokens } from './tokens.js?v=30db946b';
-import { S } from './state.js?v=30db946b';
-import { NETS } from './gram-net.js?v=30db946b';
+import { amt, clean, esc, fmt, getJSON, iconHTML, LCD, paintIcons, usd } from './chain.js?v=bc7ca4f7';
+import { DEC, knownAsset as marketAsset } from './market.js?v=bc7ca4f7';
+import { $, go } from './shell.js?v=bc7ca4f7';
+import { fiatOf, heldTokens } from './tokens.js?v=bc7ca4f7';
+import { S } from './state.js?v=bc7ca4f7';
+import { NETS } from './gram-net.js?v=bc7ca4f7';
 
 // terra.money's classic finder is gone; the community one is what answers
 const FINDER = 'https://finder.terraclassic.community/columbus-5/tx/';
@@ -202,6 +202,24 @@ function spenderOf(m){
   const a = msg[Object.keys(msg)[0]] || {};
   return a.spender || a.operator || '';
 }
+// An approval in a transaction that is about something else, for a spender
+// that thing does not involve: kept in sight, with its direction (an
+// allowance raised or lowered reads differently).
+function alsoOf(msgs, m){
+  return msgs.filter(x => x !== m && PREP.test(intentOf(x)) && !isPrep(x, msgs))
+    .map(x => ({ sp: spenderOf(x), down: intentOf(x) === 'decrease_allowance' }))
+    .filter(a => a.sp);
+}
+function alsoTitle(also){
+  if (!also.length) return '';
+  const up = also.filter(a => !a.down).length, down = also.length - up;
+  if (!down) return ' +' + (up === 1 ? 'approval' : up + ' approvals');
+  if (!up) return ' +' + (down === 1 ? 'allowance lowered' : down + ' allowances lowered');
+  return ' +' + also.length + ' allowance changes';
+}
+function alsoRow(a){
+  return a.down ? ['Also lowered', 'allowance of ' + short(a.sp)] : ['Also approved', 'spending by ' + short(a.sp)];
+}
 function isPrep(x, msgs){
   if (!PREP.test(intentOf(x))) return false;
   const sp = spenderOf(x);
@@ -351,9 +369,16 @@ function eventsOf(t){
   for (const lg of (t.logs || [])) for (const e of (lg.events || [])) fromLogs.push(e);
   return fromLogs.length ? fromLogs : (t.events || []);
 }
-function taxPaid(t, me){
+// The events that carry the burn tax: the top-level ones when they hold a
+// tax_payment, else the message logs. A caller that has its own event set
+// (the fee) passes it, so the fee and the tax are paired in the same list.
+function taxEvents(t){
+  const top = t.events || [];
+  return top.some(e => e.type === 'tax_payment') ? top : eventsOf(t);
+}
+function taxPaid(t, me, events){
   const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
-  const evs = eventsOf(t), mine = [], out = [];
+  const evs = events || taxEvents(t), mine = [], out = [];
   for (const e of evs) {
     if (e.type === 'transfer' && attr(e, 'sender') === me && attr(e, 'recipient') === FEE_COLLECTOR) mine.push(attr(e, 'amount'));
   }
@@ -430,7 +455,7 @@ function openTx(hash){
   }
   if (l.place) html += row('Where', l.place);
   // spending approved for someone other than the contract above
-  for (const sp of l.also) html += row('Also approved', 'spending by ' + short(sp), 'warn') + '<p class="tx-who">' + esc(sp) + '</p>';
+  for (const a of l.also) { const r = alsoRow(a); html += row(r[0], r[1], 'warn') + '<p class="tx-who">' + esc(a.sp) + '</p>'; }
   // what actually arrived, when the tax came out of it
   if (!failed && taxPaid(t, me).length) {
     for (const mv of transfersIn(t, me)) if (!mv.mine) html += row('Recipient got', mv.text) +
@@ -639,7 +664,7 @@ function look(t, me){
   let title = d.title.replace(/ \+\d+$/, ''), kind = d.kind, group = 'other';
   // an approval for someone other than the contract this transaction deals
   // with stays in sight: in the title of the row and named in the detail
-  const also = msgs.filter(x => x !== m && PREP.test(intentOf(x)) && !isPrep(x, msgs)).map(spenderOf).filter(Boolean);
+  const also = alsoOf(msgs, m);
   if (swap) { title = 'Swapped'; kind = 'swap'; group = 'swaps'; }
   else if (type.indexOf('MsgSend') >= 0 || intent === 'transfer') group = 'transfers';
   else if (STAKING_MSG.test(type)) group = 'staking';
@@ -694,10 +719,14 @@ function look(t, me){
   }
   const gs = gramSwapRow(t, m, intent, ins, me);
   if (gs) { title = gs.title; kind = gs.kind; group = gs.group; sub = gs.sub; if (gs.below) below = gs.below; }
-  if (also.length) title += ' +' + (also.length === 1 ? 'approval' : also.length + ' approvals');
+  title += alsoTitle(also);
   // a request with no flow yet (an unstake): its amount rides along as req,
-  // so a folded run can add it up
-  const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0, req: Number(m.msg[intent].amount) } : null));
+  // so a folded run can add it up. A contract's is in its message, a native
+  // (un)delegation's is the one coin it names.
+  let req = msgKey ? Number(m.msg[intent].amount) : 0;
+  const coin = m.amount && !Array.isArray(m.amount) && m.amount.denom ? m.amount : null;
+  if (!msgKey && coin && STAKING_MSG.test(type)) { msgKey = 'native:' + coin.denom; req = Number(coin.amount); }
+  const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0, req: req } : null));
   const second = swap ? ins[0] : null;
   const usdMain = main ? worthOf(main) : 0;
   return { title: title, kind: kind, group: group, sub: sub, top: top, topIn: topIn, below: below,
@@ -735,13 +764,16 @@ function rowHTML(t, me, dated, fold){
   const dollars = l.usd ? usd(Math.abs(l.usd)) : '';
   const app = l.place ? l.place.split(' \u00b7 ')[0] : '';
   const sub = l.place && l.sub === l.place ? l.place.split(' \u00b7 ').slice(1).join(' \u00b7 ') : (l.sub || (app ? '' : short(t.txhash)));
+  let usd2 = l.usd ? usd(Math.abs(l.usd)) : dollars;
   if (fold) {
-    // several of the same in a row, folded into one line (render)
+    // several of the same in a row, folded into one line (render): the run's
+    // own totals, or only the count - never the first row's amounts
     l.title = l.title.replace(/ \u00d7\d+$/, '') + ' \u00d7' + fold.n;
-    if (fold.top) { l.top = fold.top; l.below = ''; }
-    if (fold.usd) { l.usd = fold.usd; }
+    l.top = fold.top || '';
+    l.below = fold.below || '';
+    l.topIn = !!fold.topIn;
+    usd2 = fold.usd ? usd(Math.abs(fold.usd)) : '';
   }
-  const usd2 = l.usd ? usd(Math.abs(l.usd)) : dollars;
   return '<div class="ac-row' + (fold ? ' ac-fold-head' : '') + '" data-hash="' + esc(t.txhash) + '" data-g="' + esc(failed ? 'fail' : l.group) + '">' + face(l, failed) +
     '<div class="ac-mid"><div class="ac-t"><span>' + esc(l.title) + '</span>' + (app ? '<em class="ac-app">' + esc(app) + '</em>' : '') +
       (fold ? '<i class="ac-chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></i>' : '') + '</div>' +
@@ -873,13 +905,23 @@ function foldDay(xs, me){
       const main = run.map(x => x.l.main);
       const sameKey = main.every(f => f && f.key === main[0].key);
       let fold = { n: run.length };
-      if (sameKey && main.every(f => f.req > 0)) {
+      const second = run.map(x => x.l.second);
+      if (run.every(x => x.l.kind === 'swap') && sameKey && second.every(f => f && f.key === second[0].key)) {
+        // swaps: what came in above, what went out below, each with its sign
+        fold.top = amountText({ key: second[0].key, raw: second.reduce((a, f) => a + f.raw, 0) });
+        fold.topIn = true;
+        fold.below = amountText({ key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) });
+        fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
+      } else if (run.every(x => x.l.kind === 'swap')) {
+        // swaps into different tokens: no sum that could mix them
+      } else if (sameKey && main.every(f => f.req > 0)) {
         // requests (unstakes) move nothing yet: add up what was asked for
         const asked = main.reduce((a, f) => a + f.req, 0);
         fold.top = fmt(human({ key: main[0].key, raw: asked })) + ' ' + symOfKey(main[0].key);
       } else if (sameKey && main.every(f => f.raw !== 0)) {
         const tot = { key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) };
         fold.top = amountText(tot);
+        fold.topIn = tot.raw > 0;
         fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
       }
       // otherwise only the count: no total that could be wrong
@@ -919,9 +961,9 @@ function feePaid(t, me){
     for (const part of what.split(',')) { const mm = /^(\d+)uluna$/.exec(part.trim()); if (mm) fee += Number(mm[1]); }
   }
   // the burn tax also goes to the fee collector and has its own line: taken
-  // out when these events carry it
-  const taxHere = evs.some(e => e.type === 'tax_payment') || evs === eventsOf(t);
-  if (taxHere) for (const c of taxPaid(t, me)) if (c.denom === 'uluna') fee -= Number(c.amount);
+  // out by pairing tax_payment with its transfer in these same events, so a
+  // tax listed only at the top level, only in the logs, or in both is right
+  for (const c of taxPaid(t, me, evs)) if (c.denom === 'uluna') fee -= Number(c.amount);
   return Math.max(0, fee);
 }
 // local midnight i calendar days before now's day
@@ -929,9 +971,16 @@ function calDay(now, i){
   const t = new Date(now);
   return new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
 }
+// the summary belongs to one wallet: emptied the moment another one opens
+function clearSummary(){
+  const box = document.getElementById('ac-sum');
+  if (box) { box.hidden = true; box.innerHTML = ''; box.dataset.for = ''; }
+}
 function summary(me){
   let box = document.getElementById('ac-sum');
-  if (!isDesk() || !ALL.length) { if (box) box.hidden = true; return; }
+  // drawn only for the wallet that is open and whose history is in ALL
+  const active = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+  if (!isDesk() || !ALL.length || me !== active || LOADED_FOR !== me) { clearSummary(); return; }
   if (!box) {
     box = document.createElement('div');
     box.id = 'ac-sum'; box.className = 'ac-sum';
@@ -1036,14 +1085,16 @@ async function load(){
   if (AGAIN) { AGAIN = false; LOADED = ''; load(); }
 }
 async function read(me){
+  // another wallet: the last one's summary goes before anything of this one,
+  // even before waiting for a read of the old wallet still in flight
+  const sumBox = document.getElementById('ac-sum');
+  if (sumBox && sumBox.dataset.for !== me) clearSummary();
   // a "Load more" still running for this wallet: let it end before starting
   // over, so the fresh read gets its own first page instead of joining it
   while (FETCH_P) await FETCH_P.catch(() => {});
+  if ((S.ADDR || (S.SAVED && S.SAVED.addr) || '') !== me) return;
   const list = $('#ac-list');
   const old = cached(me);
-  // another wallet: the last one's summary goes before anything of this one
-  const sumBox = document.getElementById('ac-sum');
-  if (sumBox && sumBox.dataset.for !== me) { sumBox.hidden = true; sumBox.innerHTML = ''; sumBox.dataset.for = ''; }
   ALL = []; PAGE_OFF = 0; SHOWN = 40; MORE = true; LOADED_FOR = me;
   if (old && old.length) { ALL = old.slice(); render(); }
   else list.innerHTML = '<div class="empty">Reading the chain</div>';
@@ -1080,7 +1131,13 @@ document.addEventListener('frontier:wallet', () => {
   // another wallet: the list shown belongs to the old one, and a read still
   // running for it must not land here
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
-  if (LOADED_FOR && LOADED_FOR !== me) { LOADED_FOR = ''; LOADED = ''; ALL = []; MORE = true; }
+  if (LOADED_FOR && LOADED_FOR !== me) {
+    LOADED_FOR = ''; LOADED = ''; ALL = []; MORE = true;
+    // the old wallet's figures leave the screen now, not when the new read starts
+    clearSummary();
+    const list = document.getElementById('ac-list');
+    if (list) list.innerHTML = '<div class="empty">Reading the chain</div>';
+  }
   clearTimeout(load._pre);
   load._pre = setTimeout(() => {
     const a = document.getElementById('st-activity');
