@@ -1,37 +1,69 @@
-import { amt, fmt } from './chain.js?v=b8620ca2';
-import { finish } from './crypto.js?v=b8620ca2';
-import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=b8620ca2';
+import { amt, fmt } from './chain.js?v=14009a44';
+import { finish } from './crypto.js?v=14009a44';
+import { PIN_LEN, digitsOnly, dots, focusPin, weakPin } from './onboarding.js?v=14009a44';
 // base was never imported here, so checking a watch address threw on every
 // address and the catch reported it as a bad checksum
-import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=b8620ca2';
-import { S } from './state.js?v=b8620ca2';
-import { activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore, Store, wallets } from './storage.js?v=b8620ca2';
-import { dropWallet } from './sync.js?v=b8620ca2';
-import { enter, switchLink } from './wallets.js?v=b8620ca2';
-import { paintSendTok } from './tx.js?v=b8620ca2';
-import { luncRaw, openWallet } from './tokens.js?v=b8620ca2';
-import { pinFail, pinOk, pinWait, waitText } from './pinguard.js?v=b8620ca2';
+import { $, base, bip39, buzz, dropKeyboard, go, libs, report, tap, tg } from './shell.js?v=14009a44';
+import { S } from './state.js?v=14009a44';
+import { activeId, addWatch, clearBook, decryptSeed, loadBook, removeWallet, saveWallet, short, showStore, Store, wallets } from './storage.js?v=14009a44';
+import { dropWallet } from './sync.js?v=14009a44';
+import { enter, switchLink } from './wallets.js?v=14009a44';
+import { paintSendTok } from './tx.js?v=14009a44';
+import { luncRaw, openWallet } from './tokens.js?v=14009a44';
+import { pinFail, pinOk, pinWait, waitText, pinLeft, pinSpan } from './pinguard.js?v=14009a44';
 
 /* ---------------- unlock ---------------- */
-let tries = 0;
+let tries = 0, busy = false, waitTimer = null;
 
-$('#pinboxU').addEventListener('click', () => focusPin('#pu'));
-$('#pu').addEventListener('input', async () => {
-  const v = digitsOnly($('#pu'));
-  dots('pinrowU', v.length);
-  $('#umsg').textContent = '';
-  if (v.length < PIN_LEN) return;
-  // too many wrong PINs: the next try waits (kept across reloads)
-  const wait = pinWait();
-  if (wait > 0) {
-    $('#umsg').textContent = 'Too many wrong PINs. Try again in ' + waitText(wait) + '.';
-    $('#umsg').style.color = 'var(--red)';
-    setTimeout(() => { $('#pu').value = ''; dots('pinrowU', 0); }, 550);
+const umsg = (text, tone) => {
+  const m = $('#umsg');
+  m.textContent = text;
+  m.style.color = tone === 'bad' ? 'var(--red)' : tone === 'wait' ? 'var(--gold)' : 'var(--muted)';
+};
+const clock = ms => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+function mark(cls, on){ const a = $('#unlock-ava'); if (a) a.classList.toggle(cls, on); }
+function shake(){
+  const b = $('#pinboxU');
+  b.classList.remove('ul-shake'); void b.offsetWidth; b.classList.add('ul-shake');
+  setTimeout(() => b.classList.remove('ul-shake'), 500);
+}
+function goState(){
+  const go_ = $('#unlock-go'), n = $('#pu').value.length;
+  go_.disabled = busy || pinWait() > 0 || n !== PIN_LEN;
+  go_.textContent = busy ? 'Unlocking\u2026' : pinWait() > 0 ? 'Wait ' + clock(pinWait()) : 'Unlock';
+}
+
+// Too many wrong PINs: the field is closed and the screen counts down to the
+// next try (the wait itself is kept across reloads by pinguard).
+function waitView(){
+  const ms = pinWait(), bar = $('#ubar'), pu = $('#pu');
+  if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
+  if (ms <= 0) {
+    bar.hidden = true; pu.disabled = false; $('#pinboxU').classList.remove('ul-wait');
+    goState();
     return;
   }
+  pu.value = ''; pu.disabled = true; dots('pinrowU', 0);
+  $('#pinboxU').classList.add('ul-wait');
+  const span = Math.max(ms, pinSpan());
+  const paint = () => {
+    const left = pinWait();
+    if (left <= 0) { umsg(''); waitView(); focusPin('#pu'); return; }
+    umsg('Too many wrong PINs. Next try in ' + clock(left), 'wait');
+    bar.hidden = false;
+    bar.firstElementChild.style.width = Math.round(100 * left / span) + '%';
+    goState();
+  };
+  paint();
+  waitTimer = setInterval(paint, 1000);
+}
 
-  $('#umsg').textContent = 'Checking';
-  $('#umsg').style.color = 'var(--muted)';
+async function tryUnlock(){
+  const v = $('#pu').value;
+  if (busy || v.length !== PIN_LEN) return;
+  if (pinWait() > 0) { waitView(); return; }
+  busy = true; mark('fast', true); goState();
+  umsg('Checking');
   try {
     await libs();
     S.MNEMONIC = await decryptSeed(S.SAVED.blob, v);
@@ -43,19 +75,37 @@ $('#pu').addEventListener('input', async () => {
     const badPin = e && (e.name === 'OperationError' || e.name === 'InvalidAccessError');
     tries++;
     dots('pinrowU', PIN_LEN, true);
-    buzz('error');
+    buzz('error'); shake();
+    mark('err', true); setTimeout(() => mark('err', false), 1200);
     if (badPin) {
       const f = pinFail();
-      $('#umsg').textContent = 'Wrong PIN' + (f.until > Date.now() ? '. Next try in ' + waitText(f.until - Date.now())
-        : tries > 2 ? ', ' + tries + ' attempts' : '');
+      if (f.until > Date.now()) { busy = false; mark('fast', false); setTimeout(waitView, 550); return; }
+      const left = pinLeft();
+      umsg('Wrong PIN. ' + left + ' more tr' + (left === 1 ? 'y' : 'ies') + ' before a wait.', 'bad');
     } else {
-      $('#umsg').textContent = 'Could not unlock: ' + (e && e.message ? e.message : e);
+      umsg('Could not unlock: ' + (e && e.message ? e.message : e), 'bad');
       report('unlock', e);
     }
-    $('#umsg').style.color = 'var(--red)';
-    setTimeout(() => { $('#pu').value = ''; dots('pinrowU', 0); }, 550);
+    setTimeout(() => { $('#pu').value = ''; dots('pinrowU', 0); goState(); }, 550);
+  } finally {
+    busy = false; mark('fast', false); goState();
   }
+}
+
+$('#pinboxU').addEventListener('click', e => { if (!e.target.closest('#unlock-go')) focusPin('#pu'); });
+$('#pu').addEventListener('input', () => {
+  const v = digitsOnly($('#pu'));
+  dots('pinrowU', v.length);
+  if (pinWait() <= 0) umsg('');
+  goState();
+  // eight digits is a try, as before: the button is for a wide screen's Enter or a retry
+  if (v.length === PIN_LEN) tryUnlock();
 });
+$('#pu').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+$('#unlock-go').addEventListener('click', tryUnlock);
+// coming to this screen: a wait still running is shown at once
+new MutationObserver(() => { if ($('#st-unlock').classList.contains('on')) waitView(); })
+  .observe($('#st-unlock'), { attributes: true, attributeFilter: ['class'] });
 
 document.querySelectorAll('#tabs .tab').forEach(b =>
   b.addEventListener('click', () => go(b.dataset.tab)));
