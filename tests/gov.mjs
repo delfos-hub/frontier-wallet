@@ -153,7 +153,7 @@ console.log('\nsplit votes');
   check('100 LUNC split 25/75: 25 to Yes', String(of('d1', 'VOTE_OPTION_YES')), '25000000');
   check('and 75 to No', String(of('d1', 'VOTE_OPTION_NO')), '75000000');
   check('a single vote takes it all', String(of('d2', 'VOTE_OPTION_NO')) + '/' + String(of('d2', 'VOTE_OPTION_YES')), '100000000/0');
-  check('the breakdown adds stake by weight', /const dSt = o => dl\.reduce\(\(a, x\) => a \+ dStake\(x\) \* part\(x, o\) \/ W1, 0n\)/.test(gsrc) &&
+  check('the breakdown adds stake by weight', /const stOf = o => known\.reduce\(\(t, a\) => t \+ st\(a\) \* shareOf\(split, votes, a, o\) \/ W1, 0n\)/.test(gsrc) &&
     /const vStake = o => vv\.reduce\(\(a, x\) => a \+ x\.tokens \* part\(x\.acc, o\) \/ W1, 0n\)/.test(gsrc), true);
   check('a split shows as one in the row', /gvd-vote split" title="Split vote">' \+ esc\(splitText\(v\.split\[r\.a\]\)\)/.test(gsrc), true);
 }
@@ -272,6 +272,61 @@ console.log('\nevery action inspectable');
   check('kept: and all 21 are listed', (L.changesHTML(kept).match(/class="gvd-act"/g) || []).length, 21);
   const huge = L.actionText({ blob: 'y'.repeat(L.ACTION_CAP + 10) });
   check('an action past the cap says it is cut, and by how much', /\[cut: this action is \d+ characters, the first 200000 are shown\]$/.test(huge), true);
+}
+
+// #67 review on c079531: the current vote, the phone list, missing stakes
+console.log('\nthe current vote, the phone list, missing stakes');
+{
+  const pick = (a, b) => gsrc.slice(gsrc.indexOf(a), gsrc.indexOf(b));
+  const libsrc = pick('const NUM_OPT =', 'const splitText') + '\n' + pick('function delegatorSums(', '/* Who voted,');
+  // voters() run on simulated chain answers
+  const runVoters = new Function('getJSON', 'G', 'LCD', 'APP_TAG', 'validators',
+    libsrc + '\n' + pick('const VOTERS = {};', 'let DATA = null;') + '\nreturn { voters, shareOf, W1, delegatorSums };');
+  const NO1 = [{ option: 'VOTE_OPTION_NO', weight: '1.000000000000000000' }];
+  const OLD = [{ option: 1, weight: '0.25' }, { option: 3, weight: '0.75' }];
+  const answers = (stakeFails) => async (url) => {
+    if (/\/votes\?/.test(url)) return { votes: [{ voter: 'd1', options: NO1 }, { voter: 'd2', options: [{ option: 'VOTE_OPTION_YES', weight: '1' }] }], pagination: {} };
+    if (/txs\?query=/.test(url)) return { total: '1', tx_responses: [{ txhash: 'A'.repeat(64), timestamp: '', tx: { body: { memo: '', messages: [{ voter: 'd1', proposal_id: '7', options: OLD }] } } }] };
+    if (/delegations\/d1/.test(url)) return { delegation_responses: [{ balance: { amount: '100000000' } }] };
+    if (/delegations\/d2/.test(url)) { if (stakeFails) throw new Error('timeout'); return { delegation_responses: [{ balance: { amount: '100000000' } }] }; }
+    if (/delegations\/d3/.test(url)) return { delegation_responses: [] };
+    return {};
+  };
+  const G1 = runVoters(answers(false), '', '', /^$/, async () => []);
+  const v = await G1.voters('7');
+  check('the chain says 100% No, an older transaction said 25/75: the vote is No', v.votes.d1 + ' / split ' + (v.split.d1 ? 'kept' : 'none'), 'VOTE_OPTION_NO / split none');
+  check('so the chart gives d1 all of No and none of Yes',
+    String(G1.shareOf(v.split, v.votes, 'd1', 'VOTE_OPTION_NO')) + '/' + String(G1.shareOf(v.split, v.votes, 'd1', 'VOTE_OPTION_YES')), '1000000/0');
+  const dl = ['d1', 'd2'];
+  const both = G1.delegatorSums(dl, v.votes, v.split, v.stake);
+  check('two delegators of 100 LUNC, Yes and No: 50/50 of 200 known', both.known + ' ' + String(both.total) + ' ' + String(both.st('VOTE_OPTION_YES')) + '/' + String(both.st('VOTE_OPTION_NO')), '2 200000000 100000000/100000000');
+
+  const G2 = runVoters(answers(true), '', '', /^$/, async () => []);
+  const v2 = await G2.voters('8');
+  const one = G2.delegatorSums(dl, v2.votes, v2.split, v2.stake);
+  check('the Yes voter’s stake read fails: it is missing, not zero', ('d2' in v2.stake) + ' ' + (v2.stakeMiss.d2 === true), 'false true');
+  check('and the summary knows 1 of 2 amounts, 100 LUNC of known stake', one.known + ' of ' + one.all + ', ' + String(one.total), '1 of 2, 100000000');
+  check('the donut says how many amounts were read', /'voted \\u00b7 stake read for ' \+ dKnown \+ ' of ' \+ dl\.length/.test(gsrc), true);
+  check('and the note says the shares are of the stake that could be read', /Delegator percentages are shares of the stake that could be read/.test(gsrc), true);
+  const zero = G1.delegatorSums(['d1', 'd3'], { d1: 'VOTE_OPTION_NO', d3: 'VOTE_OPTION_YES' }, {}, { d1: 100000000n, d3: 0n });
+  check('a successful zero balance is a known amount of 0', zero.known + ' of ' + zero.all + ', ' + String(zero.total), '2 of 2, 100000000');
+
+  // the phone list, rendered
+  const listLib = new Function('OPT', 'OPT_CLASS', 'esc', 'share', 'L', 'face', 'shortAcc',
+    pick('const NUM_OPT =', 'const shareOf =') + '\n' + pick('function voterState(', 'async function showVoters(') + '\nreturn { voterListHTML };')(
+    { VOTE_OPTION_YES: 'Yes', VOTE_OPTION_NO: 'No' }, { VOTE_OPTION_YES: 'y', VOTE_OPTION_NO: 'n' }, String, () => '1', String, () => '', a => a);
+  const val = { name: 'Val One', tokens: 1000000n };
+  const vv = { memo: {}, split: {}, step: 3, stakeMiss: {} };
+  const render = (known) => listLib.voterListHTML(['val1'], {}, vv, { val1: val }, known, 'all', false, 1000000n, () => 1000000n);
+  const partial = render(false);
+  check('history failed: the validator reads Unknown, not Not voted', />Unknown</.test(partial) && !/>Not voted<\/b>/.test(partial), true);
+  check('the count says it is incomplete', /0 of 1 voted · history incomplete/.test(partial), true);
+  check('and the row is not under the Not voted filter', /data-v="unknown"/.test(partial) && !/data-v="no"/.test(partial), true);
+  const whole = render(true);
+  check('history read in full and empty: Not voted, counted plainly', />Not voted<\/b>/.test(whole) && /0 of 1 voted</.test(whole) && /data-v="no"/.test(whole), true);
+  const css = fs.readFileSync(path.resolve('assets/css/app.css'), 'utf8');
+  check('the Not voted filter shows only data-v="no" rows', /#gov-vals\[data-f="no"\] \.gov-voter:not\(\[data-v="no"\]\)/.test(css), true);
+  check('the phone list is drawn with known = live or a whole history', /voterListHTML\(accs, votes, v, byAcc, live \|\| v\.txok,/.test(gsrc), true);
 }
 
 // the voters table's numbers

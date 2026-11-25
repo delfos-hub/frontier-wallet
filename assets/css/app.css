@@ -1869,7 +1869,8 @@ button.wname svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-wid
 .gv-filter button{padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;color:var(--muted);
   font:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .gv-filter button.on{color:#0B0F1A;background:#00D4FF;border-color:#00D4FF}
-#gov-vals[data-f="yes"] .gov-voter[data-v="no"],#gov-vals[data-f="no"] .gov-voter[data-v="yes"],
+/* "Not voted" holds confirmed non-voters only; Unknown (history incomplete) is under All */
+#gov-vals[data-f="yes"] .gov-voter:not([data-v="yes"]),#gov-vals[data-f="no"] .gov-voter:not([data-v="no"]),
 #gov-vals[data-f="memo"] .gov-voter:not([data-m]){display:none !important}
 .gv-filter{flex-wrap:wrap}
 .gv-comments .gov-memo{margin-left:64px}
@@ -2861,3 +2862,4 @@ html.dk .xch-soon{margin-top:-1px}
 html .xc.xg:hover,html .xc.xg:active{transform:none!important;filter:none!important}
 .xc.xg:has(.xch:hover){border-color:rgba(120,140,255,.28)!important;box-shadow:none!important}
 .xc.xg[data-chain=tron]:has(.xch:hover){border-color:rgba(255,90,100,.32)!important}
+.gov-v.none.unknown{color:#FFB547;border-color:rgba(255,181,71,.35)}

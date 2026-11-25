@@ -6,10 +6,10 @@
    two-press rule as Send. The weight of a vote is the address's staked LUNC,
    and a vote can be changed until the voting period ends - both are said on
    screen, because both surprise people. */
-import { LCD, amt, fmt, getJSON } from './chain.js?v=461bbc8a';
-import { $, buzz, go } from './shell.js?v=461bbc8a';
-import { S } from './state.js?v=461bbc8a';
-import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=461bbc8a';
+import { LCD, amt, fmt, getJSON } from './chain.js?v=a8311c4d';
+import { $, buzz, go } from './shell.js?v=a8311c4d';
+import { S } from './state.js?v=a8311c4d';
+import { MEMO_MAX, dryRunVote, sendVote } from './tx.js?v=a8311c4d';
 
 const addrOf = () => S.ADDR || (S.SAVED && S.SAVED.addr) || '';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -209,6 +209,18 @@ const splitText = sp => sp.map(x => (OPT_SHORT[x[0]] || x[0]) + ' ' + (Number(x[
 // how much of a voter's weight went to option o, in millionths. split and
 // votes are the maps already built for the view: nothing is copied per
 // lookup (a copy per voter made a 1,500-voter table take seconds)
+// The delegators' side of the breakdown, from the stakes that were read.
+// A stake that could not be read is not counted as zero: known says how many
+// of the delegators' amounts are in, and the shares are of that known stake.
+function delegatorSums(dl, votes, split, stake){
+  const has = a => Object.prototype.hasOwnProperty.call(stake, a);
+  const known = dl.filter(has);
+  const st = a => has(a) ? stake[a] : 0n;
+  const total = known.reduce((t, a) => t + st(a), 0n);
+  const by = o => dl.filter(a => shareOf(split, votes, a, o) > 0n);
+  const stOf = o => known.reduce((t, a) => t + st(a) * shareOf(split, votes, a, o) / W1, 0n);
+  return { known: known.length, all: dl.length, total: total, by: by, st: stOf };
+}
 const shareOf = (split, votes, a, o) => {
   const sp = split && split[a];
   if (sp) { const x = sp.find(y => y[0] === o); return x ? x[1] : 0n; }
@@ -233,7 +245,7 @@ function voters(id, onStep){
   const run = RUNS[id] = { subs: onStep ? [onStep] : [] };
   const tell = x => { run.subs.forEach(f => { try { f(x); } catch (e) {} }); };
   run.p = (async () => {
-    const out = { votes: {}, memo: {}, stake: {}, txv: {}, tx: {}, split: {}, txok: false, at: Date.now(), step: 0 };
+    const out = { votes: {}, memo: {}, stake: {}, stakeMiss: {}, txv: {}, tx: {}, split: {}, txok: false, at: Date.now(), step: 0 };
     let key = '';
     for (let i = 0; i < 10; i++) {
       const r = await getJSON(G + '/proposals/' + id + '/votes?pagination.limit=1000' + (key ? '&pagination.key=' + encodeURIComponent(key) : ''));
@@ -260,7 +272,9 @@ function voters(id, onStep){
       const sp = m.options ? splitOf(m.options) : [];
       const o = m.option || (sp[0] && sp[0][0]);
       if (o) out.txv[m.voter] = String(NUM_OPT[o] || o);
-      if (sp.length > 1 && !out.split[m.voter]) out.split[m.voter] = sp;
+      // the chain's current record (step 1) is the vote that counts: an older
+      // vote transaction never replaces its option or its weights (#67 review)
+      if (sp.length > 1 && !(m.voter in out.votes) && !out.split[m.voter]) out.split[m.voter] = sp;
       if (/^[0-9A-F]{64}$/i.test(String(t.txhash || ''))) out.tx[m.voter] = { hash: String(t.txhash).toUpperCase(), time: String(t.timestamp || '') };
       const text = String(t.tx.body.memo || '').trim();
       if (text && !APP_TAG.test(text)) out.memo[m.voter] = text.slice(0, 600);
@@ -289,7 +303,8 @@ function voters(id, onStep){
     for (let i = 0; i < ask.length; i += 24) {
       await Promise.all(ask.slice(i, i + 24).map(a => getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + a, 10000, 1)
         .then(r => { out.stake[a] = (r.delegation_responses || []).reduce((s, d) => s + BigInt(d.balance && d.balance.amount || '0'), 0n); })
-        .catch(() => { out.stake[a] = 0n; })));
+        // not read is not zero: left out of stake, and named as missing
+        .catch(() => { out.stakeMiss[a] = true; })));
       if (i + 24 < ask.length) { VOTERS[id] = Object.assign({}, out); tell(VOTERS[id]); }
     }
     out.step = 3; out.at = Date.now(); VOTERS[id] = out; tell(out);
@@ -941,6 +956,31 @@ function fillLogos(root){
   }).catch(() => {});
 }
 
+/* The phone's list of voters. known: the record behind it is whole (the
+   chain's own while voting is open, or a vote history read in full); when it
+   is not, an address with no vote found is Unknown, the count says it is
+   incomplete, and only confirmed non-voters are under "Not voted". */
+function voterState(o, known){ return o ? 'yes' : known ? 'no' : 'unknown'; }
+function voterListHTML(accs, votes, v, byAcc, known, filt, opened, total, weight){
+  const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>'
+    : known ? '<b class="gov-v none">Not voted</b>' : '<b class="gov-v none unknown">Unknown</b>';
+  const voted = accs.filter(a => votes[a]).length;
+  const said = accs.filter(a => v.memo[a]).length;
+  return '<div class="head" style="margin:20px 2px 8px"><h2>Voters</h2><span>' + voted + ' of ' + accs.length + ' voted' +
+      (known ? '' : ' · history incomplete') + (v.step < 2 ? ' · reading comments…' : '') + '</span></div>' +
+      '<div class="gv-filter" id="gov-filter">' + [['all', 'All'], ['yes', 'Voted'], ['no', 'Not voted']].concat(said ? [['memo', 'With comments']] : [])
+        .map(([k, l]) => '<button class="' + (filt === k ? 'on' : '') + '" data-f="' + k + '" type="button">' + l + '</button>').join('') + '</div>' +
+      '<div class="gov-voters gv-comments' + (opened ? ' all' : '') + '" id="gov-vals" data-f="' + filt + '">' + accs.map((a, i) => {
+        const val = byAcc[a], w = weight(a), o = votes[a], c = v.memo[a];
+        const stakeText = w > 0n ? 'VP ' + share(w, total) + '% · ' + L(w) + ' LUNC' : (!val && v.stakeMiss && v.stakeMiss[a]) ? 'stake not read' : 'no stake';
+        return '<div class="gov-voter' + (i >= 20 ? ' more' : '') + '" data-v="' + voterState(o, known) + '"' + (c ? ' data-m="1"' : '') + '>' +
+          '<div class="gov-voter-top"><span class="gov-rank">' + (i + 1) + '</span>' + face(val ? val.name : a.slice(6), a, val && val.op, val && val.ident) +
+          '<span class="gov-who">' + esc(val ? val.name : shortAcc(a)) + '<small>' + stakeText + '</small></span>' +
+            (v.split && v.split[a] ? '<b class="gov-v split">' + esc(splitText(v.split[a])) + '</b>' : tag(o)) + '</div>' +
+          (c ? '<div class="gov-memo">' + esc(c) + '</div>' : '') + '</div>';
+      }).join('') + '</div>' +
+      (accs.length > 20 && !opened ? '<button class="dust" id="gov-vals-all" type="button">Show all ' + accs.length + '</button>' : '');
+}
 async function showVoters(id, live){
   let vals;
   try { vals = await validators(); }
@@ -954,7 +994,6 @@ async function showVoters(id, live){
     if (FLOW.desk) return paintTable(id, live, v, vals, T, () => paint(last));
     const box = $('#gov-voters');
     const total = vals.reduce((a, x) => a + x.tokens, 0n) || 1n;
-    const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">Not voted</b>';
     const byAcc = {};
     vals.forEach(x => { byAcc[x.acc] = x; });
     // Who chose what: the chain's own record while voting is open; once it
@@ -968,22 +1007,7 @@ async function showVoters(id, live){
     const weight = a => byAcc[a] ? byAcc[a].tokens : (v.stake[a] || 0n);
     const accs = vals.filter(x => x.acc).map(x => x.acc).concat(Object.keys(v.memo).filter(a => !byAcc[a]));
     accs.sort((a, b) => (weight(b) > weight(a) ? 1 : weight(b) < weight(a) ? -1 : 0));
-    const voted = accs.filter(a => votes[a]).length;
-    const said = accs.filter(a => v.memo[a]).length;
-    box.innerHTML = '<div class="head" style="margin:20px 2px 8px"><h2>Voters</h2><span>' + voted + ' of ' + accs.length + ' voted' +
-      (v.step < 2 ? ' \u00b7 reading comments\u2026' : '') + '</span></div>' +
-      '<div class="gv-filter" id="gov-filter">' + [['all', 'All'], ['yes', 'Voted'], ['no', 'Not voted']].concat(said ? [['memo', 'With comments']] : [])
-        .map(([k, l]) => '<button class="' + (filt === k ? 'on' : '') + '" data-f="' + k + '" type="button">' + l + '</button>').join('') + '</div>' +
-      '<div class="gov-voters gv-comments' + (opened ? ' all' : '') + '" id="gov-vals" data-f="' + filt + '">' + accs.map((a, i) => {
-        const val = byAcc[a], w = weight(a), o = votes[a], c = v.memo[a];
-        return '<div class="gov-voter' + (i >= 20 ? ' more' : '') + '" data-v="' + (o ? 'yes' : 'no') + '"' + (c ? ' data-m="1"' : '') + '>' +
-          '<div class="gov-voter-top"><span class="gov-rank">' + (i + 1) + '</span>' + face(val ? val.name : a.slice(6), a, val && val.op, val && val.ident) +
-          '<span class="gov-who">' + esc(val ? val.name : shortAcc(a)) + '<small>' +
-          (w > 0n ? 'VP ' + share(w, total) + '% \u00b7 ' + L(w) + ' LUNC' : 'no stake') + '</small></span>' +
-            (v.split && v.split[a] ? '<b class="gov-v split">' + esc(splitText(v.split[a])) + '</b>' : tag(o)) + '</div>' +
-          (c ? '<div class="gov-memo">' + esc(c) + '</div>' : '') + '</div>';
-      }).join('') + '</div>' +
-      (accs.length > 20 && !opened ? '<button class="dust" id="gov-vals-all" type="button">Show all ' + accs.length + '</button>' : '') +
+    box.innerHTML = voterListHTML(accs, votes, v, byAcc, live || v.txok, filt, opened, total, weight) +
       (live ? '' : '<p class="tiny gv-note">Read from the vote transactions: the chain clears its own record when voting ends.</p>');
     fillLogos(box);
     const all = $('#gov-vals-all');
@@ -1089,22 +1113,20 @@ function paintTable(id, live, v, vals, T, again){
       const vVoted = vv.filter(x => votes[x.acc]);
       const vNone = vTot - vVoted.reduce((a, x) => a + x.tokens, 0n);
       const dl = Object.keys(votes).filter(a => !byAcc[a]);
-      const dStake = a => v.stake[a] || 0n;
-      const dKnown = dl.filter(a => a in v.stake).length;
-      const dTot = dl.reduce((a, x) => a + dStake(x), 0n);
-      const dBy = o => dl.filter(a => part(a, o) > 0n);
-      const dSt = o => dl.reduce((a, x) => a + dStake(x) * part(x, o) / W1, 0n);
+      const D = delegatorSums(dl, votes, v.split, v.stake);
+      const dKnown = D.known, dTot = D.total, dBy = D.by, dSt = D.st;
       const useStake = dTot > 0n;
       sum.innerHTML = '<div class="gvd-sums">' +
         donut('Validators', vVoted.length + ' / ' + vv.length, known ? 'voted' : 'vote found \u00b7 history incomplete',
           opts.map(o => ({ k: K(o), w: Number(vStake(o) / 1000000n) })).concat([{ k: 'none', w: Number(vNone / 1000000n) }]),
           opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: vBy(o).length, stake: big(vStake(o)), pct: pctOf(vStake(o), vTot).toFixed(2) + '%' }))) +
-        donut('Delegators', String(dl.length), dKnown < dl.length ? 'voted \u00b7 stake ' + Math.round(dKnown / Math.max(1, dl.length) * 100) + '%' : 'voted',
+        donut('Delegators', String(dl.length), dKnown < dl.length ? 'voted \u00b7 stake read for ' + dKnown + ' of ' + dl.length : 'voted',
           opts.map(o => ({ k: K(o), w: useStake ? Number(dSt(o) / 1000000n) : dBy(o).length })),
           opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: dBy(o).length, stake: useStake ? big(dSt(o)) : '\u2014',
             pct: useStake ? pctOf(dSt(o), dTot).toFixed(2) + '%' : '' }))) +
         '</div><p class="tiny gvd-src">Validators weigh what is bonded to them; a delegator who votes overrides their validator for their own stake.' +
         (live ? '' : ' Read from the vote transactions: the chain clears its own record when voting ends.') +
+        (dKnown < dl.length && useStake ? ' Delegator percentages are shares of the stake that could be read (' + dKnown + ' of ' + dl.length + ' amounts).' : '') +
         (known ? '' : ' <b class="gvd-todo">Part of that history did not come back, so these totals may be short and a voter shown as Unknown may have voted.</b>') + '</p>';
     }
   }
