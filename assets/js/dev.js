@@ -11,10 +11,10 @@
    transaction by hash; contract query, execute, code upload and instantiate;
    and the contracts made from this wallet. Every signed action is simulated
    first, the fee is shown, and signing checks it again (tx.js checkFee). */
-import { esc, fmt } from './chain.js?v=2f0876f8';
-import { $, $$, go } from './shell.js?v=2f0876f8';
-import { S } from './state.js?v=2f0876f8';
-import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=2f0876f8';
+import { esc, fmt } from './chain.js?v=8047bf5f';
+import { $, $$, go } from './shell.js?v=8047bf5f';
+import { S } from './state.js?v=8047bf5f';
+import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js?v=8047bf5f';
 
 const MAINNET = 'columbus-5';
 
@@ -147,6 +147,7 @@ function coinsOf(text){
   }).filter(Boolean);
 }
 function parseJSON(text, what){
+  if (!String(text || '').trim()) throw new Error(what + ' is empty: write the JSON to send (the grey text is only an example)');
   try { return JSON.parse(text); }
   catch (e) { throw new Error(what + ' is not valid JSON: ' + e.message); }
 }
@@ -206,10 +207,14 @@ function editor(id, key){
   // The example starts as real text, ready to edit or run. Cleared, the
   // editor shows it greyed out again - and what is shown is what runs, so
   // Run on a blank editor sends the example rather than failing on "".
+  // Only the query editor runs its example when blank: a query reads, nothing
+  // is signed. Execute, Instantiate and Migrate sign what they send, so a
+  // blank one is an error there, never the example (#79 review).
   const example = ta.getAttribute('placeholder') || '';
+  const runsExample = id === 'dv-q-msg';
   ta.value = (key && store.get(key, '')) || example;
   draw();
-  return { set(v){ ta.value = v; draw(); }, get: () => ta.value.trim() ? ta.value : example };
+  return { set(v){ ta.value = v; draw(); }, get: () => ta.value.trim() ? ta.value : (runsExample ? example : '') };
 }
 const ED = {
   q: editor('dv-q-msg', 'fw:dev:q'),
@@ -674,7 +679,7 @@ function instMsg(){
   const admin = noAdmin.checked ? '' : (adminBox.value.trim() || addrOf());
   if (admin && !/^terra1[0-9a-z]{38,58}$/.test(admin)) throw new Error('the admin is not a terra1 address');
   return { kind: 'inst', code: code, label: $('#dv-i-label').value.trim(), admin: admin,
-           msg: minify(ED.i.get() || '{}', 'the init message'), funds: coinsOf($('#dv-i-funds').value) };
+           msg: minify(ED.i.get(), 'the init message'), funds: coinsOf($('#dv-i-funds').value) };
 }
 $('#dv-i-sim').addEventListener('click', async e => {
   const out = $('#dv-u-out'), btn = e.currentTarget;
@@ -946,7 +951,7 @@ $$('.dv-seg button').forEach(b => b.addEventListener('click', () => {
 function admMsg(){
   const c = $('#dv-a-addr').value.trim();
   if (!contractOk(c)) throw new Error('the contract is not a terra1 address');
-  if (ACT === 'migrate') return { kind: 'migrate', contract: c, code: $('#dv-a-code').value.trim(), msg: minify(ED.m.get() || '{}', 'the migrate message') };
+  if (ACT === 'migrate') return { kind: 'migrate', contract: c, code: $('#dv-a-code').value.trim(), msg: minify(ED.m.get(), 'the migrate message') };
   if (ACT === 'admin') return { kind: 'admin', contract: c, admin: $('#dv-a-new').value.trim() };
   return { kind: 'clearadmin', contract: c };
 }

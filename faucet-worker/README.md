@@ -12,7 +12,7 @@ All in `wrangler.jsonc` `vars`, changeable without touching the code:
 
 | var | default | |
 |---|---|---|
-| `AMOUNT` | `20000000000` | uluna per claim (20,000 LUNC) |
+| `AMOUNT` | `20000000000` | uluna per claim (20,000 LUNC). **Deployed with `1000000000` (1,000 LUNC)** in `wrangler.jsonc` while the faucet wallet is low; set it back once it is funded |
 | `COOLDOWN_H` | `24` | hours between two claims of one address |
 | `PER_CLIENT_DAY` | `3` | claims per client (IPv4, or IPv6 /64) a day |
 | `DAILY_CAP` | `2000000000000` | uluna across everyone a day (2,000,000 LUNC) |
