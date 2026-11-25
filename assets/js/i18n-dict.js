@@ -486,6 +486,18 @@ Object.assign(EXTRA, {
   'Burn tax': ['Налог на сжигание', 'Taxe de burn', 'Tassa di burn', 'Impuesto de quema', 'Yakım vergisi'],
   'Recipient got': ['Получатель получил', 'Reçu par le destinataire', 'Ricevuto dal destinatario', 'El destinatario recibió', 'Alıcıya ulaşan'],
 });
+Object.assign(EXTRA, {
+  'Developer mode': ['Режим разработчика', 'Mode développeur', 'Modalità sviluppatore', 'Modo desarrollador', 'Geliştirici modu'],
+  'Test network, faucet, contract tools': ['Тестовая сеть, кран, инструменты для контрактов', 'Réseau de test, faucet, outils de contrats', 'Rete di test, faucet, strumenti per contratti', 'Red de prueba, faucet, herramientas de contratos', 'Test ağı, musluk, sözleşme araçları'],
+  'On · rebel-2 test network': ['Вкл · тестовая сеть rebel-2', 'Activé · réseau de test rebel-2', 'Attiva · rete di test rebel-2', 'Activado · red de prueba rebel-2', 'Açık · rebel-2 test ağı'],
+  'Turn on Developer mode?': ['Включить режим разработчика?', 'Activer le mode développeur ?', 'Attivare la modalità sviluppatore?', '¿Activar el modo desarrollador?', 'Geliştirici modu açılsın mı?'],
+  'A section marked TEST appears at the foot of the menu: faucet, network, contracts': ['Внизу меню появится раздел TEST: кран, сеть, контракты', 'Une section TEST apparaît en bas du menu : faucet, réseau, contrats', 'In fondo al menu compare una sezione TEST: faucet, rete, contratti', 'Al final del menú aparece una sección TEST: faucet, red, contratos', 'Menünün altında TEST bölümü görünür: musluk, ağ, sözleşmeler'],
+  'It works on the rebel-2 test network only. Test coins have no value': ['Он работает только в тестовой сети rebel-2. Тестовые монеты ничего не стоят', 'Il fonctionne uniquement sur le réseau de test rebel-2. Les jetons de test n’ont aucune valeur', 'Funziona solo sulla rete di test rebel-2. Le monete di test non hanno valore', 'Funciona solo en la red de prueba rebel-2. Las monedas de prueba no tienen valor', 'Yalnızca rebel-2 test ağında çalışır. Test coinlerinin değeri yoktur'],
+  'This wallet signs there with the same key; it never signs on columbus-5 from that section': ['Кошелёк подписывает там тем же ключом; из этого раздела он никогда не подписывает в columbus-5', 'Ce portefeuille y signe avec la même clé ; depuis cette section, il ne signe jamais sur columbus-5', 'Questo wallet firma lì con la stessa chiave; da questa sezione non firma mai su columbus-5', 'Esta billetera firma allí con la misma clave; desde esa sección nunca firma en columbus-5', 'Bu cüzdan orada aynı anahtarla imzalar; o bölümden columbus-5 üzerinde asla imzalamaz'],
+  'Your balances and the rest of the wallet stay as they are': ['Ваши балансы и остальной кошелёк не меняются', 'Vos soldes et le reste du portefeuille restent inchangés', 'I tuoi saldi e il resto del wallet restano come sono', 'Tus saldos y el resto de la billetera no cambian', 'Bakiyeleriniz ve cüzdanın geri kalanı olduğu gibi kalır'],
+  'Open developer tools': ['Открыть инструменты разработчика', 'Ouvrir les outils de développement', 'Apri gli strumenti per sviluppatori', 'Abrir herramientas de desarrollo', 'Geliştirici araçlarını aç'],
+});
+
 const XL = ['ru', 'fr', 'it', 'es', 'tr'];
 for (const k in EXTRA) XL.forEach((code, i) => { DICT[code][k] = EXTRA[k][i]; });
 

@@ -13,17 +13,17 @@
    Motion source, best first: Telegram's DeviceOrientation (Bot API 8.0, no
    browser permission prompt), the browser's deviceorientation, and on a
    desktop the pointer. Nothing moves with "reduce motion" switched on. */
-import { tg } from './shell.js?v=14009a44';
+import { tg } from './shell.js?v=7a0969e1';
 
 const STILL = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const TABS = ['home', 'stake', 'gov', 'activity', 'settings'];
+const TABS = ['home', 'stake', 'gov', 'activity', 'dev', 'settings'];
 // the light of each room: [main, second]
 const ROOM = {
   welcome: ['#7B5CFF', '#00D4FF'], unlock: ['#7B5CFF', '#00D4FF'], setup: ['#7B5CFF', '#00D4FF'],
   home: ['#7B5CFF', '#00D4FF'], stake: ['#3ECF8E', '#00D4FF'], gov: ['#B04AE8', '#7B5CFF'],
   activity: ['#00D4FF', '#3B82F6'], settings: ['#3B82F6', '#7B5CFF'], swap: ['#00D4FF', '#7B5CFF'],
   send: ['#E8C840', '#7B5CFF'], receive: ['#3ECF8E', '#7B5CFF'], p2p: ['#00D4FF', '#3ECF8E'],
-  gram: ['#2AA1FF', '#E8C840'], earn: ['#3ECF8E', '#7B5CFF'], token: ['#7B5CFF', '#00D4FF']
+  gram: ['#2AA1FF', '#E8C840'], earn: ['#3ECF8E', '#7B5CFF'], token: ['#7B5CFF', '#00D4FF'], dev: ['#FFB547', '#7B5CFF'], tsend: ['#FFB547', '#00D4FF']
 };
 
 const scene = document.createElement('div');
@@ -99,6 +99,8 @@ window.addEventListener('scroll', () => { lastY = window.scrollY; }, { passive: 
 function roomOf(step){ return step && step.id ? step.id.replace(/^st-/, '') : null; }
 
 function enter(step){
+  // a window over the screen (shell.js go): the room stays as it is
+  if (step && step.classList.contains('as-modal')) return;
   const name = roomOf(step);
   if (!name || name === current) return;
   const prev = current;
