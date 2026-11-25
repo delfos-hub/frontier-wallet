@@ -2419,3 +2419,113 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 
 /* the send review names the recipient in full (tx.js review) */
 .sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}
+
+/* Swap network switcher beside the GRAM card (Nov 2026): TON live, Tron coming.
+   Phone: a row inside the card. Desktop: a column at the card's left edge,
+   or out in the margin beside it when the screen leaves room (>= 1880px).
+   Faceted, as the home actions: a chamfered track, chamfered tabs, octagon coins. */
+.xch{--cut:10px;position:relative;isolation:isolate;display:flex;gap:6px;padding:5px;align-self:flex-start;
+  clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut));
+  background:linear-gradient(180deg,#05071a,rgba(160,140,255,.42))}
+.xch::before{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;
+  background:linear-gradient(180deg,rgba(0,0,0,.45),transparent 30%),linear-gradient(180deg,#0a0d26,#11163b)}
+.xch-b{--c:#0098EA;--g:rgba(0,152,234,.75);--t:rgba(0,152,234,.26);--cut:8px;
+  position:relative;isolation:isolate;display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 13px 4px 5px;
+  border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;transition:color .2s}
+.xch-b[data-chain=tron]{--c:#FF2D3A;--g:rgba(255,60,72,.75);--t:rgba(255,45,58,.24)}
+/* the lit tab: a chamfered rim in the chain's colour, the face inside it */
+.xch-b::before,.xch-b::after{content:'';position:absolute;z-index:-1;opacity:0;transition:opacity .25s;
+  clip-path:polygon(var(--cut) 0,calc(100% - var(--cut)) 0,100% var(--cut),100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 var(--cut))}
+.xch-b::before{inset:0;background:linear-gradient(180deg,var(--g),rgba(255,255,255,.06) 70%)}
+.xch-b::after{inset:1px;background:linear-gradient(180deg,var(--t),rgba(11,14,39,.92) 75%)}
+.xch-b.on{color:#fff}
+.xch-b.on::before,.xch-b.on::after{opacity:1}
+.xch-b:hover{color:#fff}
+.xch-b:hover:not(.on)::after{opacity:.5;background:rgba(160,140,255,.10)}
+/* octagon coin in an inlaid octagon frame */
+.xch-logo{position:relative;width:32px;height:32px;flex:none;display:block;padding:2px;box-sizing:border-box;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);
+  background:linear-gradient(180deg,#05071a,rgba(160,140,255,.5));transition:filter .25s,background .25s}
+.xch-logo svg{width:100%;height:100%;display:block;clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
+.xch-logo::after{content:'';position:absolute;inset:2px;pointer-events:none;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);
+  background:linear-gradient(160deg,rgba(255,255,255,.35),rgba(255,255,255,0) 45%,rgba(0,0,0,.25))}
+.xch-n{font-family:'Rajdhani','Exo 2',sans-serif;font-weight:700;font-size:13px;letter-spacing:.14em;line-height:1}
+.xch-b:not(.on) .xch-logo{filter:grayscale(.65) brightness(.72)}
+.xch-b:hover .xch-logo{filter:none}
+.xch-b.on .xch-logo{background:linear-gradient(180deg,#fff,var(--c))}
+.xch-b:focus-visible{outline:2px solid #3BE3FF;outline-offset:2px}
+
+/* "Soon": a hexagonal chip under the chain name, its rim a slowly flowing gradient, with a spark */
+.xch-soon{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;height:16px;padding:0 9px;box-sizing:border-box;flex:none;
+  clip-path:polygon(5px 0,calc(100% - 5px) 0,100% 50%,calc(100% - 5px) 100%,5px 100%,0 50%);
+  background:linear-gradient(90deg,#FFD54A,#FF4D8D,#7B5CFF,#00D4FF,#FFD54A);background-size:300% 100%;
+  animation:xch-flow 5s linear infinite;pointer-events:none}
+.xch-soon::after{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;background:#0B0F1A}
+.xch-soon b{display:block;font-size:8.5px;font-weight:800;letter-spacing:.18em;line-height:1;margin-right:-.18em;
+  background:linear-gradient(90deg,#FFE9A3,#FF9CC0 50%,#9EE8FF);-webkit-background-clip:text;background-clip:text;color:transparent}
+@keyframes xch-flow{to{background-position:300% 0}}
+
+/* what the card shows per chain; the GRAM parts keep their own [hidden] */
+.xg[data-chain=tron]>:not(.xch):not(.xg-tron){display:none!important}
+.xg:not([data-chain=tron])>.xg-tron{display:none}
+.xg[data-chain=tron]{background:linear-gradient(120deg,rgba(255,45,58,.15),rgba(123,92,255,.12) 50%,rgba(0,212,255,.07)),var(--surface);
+  border-color:rgba(255,90,100,.32)}
+
+/* the Tron preview */
+.xg-tron{display:flex;flex-direction:column;gap:14px;animation:xt-in .35s ease-out}
+@keyframes xt-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.xt-head{cursor:default}
+.xt-soon{position:relative;isolation:isolate;margin-left:auto;flex:none;align-self:center;display:inline-flex;align-items:center;height:30px;padding:0 18px;box-sizing:border-box;line-height:1;
+  font-size:11.5px;font-weight:700;letter-spacing:.06em;color:#fff;
+  clip-path:polygon(9px 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,9px 100%,0 50%);
+  background:linear-gradient(90deg,#FFD54A,#FF4D8D,#7B5CFF,#00D4FF,#FFD54A);background-size:300% 100%;animation:xch-flow 5s linear infinite}
+.xt-soon::after{content:'';position:absolute;inset:1px;z-index:-1;clip-path:inherit;background:linear-gradient(180deg,#0d1130,#0B0F1A)}
+.xt-ok{color:#34D399}
+/* progress as slanted segments, one per step */
+.xt-road{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.xt-step{display:flex;flex-direction:column;gap:7px;font-size:11px;letter-spacing:.04em;color:var(--muted);min-width:0}
+.xt-step span{white-space:nowrap}
+.xt-step i{height:6px;background:rgba(255,255,255,.10);clip-path:polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%)}
+.xt-step.done{color:#C8F5E2}
+.xt-step.done i{background:linear-gradient(90deg,#1FA97A,#34D399)}
+.xt-step.now{color:#fff}
+.xt-step.now i{background:linear-gradient(90deg,#FF4D6A,#FFD54A,#FF4D6A);background-size:200% 100%;animation:xt-run 2.2s linear infinite}
+@keyframes xt-run{to{background-position:-200% 0}}
+@media (max-width:560px){
+  .xt-head{flex-wrap:wrap;row-gap:12px}
+  .xt-head .xc-txt{flex:1 1 calc(100% - 90px)}
+  .xt-soon{margin-left:0}
+  .xt-step{font-size:10.5px;letter-spacing:0}
+}
+/* phone: the switcher spans the card, two equal tabs, contents centred */
+html:not(.dk) .xch{align-self:stretch}
+html:not(.dk) .xch-b{flex:1 1 0;justify-content:center;padding:5px 14px}
+html:not(.dk) .xch-soon{position:relative;top:1px}
+@media (prefers-reduced-motion:reduce){
+  .xch-soon,.xt-soon,.xt-step.now i,.xg-tron{animation:none}
+}
+
+/* desktop: a column at the card's left edge */
+html.dk .xg{position:relative;padding-left:108px}
+html.dk .xch{--cut:12px;position:absolute;left:14px;top:14px;bottom:14px;width:80px;align-self:stretch;display:grid;grid-auto-rows:1fr;align-content:stretch;gap:8px;padding:6px}
+html.dk .xch-b{--cut:10px;flex-direction:column;justify-content:center;gap:7px;min-height:0;padding:10px 4px}
+html.dk .xch-logo{width:38px;height:38px}
+html.dk .xch-n{font-size:11.5px}
+html.dk .xch-soon{margin-top:-1px}
+/* a wide screen leaves a margin left of the card: the switcher moves out there */
+@media (min-width:1880px){
+  html.dk .xg{padding-left:18px}
+  /* as tall as the card, top and bottom level with it */
+  html.dk .xch{left:auto;right:calc(100% + 16px);top:0;bottom:0;width:84px;padding:5px;gap:6px}
+  html.dk .xch-b{gap:5px;padding:7px 4px}
+  html.dk .xch-logo{width:34px;height:34px}
+}
+
+/* The card and its switcher are two things. Cards lift and brighten on hover,
+   and the switcher, inside this one, went up with it; clicking a chain shrank
+   the whole card. This card stays still: its edge lights only while the
+   pointer is on the card itself, and the switcher has its own hover. */
+html .xc.xg:hover,html .xc.xg:active{transform:none!important;filter:none!important}
+.xc.xg:has(.xch:hover){border-color:rgba(120,140,255,.28)!important;box-shadow:none!important}
+.xc.xg[data-chain=tron]:has(.xch:hover){border-color:rgba(255,90,100,.32)!important}
