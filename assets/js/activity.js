@@ -566,6 +566,18 @@ function worthOf(f){
 }
 const symOfKey = k => rowOfKey(k).sym;
 const amountText = f => (f.raw > 0 ? '+' : '-') + fmt(human(f)) + ' ' + symOfKey(f.key);
+// flows summed per asset (denom or token), in the order first seen; formatted
+// only when shown
+function byAsset(fs){
+  const at = {}, out = [];
+  for (const f of fs) {
+    if (!f || !f.raw) continue;
+    if (!(f.key in at)) { at[f.key] = out.length; out.push({ key: f.key, raw: 0 }); }
+    out[at[f.key]].raw += f.raw;
+  }
+  return out;
+}
+const rewardText = rs => rs.length ? rs.map(amountText).join(' \u00b7 ') + ' rewards' : '';
 
 /* Where it happened. Same code ids as the DeFi screen; a contract seen for
    the first time is looked up once in the background and the list redrawn. */
@@ -739,18 +751,19 @@ function look(t, me){
   // a native unstake asks for the amount in its message; the rewards the chain
   // pays out with it are income, kept apart under it (#68 review)
   const undel = !swap && !!coin && /MsgUndelegate/.test(type) && req > 0;
-  let reward = null;
+  let rewards = [];
   if (undel) {
     top = fmt(human({ key: msgKey, raw: req })) + ' ' + symOfKey(msgKey); topIn = false;
-    below = ins.length ? ins.map(amountText).join(' \u00b7 ') + ' rewards' : '';
-    if (ins.length && ins.every(x => x.key === ins[0].key)) reward = { key: ins[0].key, raw: ins.reduce((a, x) => a + x.raw, 0) };
+    // every reward kept by its asset, each summed apart (1 LUNC and 4 USTC)
+    rewards = byAsset(ins);
+    below = rewardText(rewards);
   }
   const main = undel ? { key: msgKey, raw: 0, req: req }
     : swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0, req: req } : null));
   const second = swap ? ins[0] : null;
   const usdMain = main ? worthOf(main) : 0;
   return { title: title, kind: kind, group: group, sub: sub, top: top, topIn: topIn, below: below,
-           main: main, second: second, usd: usdMain, flows: f, place: place, also: also, reward: reward, undel: undel };
+           main: main, second: second, usd: usdMain, flows: f, place: place, also: also, rewards: rewards, undel: undel };
 }
 
 const BADGE = {
@@ -945,9 +958,10 @@ function foldDay(xs, me){
         // requests (unstakes) move nothing yet: add up what was asked for
         const asked = main.reduce((a, f) => a + f.req, 0);
         fold.top = fmt(human({ key: main[0].key, raw: asked })) + ' ' + symOfKey(main[0].key);
-        // and the rewards paid out with them, still as income, when one token
-        const rw = run.map(x => x.l.reward).filter(Boolean);
-        if (rw.length && rw.every(f => f.key === rw[0].key)) fold.below = amountText({ key: rw[0].key, raw: rw.reduce((a, f) => a + f.raw, 0) }) + ' rewards';
+        // and the rewards paid out with them, still as income: every asset
+        // summed apart across the run (+3 LUNC and +4 USTC), none dropped
+        const rw = byAsset([].concat(...run.map(x => x.l.rewards || [])));
+        if (rw.length) fold.below = rewardText(rw);
       } else if (sameKey && main.every(f => f.raw !== 0)) {
         const tot = { key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) };
         fold.top = amountText(tot);
@@ -980,20 +994,56 @@ function feeEvents(t){
   if ((t.events || []).length) return t.events;
   return eventsOf(t);
 }
+// Who pays the fee: a granter or a named payer, else the first message's signer
+function feePayer(t){
+  const f = ((t.tx || {}).auth_info || {}).fee || {};
+  if (f.granter) return f.granter;
+  if (f.payer) return f.payer;
+  const m = ((((t.tx || {}).body || {}).messages) || [])[0] || {};
+  return m.from_address || m.sender || m.delegator_address || m.voter || m.depositor || m.proposer || m.granter || '';
+}
 function feePaid(t, me){
-  let fee = 0;
-  const evs = feeEvents(t);
-  for (const e of evs) {
-    if (e.type !== 'transfer') continue;
-    let to = '', from = '', what = '';
-    for (const a of (e.attributes || [])) { if (a.key === 'recipient') to = a.value; if (a.key === 'sender') from = a.value; if (a.key === 'amount') what = a.value; }
-    if (from !== me || to !== FEE_COLLECTOR) continue;
-    for (const part of what.split(',')) { const mm = /^(\d+)uluna$/.exec(part.trim()); if (mm) fee += Number(mm[1]); }
+  const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
+  const split = what => String(what || '').split(',').map(p => /^(\d+)(.+)$/.exec(p.trim())).filter(Boolean).map(mm => ({ amount: mm[1], denom: mm[2] }));
+  // every event with where it came from: the top level (a message's events
+  // there carry msg_index; the fee's own do not) or the log of message i
+  const top = (t.events || []).map(e => ({ e: e, src: 'top', msg: attr(e, 'msg_index') || null }));
+  const logs = [];
+  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e => logs.push({ e: e, src: 'log', msg: String(lg.msg_index != null ? lg.msg_index : i) })));
+  const list = top.length ? top : logs;
+  // the moves this address made to the fee collector: what the total adds up
+  const F = [];
+  for (const x of list) {
+    if (x.e.type !== 'transfer' || attr(x.e, 'sender') !== me || attr(x.e, 'recipient') !== FEE_COLLECTOR) continue;
+    for (const c of split(attr(x.e, 'amount'))) F.push({ c: c, msg: x.msg, used: false });
   }
-  // the burn tax also goes to the fee collector and has its own line: taken
-  // out by pairing tax_payment with its transfer in these same events, so a
-  // tax listed only at the top level, only in the logs, or in both is right
-  for (const c of taxPaid(t, me, evs)) if (c.denom === 'uluna') fee -= Number(c.amount);
+  let fee = F.reduce((a, x) => a + (x.c.denom === 'uluna' ? Number(x.c.amount) : 0), 0);
+  // the list's message events can be told from the fee's
+  const located = list === logs || top.some(x => x.msg !== null);
+  // the fee the transaction asked for, when this address is the one paying it
+  const auth = ((((t.tx || {}).auth_info || {}).fee || {}).amount || []).filter(c => c.denom === 'uluna').reduce((a, c) => a + Number(c.amount), 0);
+  const known = auth > 0 && feePayer(t) === me;
+  // the burn tax also goes to the fee collector and has its own line. Its
+  // marker is matched to its own transfer, and taken off only when that
+  // transfer is inside the total above (#68 review)
+  const marks = (top.some(x => x.e.type === 'tax_payment') ? top : logs).filter(x => x.e.type === 'tax_payment');
+  for (const m of marks) {
+    const payer = attr(m.e, 'payer') || attr(m.e, 'sender');
+    if (payer && payer !== me) continue;
+    for (const c of split(attr(m.e, 'tax_amount'))) {
+      const same = F.filter(x => !x.used && x.c.denom === c.denom && x.c.amount === c.amount);
+      let hit = null;
+      if (located && m.msg !== null) hit = same.find(x => x.msg === m.msg) || null;   // its own message, or not in the total
+      else if (known) {
+        // where it sits cannot be told: what the total has beyond the fee
+        // asked for is the tax, never more
+        if (c.denom === 'uluna' && fee - Number(c.amount) >= auth) hit = same[0] || null;
+      } else hit = same[0] || null;                                                 // by amount, each transfer once
+      if (!hit) continue;
+      hit.used = true;
+      if (c.denom === 'uluna') fee -= Number(c.amount);
+    }
+  }
   return Math.max(0, fee);
 }
 // local midnight i calendar days before now's day
