@@ -350,7 +350,6 @@ console.log('\nthe current vote, the phone list, missing stakes');
   check('Alice’s second page fails: no partial 1 LUNC, her stake is missing', ('alice' in v4.stake) + ' ' + (v4.stakeMiss.alice === true), 'false true');
   const ab4 = G4.delegatorSums(['alice', 'bob'], Object.assign({}, v4.txv), v4.split, v4.stake);
   check('coverage 1 of 2, Bob’s 99 LUNC is all of the known stake', ab4.known + ' of ' + ab4.all + ', ' + String(ab4.total), '1 of 2, 99000000');
-  check('her phone row reads "stake not read"', /\(!val && v\.stakeMiss && v\.stakeMiss\[a\]\) \? 'stake not read'/.test(gsrc), true);
 
   // the desktop table, rendered: each voter's own Voting stake cell
   const deskSrc = pick('const big = raw =>', 'const ago = t =>') + pick('const FINDER_TX =', 'function paintTable(') +
@@ -433,6 +432,49 @@ console.log('\nthe current vote, the phone list, missing stakes');
   const css = fs.readFileSync(path.resolve('assets/css/app.css'), 'utf8');
   check('the Not voted filter shows only data-v="no" rows', /#gov-vals\[data-f="no"\] \.gov-voter:not\(\[data-v="no"\]\)/.test(css), true);
   check('the phone list is drawn with known = live or a whole history', /voterListHTML\(accs, votes, v, byAcc, live \|\| v\.txok,/.test(gsrc), true);
+
+  // #67 review on 5cb6725: the phone list says where each delegator's read is
+  {
+    const N = 301, dels = Array.from({ length: N }, (_, i) => 'd' + String(i + 1).padStart(3, '0'));
+    const base = { memo: {}, split: {}, stake: {}, stakeMiss: {}, step: 2 };
+    dels.forEach(a => { base.memo[a] = 'why'; });
+    const phone = st => listLib.voterListHTML(dels, {}, st, {}, true, 'all', true, 1000000n, a => st.stake[a] || 0n);
+    const line = (html, a) => { const i = html.indexOf('>' + a + '<small>'); return i < 0 ? 'no row' : html.slice(i).match(/<small>([^<]*)<\/small>/)[1]; };
+    const pend = phone(base);
+    check('phone: the first voter while the read is pending reads …', line(pend, 'd001'), '\u2026');
+    // the read reaches the first 300; 99 LUNC for the first, an empty answer for the second
+    const done = Object.assign({}, base, { step: 3, stake: {} });
+    dels.slice(0, 300).forEach(a => { done.stake[a] = 0n; });
+    done.stake.d001 = 99000000n;
+    const fin = phone(done);
+    check('phone: then its 99 LUNC', /^VP .* 99000000 LUNC$/.test(line(fin, 'd001')), true);
+    check('phone: a successful empty delegation answer reads no stake', line(fin, 'd002'), 'no stake');
+    check('phone: the 301st, past the 300 read, reads stake not read once reading ends', line(fin, 'd301'), 'stake not read');
+    check('phone: a failed read says so even before the phase ends', line(phone(Object.assign({}, base, { stakeMiss: { d001: true } })), 'd001'), 'stake not read');
+  }
+
+  // the desktop voting-power cell: label and bar on one scale
+  {
+    const deskB = new Function('$', 'DATA', 'OPT', 'OPT_CLASS', 'esc', 'face', 'shortAcc', 'fillLogos', 'hue', 'splitText', 'shareOf', 'delegatorSums', 'W1', 'addrOf',
+      deskSrc + '\nreturn { paintTable };')(
+      q => (q === '#gov-voters' || q === '#gov-sum') ? (boxes[q] = boxes[q] || el()) : null, { bonded: 1000000000000n },
+      { VOTE_OPTION_YES: 'Yes', VOTE_OPTION_NO: 'No' }, { VOTE_OPTION_YES: 'y', VOTE_OPTION_NO: 'n' }, String, () => '', a => a, () => {}, () => 0,
+      () => '', G4.shareOf, G4.delegatorSums, G4.W1, () => '');
+    const vp = (stake) => {
+      const st = { votes: {}, txv: { small: 'VOTE_OPTION_YES', big: 'VOTE_OPTION_NO', zero: 'VOTE_OPTION_YES' }, memo: {}, tx: {}, split: {}, stakeMiss: {}, step: 3, txok: true, stake };
+      deskB.paintTable('10', false, st, [], T0(), () => {});
+      const h = boxes['#gov-voters'].innerHTML, out = {};
+      for (const a of Object.keys(stake)) {
+        const i = h.indexOf('data-a="' + a + '"'), m = h.slice(i).match(/<span class="gvd-vp"[^>]*><i style="width:([0-9.]+)%"><\/i><b>([^<]*)<\/b>/);
+        out[a] = m[2].replace('&lt;', '<') + ' @' + m[1] + '%';
+      }
+      return out;
+    };
+    const r = vp({ small: 10000000n, big: 50000000000n, zero: 0n });
+    check('1,000,000 LUNC bonded, 10 LUNC (0.001%): <0.01%, not the dash', r.small.split(' @')[0], '<0.01%');
+    check('50,000 LUNC: 5.00%, and its bar fills 5% of the track, not 50%', r.big, '5.00% @5.00%');
+    check('a confirmed zero: the dash and an empty bar', r.zero, '\u2014 @0%');
+  }
 }
 
 // the voters table's numbers

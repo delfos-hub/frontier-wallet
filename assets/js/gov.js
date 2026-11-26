@@ -994,7 +994,11 @@ function voterListHTML(accs, votes, v, byAcc, known, filt, opened, total, weight
         .map(([k, l]) => '<button class="' + (filt === k ? 'on' : '') + '" data-f="' + k + '" type="button">' + l + '</button>').join('') + '</div>' +
       '<div class="gov-voters gv-comments' + (opened ? ' all' : '') + '" id="gov-vals" data-f="' + filt + '">' + accs.map((a, i) => {
         const val = byAcc[a], w = weight(a), o = votes[a], c = v.memo[a];
-        const stakeText = w > 0n ? 'VP ' + share(w, total) + '% · ' + L(w) + ' LUNC' : (!val && v.stakeMiss && v.stakeMiss[a]) ? 'stake not read' : 'no stake';
+        // a delegator's amount is known only once read (0 included); until then
+        // "..." while the read can finish, then "stake not read" (#67 review)
+        const has = val || Object.prototype.hasOwnProperty.call(v.stake, a);
+        const stakeText = w > 0n ? 'VP ' + share(w, total) + '% · ' + L(w) + ' LUNC' : has ? 'no stake'
+          : (v.stakeMiss && v.stakeMiss[a]) || v.step === 3 ? 'stake not read' : '\u2026';
         return '<div class="gov-voter' + (i >= 20 ? ' more' : '') + '" data-v="' + voterState(o, known) + '"' + (c ? ' data-m="1"' : '') + '>' +
           '<div class="gov-voter-top"><span class="gov-rank">' + (i + 1) + '</span>' + face(val ? val.name : a.slice(6), a, val && val.op, val && val.ident) +
           '<span class="gov-who">' + esc(val ? val.name : shortAcc(a)) + '<small>' + stakeText + '</small></span>' +
@@ -1104,6 +1108,10 @@ function paintTable(id, live, v, vals, T, again){
   const pctOf = (x, t) => t > 0n ? Number((x * 20000n / t + 1n) / 2n) / 100 : 0;
 
   const tag = o => o ? '<b class="gov-v ' + (OPT_CLASS[o] || '') + '">' + esc(OPT[o] || o) + '</b>' : '<b class="gov-v none">' + (known ? 'Not voted' : 'Unknown') + '</b>';
+  // voting power: "<0.01%" decided on the amounts, before any rounding, and
+  // the bar on the same 0-100% scale as the label (#67 review)
+  const vpLabel = (x, t, p) => !(x > 0n) || !(t > 0n) ? '\u2014' : x * 10000n < t ? '&lt;0.01%' : p.toFixed(2) + '%';
+  const vpBar = (x, t) => x > 0n && t > 0n ? Math.min(100, Number(x * 1000000n / t) / 10000).toFixed(2) : '0';
   // ---- this wallet's validators and their votes (they vote for its stake when it does not)
   const mv = $('#gov-myvals');
   if (mv && DATA) {
@@ -1205,7 +1213,7 @@ function paintTable(id, live, v, vals, T, again){
             '<span class="gvd-vn"><b>' + esc(r.val ? r.val.name : shortAcc(r.a)) + '</b><small>' + (r.val ? 'Validator' : 'Delegator') + '</small></span></span></td>' +
           '<td class="r c-stake">' + stkHTML + '</td>' +
           // the stake again under the bar, shown only when its column is folded away
-          '<td><span class="gvd-vp"' + (r.stake > 0n ? ' title="' + esc(big(r.stake)) + ' LUNC"' : '') + '><i style="width:' + Math.min(100, p * 10).toFixed(1) + '%"></i><b>' + (p ? (p < 0.01 ? '<0.01' : p.toFixed(2)) + '%' : '\u2014') + '</b></span>' +
+          '<td><span class="gvd-vp"' + (r.stake > 0n ? ' title="' + esc(big(r.stake)) + ' LUNC"' : '') + '><i style="width:' + vpBar(r.stake, bonded) + '%"></i><b>' + vpLabel(r.stake, bonded, p) + '</b></span>' +
             '<small class="gvd-vp-st">' + stkHTML + (r.stake > 0n ? ' LUNC' : '') + '</small></td>' +
           '<td><span class="gvd-vcell">' + (v.split && v.split[r.a]
               // a split vote, said as one: every option with its share
