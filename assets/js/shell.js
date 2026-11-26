@@ -176,6 +176,8 @@ document.addEventListener('pointerdown', e => {
 new MutationObserver(() => {
   const m = modal();
   if (m && !document.documentElement.classList.contains('dk')) { m.classList.remove('as-modal'); document.body.classList.remove('modal-open');
+    // a page again, still open: no longer a dialog to assistive tech (#76 review)
+    ['role', 'aria-modal', 'aria-labelledby'].forEach(a => m.removeAttribute(a)); OPENER = null;
     $$('.step').forEach(s => { if (s !== m) s.classList.remove('on'); }); }
 }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 

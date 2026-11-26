@@ -224,5 +224,40 @@ console.log('faucet: one payment per claim');
   ok('no pending mark, no broadcast', a.status === 502 && NODE.sent === 0 && rows(db).length === 0, JSON.stringify(a) + ' sent=' + NODE.sent);
 }
 
+// 6. the wallet's own sequence: 202, the send fails in its block, the wallet
+// asks GET /status: the address is free there, with no second POST
+{
+  reset(); const db = d1(), e = env(db);
+  const a = await claim(e);
+  const s1 = await W.status(e, TO);
+  ok('after the 202, status says pending (with its hash), not a 24 h wait', a.status === 202 && s1.pending === true && s1.pending_hash === a.body.hash && !s1.next, JSON.stringify(s1));
+  NODE.txs[a.body.hash] = { code: 11, height: '1002', raw_log: 'out of gas' };
+  const s2 = await W.status(e, TO);
+  ok('it failed in its block: status alone frees the address (not pending, no cooldown)', s2.pending === false && !s2.next && s2.open === true, JSON.stringify(s2));
+  ok('the reservation is gone, and nothing was posted again', rows(db).length === 0 && NODE.sent === 1);
+}
+
+// 7. an unresolved claim stays pending past the cooldown and the purge age
+{
+  reset(); const db = d1(), e = env(db);
+  const a = await claim(e);
+  db.raw.prepare('UPDATE claims SET at = at - ? WHERE address = ?').run(8 * 86400000, TO);   // eight days later, chain still short of its timeout
+  const s = await W.status(e, TO);
+  ok('eight days on, past the 24 h cooldown: still pending', s.pending === true && s.pending_hash === a.body.hash, JSON.stringify(s));
+  const b = await claim(e, '198.51.100.12');
+  ok('and still blocking: a new claim pays nothing', b.status === 429 && b.body.pending === true && NODE.sent === 1, JSON.stringify(b));
+  // a legacy pending row (no timeout height) is never purged or released by age
+  db.raw.prepare("INSERT INTO claims (address, client, at, amount, hash) VALUES (?, 'x', ?, '1', ?)").run('terra1legacy', Date.now() - 30 * 86400000, W.PENDING + 'AB'.repeat(32));
+  // and a paid claim from long ago, which the purge does take
+  db.raw.prepare("INSERT INTO claims (address, client, at, amount, hash) VALUES (?, 'x', ?, '1', ?)").run('terra1old', Date.now() - 30 * 86400000, 'CD'.repeat(32));
+  const waits = [];
+  W.purge(e, { waitUntil: p => waits.push(p) }); await Promise.all(waits);
+  ok('the purge still takes an old paid claim', db.raw.prepare('SELECT COUNT(*) AS n FROM claims WHERE address = ?').get('terra1old').n === 0);
+  ok('the week purge leaves it in place', rows(db).length === 1 && rows(db)[0].hash.startsWith(W.PENDING), JSON.stringify(rows(db)));
+  const legacy = await W.status(e, 'terra1legacy');
+  ok('a legacy p:HASH row a month old: still pending, kept by the purge', legacy.pending === true &&
+     db.raw.prepare('SELECT COUNT(*) AS n FROM claims WHERE address = ?').get('terra1legacy').n === 1, JSON.stringify(legacy));
+}
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

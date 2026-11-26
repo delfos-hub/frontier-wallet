@@ -203,7 +203,9 @@ function editor(id, key){
   ta.addEventListener('input', () => { draw(); if (key) store.set(key, ta.value); });
   ta.addEventListener('scroll', () => { ln.scrollTop = ta.scrollTop; });
   ta.addEventListener('keydown', e => {
-    if (e.key === 'Tab') { e.preventDefault(); const p = ta.selectionStart; ta.setRangeText('  ', p, ta.selectionEnd, 'end'); draw(); }
+    // two spaces for Tab, through the input handler like any typed edit, so
+    // the form's check is dropped as well (#76 review)
+    if (e.key === 'Tab') { e.preventDefault(); const p = ta.selectionStart; ta.setRangeText('  ', p, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); }
   });
   // The example starts as real text, ready to edit or run. Cleared, the
   // editor shows it greyed out again - and what is shown is what runs, so
@@ -344,6 +346,9 @@ async function balance(){
   const sel = $('#dv-denom'), keep = sel.value;
   sel.innerHTML = held.filter(h => h.raw !== '0' && h.raw !== null).map(h => '<option value="' + esc(h.id) + '">' + esc(h.name) + '</option>').join('') || '<option value="uluna">LUNC</option>';
   if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
+  // the token picked is gone from the list (spent, or another wallet): the
+  // send's check was for it, so it is dropped like any edit (#76 review)
+  if (sel.value !== keep) sel.dispatchEvent(new Event('change'));
   avail();
 }
 function avail(){
@@ -475,7 +480,7 @@ $('#dv-send-go').addEventListener('click', async e => {
 });
 
 /* ---------- faucet ---------- */
-let FC = null;
+let FC = null, FC_AGAIN = 0;
 async function faucetStatus(){
   const a = addrOf();
   const go_ = $('#dv-fc-go'), next = $('#dv-fc-next'), hold = $('#dv-fc-hold');
@@ -496,8 +501,11 @@ async function faucetStatus(){
       ' hours. For building and testing; test coins have no value.';
     hold.textContent = 'Faucet holds ' + fmt(Number(j.balance) / 1e6) + ' LUNC';
     const wait = Number(j.next || 0) - Date.now();
-    go_.disabled = wait > 0 || !j.open;
-    next.textContent = !j.open ? (j.why || 'The faucet is resting.') : wait > 0 ? 'Next claim in ' + dur(wait) : 'Ready';
+    go_.disabled = wait > 0 || !j.open || !!j.pending;
+    next.textContent = j.pending ? 'Your last claim is waiting for its block' : !j.open ? (j.why || 'The faucet is resting.') : wait > 0 ? 'Next claim in ' + dur(wait) : 'Ready';
+    // asked again until the chain has decided: paid starts the wait, failed frees the button
+    clearTimeout(FC_AGAIN);
+    if (j.pending && $('#st-dev').classList.contains('on')) FC_AGAIN = setTimeout(faucetStatus, 15000);
   } catch (e) {
     go_.disabled = true;
     next.textContent = 'The faucet is not reachable right now.';

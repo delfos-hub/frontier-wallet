@@ -26,28 +26,53 @@ function el(sel){
   const L = {};
   const e = {
     sel, options: [], value: '', disabled: false, hidden: false, checked: false, textContent: '', innerHTML: '', className: '', dataset: {}, style: {}, files: [],
-    classList: { add(){}, remove(){}, toggle(){}, contains: () => false },
+    classList: (() => { const c = new Set(); return { add: (...a) => a.forEach(x => c.add(x)), remove: (...a) => a.forEach(x => c.delete(x)),
+      toggle: (x, on) => { if (on === undefined ? !c.has(x) : on) c.add(x); else c.delete(x); }, contains: x => c.has(x) }; })(),
     addEventListener(t, f){ (L[t] = L[t] || []).push(f); },
     removeEventListener(){},
     dispatchEvent(ev){ (L[ev.type] || []).forEach(f => f(Object.assign({ target: e, currentTarget: e, preventDefault(){}, stopPropagation(){} }, ev))); return true; },
     click(){ return e.dispatchEvent({ type: 'click' }); },
-    focus(){}, blur(){}, scrollIntoView(){}, setRangeText(){}, insertAdjacentHTML(_, h){ e.innerHTML += h; },
+    focus(){}, blur(){}, scrollIntoView(){}, insertAdjacentHTML(_, h){ e.innerHTML += h; },
+    selectionStart: 0, selectionEnd: 0,
+    setRangeText(t, a, b){ e.value = e.value.slice(0, a) + t + e.value.slice(b); e.selectionStart = e.selectionEnd = a + t.length; },
     getAttribute: () => null, setAttribute(){}, removeAttribute(){}, closest: () => null, matches: () => false,
     querySelector: () => el('child'), querySelectorAll: () => [], appendChild(){}, prepend(){}, remove(){},
     get parentElement(){ return el('parent'); }, get firstElementChild(){ return null; }
   };
+  // a select: its options are what its HTML lists, and it shows the first
+  // one when the list is replaced, as a browser does
+  if (sel === '#dv-denom') {
+    let html = '', val = '';
+    const opts = () => [...html.matchAll(/<option value="([^"]*)"/g)].map(m => ({ value: m[1] }));
+    Object.defineProperty(e, 'innerHTML', { get: () => html, set: h => { html = h; val = (opts()[0] || {}).value || ''; } });
+    Object.defineProperty(e, 'options', { get: opts });
+    Object.defineProperty(e, 'value', { get: () => val, set: v => { if (opts().some(o => o.value === v)) val = v; } });
+  }
   return e;
 }
 const ELS = {};
 const $ = s => (ELS[s] = ELS[s] || el(s));
 globalThis.Event = class { constructor(type){ this.type = type; } };
 globalThis.document = { addEventListener(t, f){ (listeners[t] = listeners[t] || []).push(f); }, createElement: () => el('new'), hidden: false, documentElement: el('html') };
-globalThis.MutationObserver = class { observe(){} disconnect(){} };
+// the screen observers dev.js sets up, so a test can bring a screen on
+const OBS = [];
+globalThis.MutationObserver = class { constructor(cb){ this.cb = cb; } observe(el){ OBS.push({ el, cb: this.cb }); } disconnect(){} };
+const show = async sel => { $(sel).classList.add('on'); OBS.filter(o => o.el === $(sel)).forEach(o => o.cb()); await new Promise(r => setTimeout(r, 320)); };
 globalThis.requestAnimationFrame = f => f();
 globalThis.matchMedia = () => ({ matches: false, addEventListener(){} });
 const LS = {};
 globalThis.localStorage = { getItem: k => (k in LS ? LS[k] : null), setItem: (k, v) => { LS[k] = String(v); }, removeItem: k => { delete LS[k]; }, key: () => null, length: 0 };
-globalThis.fetch = async () => ({ ok: false, status: 0, json: async () => ({}) });
+// the node: the balances the test sets, nothing else
+let BAL = [];
+// and the faucet: what its /status and /claim answer is set by the test
+let FAUCET = { status: null, claim: null }, POSTS = 0;
+globalThis.fetch = async (url, init) => {
+  const u = String(url);
+  if (/\/bank\/v1beta1\/balances\//.test(u)) return { ok: true, status: 200, json: async () => ({ balances: BAL }) };
+  if (/workers\.dev\/status/.test(u) && FAUCET.status) return { ok: true, status: 200, json: async () => FAUCET.status };
+  if (/workers\.dev\/claim/.test(u) && FAUCET.claim) { POSTS++; return { ok: true, status: FAUCET.claim.code, json: async () => FAUCET.claim.body }; }
+  return { ok: false, status: 0, json: async () => ({}) };
+};
 try { Object.defineProperty(globalThis, 'navigator', { value: { clipboard: { writeText(){} } }, configurable: true }); } catch (e) {}
 globalThis.setInterval = () => 0;
 globalThis.clearInterval = () => {};
@@ -156,6 +181,67 @@ console.log('\nexecute, instantiate, admin: an edit during the check');
   type('#dv-a-code', '9');
   SIMS[SIMS.length - 1].done(); await tick(); await tick();
   ok('admin: code edited while it ran: signing stays off', $('#dv-a-go').disabled === true);
+}
+
+console.log('\nprogrammatic edits: Tab in the JSON editor, the token list rebuilt');
+{
+  const C = 'terra1' + 'e'.repeat(58);
+  type('#dv-x-addr', C); type('#dv-x-msg', '{"memo":"ab"}');
+  $('#dv-x-sim').click(); await tick();
+  SIMS[SIMS.length - 1].done(); await tick(); await tick();
+  ok('execute checked: signing on', $('#dv-x-go').disabled === false);
+  const ta = $('#dv-x-msg');
+  ta.selectionStart = ta.selectionEnd = 10;   // inside the string "ab"
+  ta.dispatchEvent({ type: 'keydown', key: 'Tab' });
+  ok('Tab inside a JSON string writes two spaces there', ta.value === '{"memo":"a  b"}', ta.value);
+  ok('and signing goes off at once', $('#dv-x-go').disabled === true);
+  const n = SENT.length;
+  $('#dv-x-go').disabled = false; $('#dv-x-go').click(); await tick(); await tick();
+  ok('the check from before the Tab is not signed', SENT.length === n);
+  $('#dv-x-sim').click(); await tick();
+  ok('a fresh check is for the edited message', SIMS[SIMS.length - 1].msgs[0].msg === '{"memo":"a  b"}', JSON.stringify(SIMS[SIMS.length - 1].msgs[0]));
+  SIMS[SIMS.length - 1].done(); await tick(); await tick();
+  ok('then signing is on again', $('#dv-x-go').disabled === false);
+
+  // the send form on a token that a balance refresh takes away
+  BAL = [{ denom: 'uluna', amount: '900000000' }, { denom: 'uusd', amount: '5000000' }];
+  await show('#st-tsend'); await tick();
+  $('#dv-denom').value = 'uusd'; $('#dv-denom').dispatchEvent({ type: 'change' });
+  type('#dv-to', B1); type('#dv-amt', '1');
+  $('#dv-send-sim').click(); await tick();
+  ok('the send checked for USTC', SIMS[SIMS.length - 1].msgs[0].coins[0].denom === 'uusd');
+  SIMS[SIMS.length - 1].done(); await tick(); await tick();
+  ok('signing on for USTC', $('#dv-send-go').disabled === false);
+  BAL = [{ denom: 'uluna', amount: '900000000' }];   // the USTC is gone
+  $('#st-tsend').classList.remove('on'); OBS.filter(o => o.el === $('#st-tsend')).forEach(o => o.cb());
+  await show('#st-tsend'); await tick();
+  ok('a balance refresh replaces the picked token (now LUNC)', $('#dv-denom').value === 'uluna', $('#dv-denom').value);
+  ok('and signing goes off: the check was for USTC', $('#dv-send-go').disabled === true);
+  const m = SENT.length;
+  $('#dv-send-go').disabled = false; $('#dv-send-go').click(); await tick(); await tick();
+  ok('the USTC check is not signed for LUNC', SENT.length === m);
+  BAL = [{ denom: 'uluna', amount: '900000000' }, { denom: 'uusd', amount: '5000000' }];
+  $('#dv-send-sim').click(); await tick(); SIMS[SIMS.length - 1].done(); await tick(); await tick();
+  $('#st-tsend').classList.remove('on'); OBS.filter(o => o.el === $('#st-tsend')).forEach(o => o.cb());
+  await show('#st-tsend'); await tick();
+  ok('a refresh that keeps the picked token leaves a good check alone', $('#dv-denom').value === 'uluna' && $('#dv-send-go').disabled === false);
+}
+
+console.log('\nthe faucet: 202, a failure in the block, then a status refresh');
+{
+  const base = { chain: 'rebel-2', faucet: 'terra1faucet', balance: '900000000000', amount: '1000000000', cooldown_h: 24, open: true, why: '' };
+  const H = 'F'.repeat(64);
+  FAUCET.status = Object.assign({}, base, { next: 0, pending: false });
+  $('#dv-fc-go').disabled = false;
+  FAUCET.claim = { code: 202, body: { hash: H, amount: '1000000000', pending: true } };
+  FAUCET.status = Object.assign({}, base, { next: 0, pending: true, pending_hash: H });
+  $('#dv-fc-go').click(); await tick(); await tick(); await tick(); await tick();
+  ok('after the 202 the button is off and says the claim waits for its block',
+    $('#dv-fc-go').disabled === true && /waiting for its block/.test($('#dv-fc-next').textContent), $('#dv-fc-next').textContent);
+  // the send fails in its block; the worker's /status reconciles and frees the address
+  FAUCET.status = Object.assign({}, base, { next: 0, pending: false, pending_hash: '' });
+  await show('#st-dev'); await new Promise(r => setTimeout(r, 50));
+  ok('a status refresh alone turns the button back on, with no second POST', $('#dv-fc-go').disabled === false && POSTS === 1 && $('#dv-fc-next').textContent === 'Ready', $('#dv-fc-next').textContent + ' posts=' + POSTS);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

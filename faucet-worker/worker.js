@@ -195,11 +195,18 @@ const conf = env => ({
 
 async function status(env, address){
   const c = conf(env), k = keyOf(env), now = Date.now();
-  const [bal, mine, day] = await Promise.all([
+  // the address's open claims are asked about first, so a send that failed in
+  // its block frees the address here, with no second POST (#76 review)
+  if (address) await reconcile(env, address, now).catch(() => {});
+  const [bal, mine, day, open] = await Promise.all([
     faucetBalance(env, k.addr),
-    address ? env.DB.prepare('SELECT MAX(at) AS at FROM claims WHERE address = ?1').bind(address).first() : null,
-    env.DB.prepare('SELECT COALESCE(SUM(CAST(amount AS INTEGER)), 0) AS s FROM claims WHERE at > ?1').bind(now - DAY).first()
+    address ? env.DB.prepare(UNRESOLVED_NOT + ' AND address = ?1').bind(address).first() : null,
+    env.DB.prepare('SELECT COALESCE(SUM(CAST(amount AS INTEGER)), 0) AS s FROM claims WHERE at > ?1').bind(now - DAY).first(),
+    address ? env.DB.prepare("SELECT hash FROM claims WHERE address = ?1 AND (hash LIKE 'p:%' OR hash = '') ORDER BY at DESC LIMIT 1").bind(address).first() : null
   ]);
+  // a claim whose outcome is not known yet: it blocks, whatever its age
+  const pending = !!open;
+  const pendingHash = pending && open.hash ? open.hash.slice(PENDING.length).split('@')[0] : '';
   const paid = BigInt((day && day.s) || 0);
   let why = '';
   if (c.paused) why = 'The faucet is paused for now.';
@@ -209,6 +216,7 @@ async function status(env, address){
     chain: env.CHAIN, faucet: k.addr, balance: bal.toString(), amount: c.amount,
     cooldown_h: c.cooldown / 3600000,
     next: mine && mine.at ? mine.at + c.cooldown : 0,
+    pending: pending, pending_hash: pendingHash,
     open: !why, why: why
   };
 }
@@ -230,11 +238,12 @@ async function claim(env, request, origin){
   const r = await env.DB.prepare(
     `INSERT INTO claims (address, client, at, amount, hash)
      SELECT ?1, ?2, ?3, ?4, ''
-     WHERE NOT EXISTS (SELECT 1 FROM claims WHERE address = ?1 AND at > ?3 - ?5)
+     WHERE NOT EXISTS (SELECT 1 FROM claims WHERE address = ?1 AND (at > ?3 - ?5 OR hash LIKE 'p:%' OR hash = ''))
        AND (SELECT COUNT(*) FROM claims WHERE client = ?2 AND at > ?3 - ?6) < ?7
        AND (SELECT COALESCE(SUM(CAST(amount AS INTEGER)), 0) FROM claims WHERE at > ?3 - ?6) + CAST(?4 AS INTEGER) <= CAST(?8 AS INTEGER)`
   ).bind(to, ip, now, c.amount, c.cooldown, DAY, c.perClient, c.cap.toString()).run();
   if (!r.meta || !r.meta.changes) {
+    if (st.pending) return json({ error: 'The last claim for this address is still waiting for its block' + (st.pending_hash ? ': ' + st.pending_hash : '') + '. It is checked again before another one.', hash: st.pending_hash, pending: true }, 429, origin);
     const again = st.next > now ? ' Next claim for this address in about ' + Math.ceil((st.next - now) / 3600000) + ' h.' : '';
     return json({ error: 'Not now: one claim per address a day, and a few per connection.' + again }, 429, origin);
   }
@@ -298,7 +307,13 @@ async function outcome(env, hash, timeout){
    nothing was paid, the row goes; unknown -> it stays and keeps blocking the
    address. No clock releases a claim: only the chain's answer does. */
 const PENDING = 'p:';
+// paid claims only: the newest one sets the cooldown
+const UNRESOLVED_NOT = "SELECT MAX(at) AS at FROM claims WHERE hash NOT LIKE 'p:%' AND hash <> ''";
+// a reservation with no hash yet was never broadcast (the mark is written
+// before any broadcast): one older than this is a claim that stopped half way
+const UNSIGNED_MS = 5 * 60 * 1000;
 async function reconcile(env, address, now){
+  await env.DB.prepare("DELETE FROM claims WHERE address = ?1 AND hash = '' AND at < ?2").bind(address, (now || Date.now()) - UNSIGNED_MS).run();
   const rows = (await env.DB.prepare("SELECT id, at, hash FROM claims WHERE address = ?1 AND hash LIKE 'p:%'").bind(address).all()).results || [];
   for (const row of rows) {
     const [h, t] = row.hash.slice(PENDING.length).split('@');
@@ -313,7 +328,9 @@ let PURGED = 0;
 function purge(env, ctx){
   if (Date.now() - PURGED < 3600000) return;
   PURGED = Date.now();
-  ctx.waitUntil(env.DB.prepare('DELETE FROM claims WHERE at < ?1').bind(Date.now() - 7 * DAY).run().catch(() => {}));
+  // an unresolved claim (pending, legacy 'p:HASH' included, or not yet signed)
+  // is never purged: it goes only by its outcome
+  ctx.waitUntil(env.DB.prepare("DELETE FROM claims WHERE at < ?1 AND hash NOT LIKE 'p:%' AND hash <> ''").bind(Date.now() - 7 * DAY).run().catch(() => {}));
 }
 
 export default {
@@ -345,4 +362,4 @@ export default {
 };
 
 // for tests/faucet.mjs
-export const __test = { send: send, claim: claim, reconcile: reconcile, outcome: outcome, PENDING: PENDING };
+export const __test = { send: send, claim: claim, status: status, reconcile: reconcile, outcome: outcome, purge: purge, PENDING: PENDING };
