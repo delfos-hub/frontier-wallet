@@ -286,6 +286,9 @@ textarea{resize:none;min-height:110px;line-height:1.8}
   font-family:'Rajdhani','Exo 2',sans-serif;font-weight:700;font-size:14px;color:#0B0F1A;overflow:hidden}
 .sym img{width:100%;height:100%;object-fit:contain;display:block}
 .sym.has-img{background:var(--surface2);border:1px solid var(--border)}
+/* a token with no picture: one calm coin, the same for all (chain.js iconHTML) */
+.sym.q{background:radial-gradient(circle at 35% 30%,#22304C,#141C2E 70%);box-shadow:inset 0 0 0 1.5px rgba(143,163,198,.35)}
+.sym.q .q-mark{width:52%;height:52%;fill:none;stroke:#9FB3D6;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .row-main{flex:1;min-width:0}
 .row-name{font-weight:600;font-size:15px}
 .row-amt{font-size:12.5px;color:var(--muted);margin-top:1px}
@@ -720,6 +723,7 @@ button.waddr:active{opacity:.6}
   text-align:right;word-break:break-all}
 .tx-line.in b{color:#00FFB0}
 .tx-line.out b{color:#FF6B8A}
+.tx-line.warn b{color:#FFD27A}
 .tx-who{margin:-2px 0 6px;font-size:11px;color:var(--muted);
   font-family:'Rajdhani','Exo 2',sans-serif;text-align:right}
 .tx-moves{margin-bottom:8px}
@@ -2553,6 +2557,70 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 .fav-nol{height:34px;margin-top:auto}
 .fav-grid{align-items:stretch}
 
+/* Activity, round 2 (activity.js): the product as a chip beside the title,
+   repeats folded, and on a wide screen the period at a glance, a timeline and
+   rows as cards */
+.ac-t{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.ac-t>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-app{font-style:normal;font-family:'Exo 2',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.02em;padding:2px 8px;border-radius:999px;
+  color:#FFB86B;background:rgba(255,184,107,.08);border:1px solid rgba(255,184,107,.22);white-space:nowrap}
+.ac-row[data-g="swaps"] .ac-app{color:#7FE3FF;background:rgba(0,212,255,.08);border-color:rgba(0,212,255,.25)}
+.ac-row[data-g="staking"] .ac-app{color:#B9A8FF;background:rgba(123,92,255,.1);border-color:rgba(123,92,255,.3)}
+.ac-chev{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:-2px;transition:transform .15s}
+.ac-chev svg{width:14px;height:14px;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ac-fold.open .ac-chev{transform:rotate(180deg)}
+.ac-fold-in{display:none}
+.ac-fold.open .ac-fold-in{display:block;margin:0 0 6px 18px;padding-left:10px;border-left:2px solid rgba(42,58,92,.7)}
+.ac-fold.open>.ac-fold-head{border-bottom-color:transparent}
+
+html.dk .ac-sum{display:flex;flex-direction:column;gap:12px;margin:0 0 14px;padding:16px 18px;border-radius:20px;border:1px solid #2A3A5C;
+  background:linear-gradient(140deg,rgba(0,212,255,.07),rgba(123,92,255,.07) 60%),#12182A}
+.ac-sum[hidden]{display:none!important}
+.ac-sum-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ac-sum-top>span{font-size:12px;color:var(--muted)}
+.ac-per{display:inline-flex;padding:3px;border-radius:11px;background:#0F1424;border:1px solid var(--border)}
+.ac-per button{min-height:30px;padding:0 13px;border:0;border-radius:8px;background:none;color:#A9B9D6;font:inherit;font-size:12.5px;cursor:pointer}
+.ac-per button.on{background:rgba(0,212,255,.16);color:#fff;font-weight:600}
+.ac-sum-b{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch}
+.ac-tiles{flex:1 1 460px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.ac-tiles>div{display:flex;flex-direction:column;min-width:0;padding:9px 12px;border-radius:13px;background:rgba(11,15,26,.55)}
+.ac-tiles span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ac-tiles b{font-family:'Rajdhani','Exo 2',sans-serif;font-size:19px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-tiles b.in{color:#00FFB0} .ac-tiles b.out{color:#FFB86B}
+.ac-tiles small{font-size:11px;color:var(--muted)}
+.ac-bars{position:relative;flex:1 1 300px;display:flex;align-items:center;gap:3px;height:96px;min-width:0}
+.ac-bars::before{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:#2A3A5C}
+.ac-bars button{position:relative;flex:1;height:100%;padding:0;border:0;background:none;cursor:pointer;border-radius:3px}
+.ac-bars button:disabled{cursor:default}
+.ac-bars button:not(:disabled):hover{background:rgba(255,255,255,.04)}
+.ac-bars i{position:absolute;left:18%;right:18%}
+.ac-bars i.a{bottom:50%;border-radius:3px 3px 0 0;background:#00FFB0}
+.ac-bars i.b{top:50%;border-radius:0 0 3px 3px;background:#7B5CFF}
+
+html.dk #ac-list{position:relative}
+html.dk #st-activity .ac-day{margin:16px 0 6px;padding:6px 4px;background:linear-gradient(180deg,var(--bg) 70%,transparent)}
+html.dk #st-activity .ac-row{position:relative;margin:0 0 6px 22px;padding:11px 16px 11px 14px;border:1px solid #1E2A42;border-radius:16px;
+  background:rgba(18,24,42,.75);transition:border-color .15s,background .15s}
+html.dk #st-activity .ac-row:hover{border-color:rgba(0,212,255,.4);background:rgba(18,24,42,.95)}
+html.dk #st-activity .ac-row::before{content:'';position:absolute;left:-16px;top:-7px;bottom:-7px;width:2px;background:rgba(42,58,92,.75)}
+html.dk #st-activity .ac-row::after{--n:#8FA3C6;content:'';position:absolute;left:-20px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;
+  background:var(--n);box-shadow:0 0 0 3px var(--bg),0 0 10px var(--n)}
+html.dk #st-activity .ac-row[data-g="transfers"]::after{--n:#00FFB0}
+html.dk #st-activity .ac-row[data-g="swaps"]::after{--n:#00D4FF}
+html.dk #st-activity .ac-row[data-g="defi"]::after{--n:#FFB86B}
+html.dk #st-activity .ac-row[data-g="staking"]::after{--n:#7B5CFF}
+html.dk #st-activity .ac-row[data-g="fail"]::after{--n:var(--red)}
+html.dk #st-activity .ac-face,html.dk #st-activity .ac-face>.sym,html.dk #st-activity .ac-face>.ac-plain{width:44px;height:44px}
+html.dk #st-activity .ac-t{font-size:15px}
+html.dk #st-activity .ac-s{font-size:12px}
+html.dk #st-activity .ac-v{font-size:16px}
+html.dk #st-activity .ac-w{font-size:11.5px}
+html.dk #st-activity .ac-fold.open .ac-fold-in{margin-left:22px;border-left:0;padding-left:18px}
+html.dk #st-activity .ac-fold-in .ac-row{margin-left:22px;background:rgba(18,24,42,.5)}
+html.dk #st-activity .ac-fold-in .ac-row::before{display:none}
+html.dk #st-activity .ac-chips{margin-bottom:4px}
+html.dk #st-activity .ac-chip{min-height:34px;padding:0 14px;font-size:12.5px}
+@media (max-width:1280px){.ac-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Vote on a wide screen (gov.js drawDesk): the list beside the open proposal */
 html.dk #st-gov{max-width:min(1400px,calc(100vw - var(--rail) - 64px))!important}
 html.dk .gvd{display:flex;flex-direction:column;gap:18px}
