@@ -242,3 +242,55 @@ export { $, $$, base, bip32, bip39, buzz, dropKeyboard, go, libs, report, ripe, 
     if (s && !s.contains(e.target)) place(s);
   }, true);
 })();
+
+/* Long screens (a token with 27 pools, DeFi positions, a proposal): the bar
+   with the back button stays at the top while the page scrolls, and once the
+   screen's own title has scrolled away the bar carries it. Further down, a
+   small button at the bottom goes back to the top. One place for every
+   screen with a back button; windows (Receive, Send, Swap) are left out. */
+(function longScreens(){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'to-top';
+  btn.setAttribute('aria-label', 'Back to top');
+  btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>';
+  btn.hidden = true;
+  document.body.appendChild(btn);
+  btn.addEventListener('click', () => {
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+  });
+  const active = () => document.querySelector('.step.on:not(.as-modal)');
+  let ticking = false;
+  function update(){
+    ticking = false;
+    const st = active();
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    // the button: past about two screens' worth of a long page, and never over
+    // a window or a sheet
+    const covered = document.body.classList.contains('modal-open') || document.body.classList.contains('sheet-open');
+    btn.hidden = !(st && y > Math.max(500, innerHeight * 0.9)) || covered;
+    document.querySelectorAll('.step > .bar.stuck').forEach(b => { if (!st || b.parentElement !== st) b.classList.remove('stuck'); });
+    if (!st) return;
+    const bar = st.querySelector(':scope > .bar');
+    if (!bar || !bar.querySelector('.back')) return;
+    // stuck once the page has moved under it
+    const stuck = y > 6 && bar.getBoundingClientRect().top <= 1;
+    bar.classList.toggle('stuck', stuck);
+    // the title, from the screen's own heading, once that heading is out of view
+    const h = st.querySelector(':scope > .bar h1, :scope > .tk-head h1, :scope > h1, :scope > .head h1');
+    const inBar = h && bar.contains(h);
+    let t = bar.querySelector(':scope > .bar-title');
+    if (!inBar && h) {
+      if (!t) { t = document.createElement('span'); t.className = 'bar-title'; bar.insertBefore(t, bar.querySelector('.back').nextSibling); }
+      const gone = h.getBoundingClientRect().bottom < bar.getBoundingClientRect().bottom;
+      t.textContent = gone ? h.textContent.trim() : '';
+      t.classList.toggle('on', stuck && gone);
+    }
+  }
+  const later = () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } };
+  addEventListener('scroll', later, { passive: true });
+  addEventListener('resize', later);
+  // a screen change starts at the top with nothing stuck
+  new MutationObserver(later).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+})();

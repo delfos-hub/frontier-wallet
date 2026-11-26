@@ -9,12 +9,12 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=50e2040f';
-import { $, buzz } from './shell.js?v=50e2040f';
-import { S } from './state.js?v=50e2040f';
-import { luncRaw, refreshBalances } from './tokens.js?v=50e2040f';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=50e2040f';
-import { currentLang, formatRaw } from './amount.js?v=50e2040f';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=40afb5ea';
+import { $, buzz } from './shell.js?v=40afb5ea';
+import { S } from './state.js?v=40afb5ea';
+import { luncRaw, refreshBalances } from './tokens.js?v=40afb5ea';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=40afb5ea';
+import { currentLang, formatRaw } from './amount.js?v=40afb5ea';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the

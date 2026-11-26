@@ -3292,3 +3292,26 @@ html.dk .xch-soon{margin-top:-1px}
 html .xc.xg:hover,html .xc.xg:active{transform:none!important;filter:none!important}
 .xc.xg:has(.xch:hover){border-color:rgba(120,140,255,.28)!important;box-shadow:none!important}
 .xc.xg[data-chain=tron]:has(.xch:hover){border-color:rgba(255,90,100,.32)!important}
+
+/* Long screens: the bar with the back button stays at the top while the page
+   scrolls (shell.js longScreens), and carries the screen's title once that
+   has scrolled away; a small button at the bottom goes back to the top. */
+.step:not(.as-modal) > .bar:has(.back){position:sticky;top:0;z-index:30;transition:background .2s,box-shadow .2s,padding .2s}
+.step:not(.as-modal) > .bar.stuck{margin-inline:-14px;padding:10px 14px;border-radius:0 0 16px 16px;
+  background:linear-gradient(180deg,rgba(9,12,30,.94),rgba(12,16,40,.88));
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  box-shadow:0 1px 0 rgba(160,140,255,.18),0 14px 30px -18px rgba(0,0,0,.9)}
+.bar .bar-title{flex:1;min-width:0;font-weight:800;font-size:15px;letter-spacing:.01em;color:#EEF2FF;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s}
+.bar .bar-title.on{opacity:1;transform:none}
+.to-top{position:fixed;right:22px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:45;width:44px;height:44px;padding:0;border:0;cursor:pointer;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);
+  background:linear-gradient(180deg,#7C5CFF,#3B2AA8);display:grid;place-items:center;
+  box-shadow:0 10px 24px -8px rgba(0,0,0,.8);animation:to-top-in .2s ease both}
+.to-top[hidden]{display:none}
+.to-top svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.to-top:hover{filter:brightness(1.12)}
+.to-top:focus-visible{outline:2px solid #3BE3FF;outline-offset:3px}
+html.dk .to-top{right:34px;bottom:30px}
+@keyframes to-top-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.to-top{animation:none}.bar .bar-title{transition:none}}
