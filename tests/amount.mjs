@@ -85,6 +85,9 @@ ok('send Max writes the language’s separator', (tx.match(/\$\('#send-amt'\)\.v
 ok('staking: Max writes it, the review shows every digit', /\$\('#stk-amt'\)\.value = formatRaw\(String\(lim\.max\), 6, currentLang\(\), \{ group: false \}\)/.test(stake) &&
   /const a = formatRaw\(String\(f\.amount\), 6, currentLang\(\)\) \+ ' LUNC';/.test(stake));
 ok('GRAM: no comma swapped for a point before parsing', !/\.replace\(',', '\.'\)/.test(gram));
+ok('GRAM: Max writes the language’s separator (345.678 would be refused as ambiguous in fr/ru/it/es/tr)',
+  /\$\('#gx-sell'\)\.value = formatRaw\(String\(av\), 6, currentLang\(\), \{ group: false \}\)/.test(gram) && !/human\([^)]*\)\.replace\(\/,\/g, ''\)/.test(gram));
+for (const l of ['fr', 'ru', 'it', 'es', 'tr']) ok(l + ': 345.678 LUNC available, written by Max, reads back as 345678000', A.parseAmount(A.formatRaw('345678000', 6, l, { group: false }), 6, l) === '345678000');
 ok('GRAM: a refused amount is said, not read as zero', /if \(PARSE_ERR\.sell\) out\.errs\.push\(PARSE_ERR\.sell\);/.test(gram));
 
 console.log(`\n${pass} passed, ${fail} failed`);
