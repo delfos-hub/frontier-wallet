@@ -727,3 +727,31 @@ group('#68 review on 8b99a18: events found only at the top level, unstakes of th
   ok('another delegator’s 20 from A first, this wallet’s 30 from B: one request, 30 LUNC, validator B',
     mix.title === 'Undelegated' && mix.top === '30 LUNC' && mix.sub === 'valB' && mix.main.req === 30e6, mix.title + ' | ' + mix.top + ' | ' + mix.sub);
 }
+
+group('#68 review on 8b4c1d3: the older SDK log, several transfers in one event');
+{
+  const L = new Function('wasmCalls', 'worthOf', 'coins',
+    [liftLine(src, 'const FEE_COLLECTOR ='), lift(src, 'function eventsOf('), lift(src, 'function feePayer('), liftLine(src, 'const MOVES ='), lift(src, 'function reconcile('),
+     lift(src, 'function txEvents('), lift(src, 'function collectorMoves('), lift(src, 'function taxPaid('), lift(src, 'function flows('), lift(src, 'function transfersIn('),
+     'return { flows, transfersIn };'].join('\n'))(() => [], () => 0, cs => cs.map(c => c.amount + c.denom).join());
+  const A = (k, v) => ({ key: k, value: v });
+  const tr = (from, to, amount) => ({ type: 'transfer', attributes: [A('recipient', to), A('sender', from), A('amount', amount)] });
+  const topEv = [tr('alice', 'bob', '20000000uluna'), tr('alice', 'carol', '30000000uluna')];
+  const grouped = { type: 'transfer', attributes: [A('recipient', 'bob'), A('sender', 'alice'), A('amount', '20000000uluna'),
+    A('recipient', 'carol'), A('sender', 'alice'), A('amount', '30000000uluna')] };
+  const forms = [['grouped log attributes', [grouped]], ['separate log events', topEv]];
+  for (const [name, logEvents] of forms) {
+    for (const withTop of [false, true]) {
+      const t = { logs: [{ events: logEvents }], events: withTop ? topEv : [] }, w = name + (withTop ? ', with the top-level list' : ', logs only');
+      const fb = L.flows(t, 'bob'), fc = L.flows(t, 'carol'), fa = L.flows(t, 'alice');
+      ok(w + ': Bob +20 LUNC', fb.length === 1 && fb[0].raw === 20000000, JSON.stringify(fb));
+      ok(w + ': Carol +30 LUNC', fc.length === 1 && fc[0].raw === 30000000, JSON.stringify(fc));
+      ok(w + ': Alice -50 LUNC', fa.length === 1 && fa[0].raw === -50000000, JSON.stringify(fa));
+    }
+  }
+  // two genuine identical payments in one grouped event still count twice
+  const twice = { logs: [{ events: [{ type: 'transfer', attributes: [A('recipient', 'bob'), A('sender', 'alice'), A('amount', '20000000uluna'),
+    A('recipient', 'bob'), A('sender', 'alice'), A('amount', '20000000uluna')] }] }], events: [tr('alice', 'bob', '20000000uluna'), tr('alice', 'bob', '20000000uluna')] };
+  ok('two identical payments of 20, grouped in the log and separate at the top: Bob +40', L.flows(twice, 'bob')[0].raw === 40000000, JSON.stringify(L.flows(twice, 'bob')));
+  ok('Alice’s detail lists both recipients from a grouped log', L.transfersIn({ logs: [{ events: [grouped] }] }, 'alice').map(m => m.other).join() === 'bob,carol');
+}

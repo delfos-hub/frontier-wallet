@@ -394,9 +394,25 @@ function reconcile(t){
   if (RECON.has(t)) return RECON.get(t);
   const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
   const keyOf = e => e.type + '|' + (e.attributes || []).filter(a => a.key !== 'msg_index').map(a => a.key + '=' + a.value).sort().join('&');
-  const top = (t.events || []).map(e => ({ e: e, msg: attr(e, 'msg_index') || null, top: true, ante: false }));
+  // the older SDK log puts a message's transfers into one event, their
+  // recipient / sender / amount repeated in order: one movement each, the
+  // other attributes (msg_index) kept with every one (#68 review)
+  const MOVE_KEYS = ['recipient', 'sender', 'amount'];
+  const expand = e => {
+    if (e.type !== 'transfer') return [e];
+    const rest = (e.attributes || []).filter(a => !MOVE_KEYS.includes(a.key)), groups = [];
+    let cur = null;
+    for (const a of (e.attributes || [])) {
+      if (!MOVE_KEYS.includes(a.key)) continue;
+      if (!cur || cur.some(x => x.key === a.key)) groups.push(cur = []);
+      cur.push(a);
+    }
+    return groups.length < 2 ? [e] : groups.map(g => ({ type: e.type, attributes: g.concat(rest) }));
+  };
+  const top = [];
+  (t.events || []).forEach(e0 => expand(e0).forEach(e => top.push({ e: e, msg: attr(e, 'msg_index') || null, top: true, ante: false })));
   const logs = [];
-  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e => logs.push({ e: e, msg: String(lg.msg_index != null ? lg.msg_index : i), top: false, ante: false })));
+  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e0 => expand(e0).forEach(e => logs.push({ e: e, msg: String(lg.msg_index != null ? lg.msg_index : i), top: false, ante: false }))));
   const isMove = x => x.e.type === 'transfer' && attr(x.e, 'recipient') === FEE_COLLECTOR;
   // log moves claimed by a marker of their own message (same amount, payer)
   const claimed = new Set();
