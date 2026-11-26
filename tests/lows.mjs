@@ -15,6 +15,7 @@
    Run: node tests/lows.mjs */
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { ok, group, report } from './harness.mjs';
 
 const SRC = path.resolve(process.argv[2] || 'assets/js');
@@ -81,20 +82,23 @@ group('wrong PINs');
 
 group('amounts');
 {
-  const toRaw = new Function(lift(tx, 'function toRaw(') + '\nreturn toRaw;')();
+  // the one parser (amount.js), as tx.js calls it, in English
+  const A = await import(pathToFileURL(path.resolve('assets/js/amount.js')).href);
+  const toRaw = (s, d) => A.parseAmount(s, d, 'en');
   const bad = s => { try { toRaw(s, 6); return false; } catch (e) { return e.message; } };
+  ok('tx.js reads amounts through amount.js in the interface language', /return parseAmount\(human, dec, currentLang\(\)\);/.test(lift(tx, 'function toRaw(')));
   ok('1.5 -> 1500000', toRaw('1.5', 6) === '1500000');
-  ok('1,5 -> 1500000 (comma as the point)', toRaw('1,5', 6) === '1500000');
+  ok('1,5 -> 1500000 (a comma that cannot group is the point)', toRaw('1,5', 6) === '1500000');
   ok('1,000.5 -> 1000500000', toRaw('1,000.5', 6) === '1000500000');
   ok('1 000 000 -> 1000000000000', toRaw('1 000 000', 6) === '1000000000000');
   ok('1000 -> 1000000000', toRaw('1000', 6) === '1000000000');
-  ok('"1,000" is refused, not read as 1', /could mean either/.test(bad('1,000') || ''), bad('1,000'));
-  ok('"12,345,678" too', /could mean either/.test(bad('12,345,678') || ''));
+  ok('"1,000" is refused, not read as 1', /could be 1000 or 1\.000/.test(bad('1,000') || ''), bad('1,000'));
+  ok('"12,345,678" is three groups: twelve million', toRaw('12,345,678', 6) === '12345678000000');
   ok('"1,0001" is still a decimal comma', toRaw('1,0001', 6) === '1000100');
   ok('"0,001" cannot be a thousand, so it is a decimal', toRaw('0,001', 6) === '1000');
   ok('swap says a refused amount instead of staying on "quoting"', /try \{ raw = toRaw\(\$\('#sw-amt'\)\.value, dFrom\); \}\s*catch/.test(swap));
   ok('junk is refused', !!bad('1e5') && !!bad('abc') && !!bad(''));
-  ok('decimals past the token are cut', toRaw('0.1234567', 6) === '123456');
+  ok('decimals past the token are refused, not cut', /has 6 decimals/.test(bad('0.1234567') || ''));
   ok('0 decimals', toRaw('7', 0) === '7');
   ok('the review shows a refused amount instead of failing silently', /toRaw\([^)]*\)[\s\S]{0,200}catch/.test(lift(tx, 'async function review') ) || /catch \(e\)[\s\S]{0,120}sbad/.test(tx));
 }

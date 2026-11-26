@@ -4,12 +4,13 @@
 // пул сам умеет ответить, сколько отдаст за конкретную сумму, с учётом
 // проскальзывания и комиссии. Считать это самому - значит показать одно
 // число, а получить другое.
-import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=fc51a743';
-import { $, go, tap } from './shell.js?v=fc51a743';
-import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=fc51a743';
-import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=fc51a743';
-import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=fc51a743';
-import { S } from './state.js?v=fc51a743';
+import { amt, dbg, DEBUG, esc, fmt, iconHTML, paintIcons, THIN_LUNC, usd } from './chain.js?v=4a700141';
+import { $, go, tap } from './shell.js?v=4a700141';
+import { assetOf, checkPool, confirmDec, DEC, directPeers, gdInfo, graph, graphPeers, graphReady, knownAsset, learnAsset, mapPrice, midsBetween, poolDex, poolHolds, poolsBetween, reserves, simulateSwap } from './market.js?v=4a700141';
+import { fiatOf, heldTokens, refreshBalances, remember, sortHeld } from './tokens.js?v=4a700141';
+import { dryRunSwap, sendSwap, toRaw } from './tx.js?v=4a700141';
+import { S } from './state.js?v=4a700141';
+import { currentLang, formatRaw, parseAmount, rawFromNumber } from './amount.js?v=4a700141';
 
 const LUNC = { sym: 'LUNC', denom: 'uluna', dec: 6, native: true };
 let FROM = LUNC, TO = null, TIMER = null, SEQ = 0;
@@ -320,7 +321,7 @@ async function learnComfort(){
   const bal = balOf(FROM);
   if (!(bal > 0)) return;
   COMFORT[pair] = { at: 0, pct: 0 };           // asked, so the next paint waits
-  const raw = toRaw(String(bal), decOf(FROM));
+  const raw = rawFromNumber(bal, decOf(FROM));
   const leg = firstCandidates().filter(p => p.pair === pair)[0];
   if (!leg) { delete COMFORT[pair]; return; }
   // with the side it asks for, so the pool is checked for what it holds here too
@@ -548,12 +549,19 @@ const closeSheet = () => {
 
 // The slider spends a share of what is actually held, so it has nothing to say
 // until a balance is known.
+// The field as a number, read by the same parser as the quote (amount.js):
+// what the slider, the hints and the confirmation show is what is quoted.
+// NaN when it cannot be read, as parseFloat gave before.
+function typedAmount(){
+  try { return Number(parseAmount($('#sw-amt').value, decOf(FROM), currentLang())) / Math.pow(10, decOf(FROM)); }
+  catch (e) { return NaN; }
+}
 function setPct(p){
   const bal = balOf(FROM);
   if (!bal) return;
   let v = bal * (p / 100);
   if (p === 100 && FROM.denom === 'uluna') v = Math.max(0, bal - LUNC_RESERVE);
-  $('#sw-amt').value = v > 0 ? v.toFixed(decOf(FROM)) : '';
+  $('#sw-amt').value = v > 0 ? formatRaw(rawFromNumber(v, decOf(FROM)), decOf(FROM), currentLang(), { group: false }) : '';
   $('#sw-range').value = String(p);
   schedule();
 }
@@ -567,7 +575,7 @@ function syncRange(){
   const el = $('#sw-range');
   if (!el) return;
   const bal = balOf(FROM);
-  const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
+  const v = typedAmount();
   if (!bal || !isFinite(v) || v <= 0) { el.value = '0'; return; }
   el.value = String(Math.max(0, Math.min(100, Math.round((v / bal) * 100))));
 }
@@ -773,7 +781,7 @@ async function quote(){
   QUOTE = null; PLAN = null; DETAIL = null; armGo('Enter an amount', false);
   closeConfirm();
   paintUsd();
-  const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
+  const v = typedAmount();
   const out = $('#sw-out');
 
   if (!TO || keyOf(TO) === keyOf(FROM)) {
@@ -809,7 +817,7 @@ async function quote(){
   try { raw = toRaw($('#sw-amt').value, dFrom); }
   catch (e) {
     out.textContent = '-'; out.classList.add('dim');
-    detail([{ k: 'Amount', v: String(e && e.message ? e.message : e).slice(0, 90), tone: 'bad' }]);
+    detail([{ k: 'Amount', v: String(e && e.message ? e.message : e).slice(0, 200), tone: 'bad' }]);
     return;
   }
 
@@ -988,7 +996,7 @@ function usdSlot(id){
 }
 
 function paintUsd(){
-  const v = parseFloat(String($('#sw-amt').value).replace(',', '.'));
+  const v = typedAmount();
   const pf = unitUsd(FROM), pt = unitUsd(TO);
   const a = usdSlot('sw-amt-usd');
   if (a) a.textContent = (isFinite(v) && v > 0 && pf !== null) ? '\u2248 ' + usd(v * pf) : '';
@@ -1162,9 +1170,11 @@ function confirmLines(est){
 }
 
 function openConfirm(est){
-  const v = parseFloat(String($('#sw-amt').value).replace(',', '.')) || 0;
+  // "You pay" is the amount that was quoted and will be signed (QUOTE.offerRaw),
+  // every digit of it, never the field read again (#85)
+  const v = Number(QUOTE.offerRaw) / Math.pow(10, decOf(FROM));
   const pf = unitUsd(FROM), pt = unitUsd(TO);
-  $('#cf-from').textContent = fmt(v) + ' ' + FROM.sym;
+  $('#cf-from').textContent = formatRaw(QUOTE.offerRaw, decOf(FROM), currentLang()) + ' ' + FROM.sym;
   $('#cf-to').textContent = fmt(QUOTE.got) + ' ' + TO.sym;
   $('#cf-from-usd').textContent = pf !== null ? usd(v * pf) : '';
   $('#cf-to-usd').textContent = pt !== null ? usd(QUOTE.got * pt) : '';
