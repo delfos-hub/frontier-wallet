@@ -17,14 +17,20 @@ All in `wrangler.jsonc` `vars`, changeable without touching the code:
 | `PER_CLIENT_DAY` | `3` | claims per client (IPv4, or IPv6 /64) a day |
 | `DAILY_CAP` | `2000000000000` | uluna across everyone a day (2,000,000 LUNC) |
 | `PAUSED` | `""` | `"1"` closes the faucet |
+| `TIMEOUT_BLOCKS` | `100` | blocks after which the chain refuses a faucet transaction (its `timeout_height`); a claim still unknown past that block is released |
+| `WAIT_MS` | `20000` | how long a claim waits for its block before answering `202` (`pending: true`) |
 
 On top of these, `CLAIMS` rate limits each client to 5 requests a minute.
 Claims are accepted only from the wallet's origins (`ORIGINS` in `worker.js`);
 `/status` answers anyone.
 
 A claim reserves its row in D1 before anything is signed (the limit checks and
-the insert are one statement), so two claims at once cannot both pass; a send
-that fails gives the row back.
+the insert are one statement), so two claims at once cannot both pass. The row
+stays pending (`p:HASH@TIMEOUT`) from before the broadcast until the chain
+answers: it becomes a paid claim once the transaction is in a block and
+succeeded, and is given back only when nothing was paid (the node refused it,
+it failed in its block, or the chain is past its timeout height without it).
+No clock releases a claim on its own.
 
 ## Safety
 

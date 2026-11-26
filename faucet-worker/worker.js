@@ -52,7 +52,8 @@ const fUint = (num, n) => (!n || n === '0') ? new Uint8Array(0) : cat([tag(num, 
 const coin = c => cat([fStr(1, c.denom), fStr(2, String(c.amount))]);
 const any = (url, value) => cat([fStr(1, url), fBytes(2, value)]);
 const msgSend = (from, to, coins) => cat([fStr(1, from), fStr(2, to), ...coins.map(c => fBytes(3, coin(c)))]);
-const txBody = (msgs, memo) => cat([...msgs.map(m => fBytes(1, m)), fStr(2, memo)]);
+// timeout_height (field 3): past that block the chain itself refuses the transaction
+const txBody = (msgs, memo, timeout) => cat([...msgs.map(m => fBytes(1, m)), fStr(2, memo), fUint(3, timeout)]);
 const pubKeyAny = key => any('/cosmos.crypto.secp256k1.PubKey', fBytes(1, key));
 const signerInfo = (key, seq) => cat([fBytes(1, pubKeyAny(key)), fBytes(2, fBytes(1, cat([tag(1, 0), varint(1)]))), fUint(3, seq)]);
 const feeMsg = (coins, gas) => cat([...coins.map(c => fBytes(1, coin(c))), fUint(2, gas)]);
@@ -100,14 +101,23 @@ async function checkChain(env){
   const net = (j.default_node_info || {}).network;
   if (net !== env.CHAIN) throw new Error('the node is on ' + net + ', not ' + env.CHAIN);
 }
+async function height(env){
+  const j = await lcd(env, '/cosmos/base/tendermint/v1beta1/blocks/latest');
+  const h = Number((((j.block || {}).header) || {}).height);
+  if (!(h > 0)) throw new Error('the node gave no block height');
+  return h;
+}
 async function faucetBalance(env, addr){
   const j = await lcd(env, '/cosmos/bank/v1beta1/balances/' + addr + '/by_denom?denom=uluna');
   return BigInt((j.balance || {}).amount || '0');
 }
 
 /* The send, in steps that tell the caller what is known:
-   - signed(hash) is awaited before every broadcast: the claim's row then
-     names the transaction before it can exist on the chain;
+   - every transaction carries a timeout height (TIMEOUT_BLOCKS past the
+     current block): after it the chain refuses it, so a hash still unknown
+     past that block can never be paid;
+   - signed(hash, timeout) is awaited before every broadcast: the claim's row
+     then names the transaction and its timeout before it can exist on chain;
    - a node that answers with a code refused it: nothing was sent;
    - a broadcast that fails without an answer (timeout, network) may still
      have gone through: the error carries unknown = true and the hash. */
@@ -118,7 +128,8 @@ async function send(env, to, amount, signed){
   // two claims at once can take the same sequence; the second is rebuilt
   for (let i = 0; i < 3; i++) {
     const a = (await lcd(env, '/cosmos/auth/v1beta1/accounts/' + k.addr)).account || {};
-    const body = txBody([any('/cosmos.bank.v1beta1.MsgSend', msgSend(k.addr, to, [{ denom: 'uluna', amount: amount }]))], 'Frontier faucet');
+    const timeout = (await height(env)) + Number(env.TIMEOUT_BLOCKS || 100);
+    const body = txBody([any('/cosmos.bank.v1beta1.MsgSend', msgSend(k.addr, to, [{ denom: 'uluna', amount: amount }]))], 'Frontier faucet', timeout);
     const probe = authInfo(k.pub, a.sequence || '0', [{ denom: 'uluna', amount: '1000000' }], MAX_GAS);
     const sim = await lcd(env, '/cosmos/tx/v1beta1/simulate', { tx_bytes: b64(txRaw(body, probe, [new Uint8Array(64)])) });
     const used = Number((sim.gas_info || {}).gas_used);
@@ -128,17 +139,18 @@ async function send(env, to, amount, signed){
     const sig = k.node.sign(sha256(signDoc(body, auth, env.CHAIN, a.account_number || '0')));
     const raw = txRaw(body, auth, [sig]);
     const hash = hex(sha256(raw)).toUpperCase();
-    if (signed) await signed(hash);
+    if (signed) await signed(hash, timeout);
     let res;
     try {
       res = (await lcd(env, '/cosmos/tx/v1beta1/txs', { tx_bytes: b64(raw), mode: 'BROADCAST_MODE_SYNC' })).tx_response || {};
     } catch (e) {
       // a 4xx with a message is the node saying no; anything else is silence
       if (e.status >= 400 && e.status < 500) throw e;
-      e.unknown = true; e.hash = hash;
+      e.unknown = true; e.hash = hash; e.timeout = timeout;
       throw e;
     }
-    if (!res.code) return hash;
+    // taken into the node's mempool: not paid yet, only on its way
+    if (!res.code) return { hash: hash, timeout: timeout };
     last = new Error('the node refused the send (code ' + res.code + '): ' + (res.raw_log || ''));
     if (!/sequence/i.test(res.raw_log || '')) break;
     await new Promise(z => setTimeout(z, 1500));
@@ -227,12 +239,15 @@ async function claim(env, request, origin){
     return json({ error: 'Not now: one claim per address a day, and a few per connection.' + again }, 429, origin);
   }
   const id = r.meta.last_row_id;
-  // The row is the reservation, and it stays as soon as a transaction may
-  // exist: 'p:HASH' before each broadcast, the bare hash once the node took it.
-  // It is removed only when nothing can have been paid (#76 review).
-  let hash;
+  // The row is the reservation, and it stays as long as a payment may exist:
+  // 'p:HASH@TIMEOUT' before each broadcast, the bare hash only once the
+  // transaction is in a block and succeeded. It goes only when nothing was
+  // paid: refused by the node, failed in its block, or past its timeout
+  // height and not on chain (#76 review).
+  const mark = (h, t) => PENDING + h + '@' + t;
+  let sent;
   try {
-    hash = await send(env, to, c.amount, h => env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(PENDING + h, id).run());
+    sent = await send(env, to, c.amount, (h, t) => env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(mark(h, t), id).run());
   } catch (e) {
     if (!e.unknown) {
       await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(id).run().catch(() => {});
@@ -240,26 +255,56 @@ async function claim(env, request, origin){
     }
     return json({ error: 'The faucet sent, but the node did not confirm it. It is checked again before this address can claim: look for ' + e.hash + ' on the explorer.', hash: e.hash, pending: true }, 502, origin);
   }
-  // paid: a failed write here leaves 'p:HASH', which the next claim reconciles
-  await env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(hash, id).run().catch(() => {});
-  return json({ hash: hash, amount: c.amount }, 200, origin);
+  // accepted is not paid: wait a little for the block, then say what is known
+  const until = Date.now() + Number(env.WAIT_MS == null ? 20000 : env.WAIT_MS);
+  for (;;) {
+    const o = await outcome(env, sent.hash, sent.timeout);
+    if (o === 'paid') {
+      // a failed write here leaves the pending mark, which the next claim reconciles
+      await env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(sent.hash, id).run().catch(() => {});
+      return json({ hash: sent.hash, amount: c.amount }, 200, origin);
+    }
+    if (o === 'failed') {
+      await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(id).run().catch(() => {});
+      return json({ error: 'The send failed in its block; nothing was paid. Try again.', hash: sent.hash }, 502, origin);
+    }
+    if (Date.now() >= until) break;
+    await new Promise(z => setTimeout(z, Number(env.POLL_MS || 2500)));
+  }
+  return json({ hash: sent.hash, amount: c.amount, pending: true }, 202, origin);
 }
 
-/* Claims whose outcome was not known ('p:HASH'), asked about before the same
-   address may claim again: included and successful -> a normal paid claim;
-   included and failed, or still unknown well after its timeout -> nothing was
-   paid, the row goes; otherwise it stays and keeps blocking the address. */
+/* What became of a transaction, from the chain: 'paid' (in a block, code 0),
+   'failed' (in a block with an error, or not on chain once the chain is past
+   its timeout height, after which it can never be included), or 'unknown'
+   (not seen yet, or the node did not answer). */
+async function outcome(env, hash, timeout){
+  let tx = null;
+  try { tx = (await lcd(env, '/cosmos/tx/v1beta1/txs/' + hash)).tx_response || null; }
+  catch (e) { if (e.status !== 404 && e.status !== 400) return 'unknown'; }
+  if (tx) return tx.code ? 'failed' : 'paid';
+  if (!(timeout > 0)) return 'unknown';
+  let h = 0;
+  try { h = await height(env); } catch (e) { return 'unknown'; }
+  if (h <= timeout) return 'unknown';
+  // past the timeout: asked once more, so a block that just landed is not missed
+  try { tx = (await lcd(env, '/cosmos/tx/v1beta1/txs/' + hash)).tx_response || null; }
+  catch (e) { if (e.status !== 404 && e.status !== 400) return 'unknown'; }
+  return tx ? (tx.code ? 'failed' : 'paid') : 'failed';
+}
+
+/* Claims whose outcome was not known ('p:HASH@TIMEOUT'), asked about before
+   the same address may claim again: paid -> a normal paid claim; failed ->
+   nothing was paid, the row goes; unknown -> it stays and keeps blocking the
+   address. No clock releases a claim: only the chain's answer does. */
 const PENDING = 'p:';
-const SETTLE_MS = 10 * 60 * 1000;
 async function reconcile(env, address, now){
   const rows = (await env.DB.prepare("SELECT id, at, hash FROM claims WHERE address = ?1 AND hash LIKE 'p:%'").bind(address).all()).results || [];
   for (const row of rows) {
-    const h = row.hash.slice(PENDING.length);
-    let tx = null;
-    try { tx = (await lcd(env, '/cosmos/tx/v1beta1/txs/' + h)).tx_response || null; }
-    catch (e) { if (e.status !== 404 && e.status !== 400) continue; }   // the node did not answer: keep it
-    if (tx && !tx.code) await env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(h, row.id).run();
-    else if (tx || now - row.at > SETTLE_MS) await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(row.id).run();
+    const [h, t] = row.hash.slice(PENDING.length).split('@');
+    const o = await outcome(env, h, Number(t || 0));
+    if (o === 'paid') await env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(h, row.id).run();
+    else if (o === 'failed') await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(row.id).run();
   }
 }
 
@@ -300,4 +345,4 @@ export default {
 };
 
 // for tests/faucet.mjs
-export const __test = { send: send, claim: claim, reconcile: reconcile, PENDING: PENDING };
+export const __test = { send: send, claim: claim, reconcile: reconcile, outcome: outcome, PENDING: PENDING };

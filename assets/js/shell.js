@@ -89,23 +89,56 @@ const WALLET_TABS = ['home','stake','gov','activity','dev','settings'];
 const MODAL = ['receive','send','swap','tsend'];
 const UNDER = WALLET_TABS.concat(['token','earn','epos']);
 const modal = () => document.querySelector('.step.as-modal');
+/* A window takes the keyboard while it is open (#76 review): the control that
+   opened it is kept, focus moves into it, Tab and Shift+Tab go round inside
+   it, and closing gives focus back to that control. */
+let OPENER = null;
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const inWindow = m => [...m.querySelectorAll(FOCUSABLE)].filter(x => !x.closest('[hidden]') && x.getClientRects().length);
+function enterModal(m){
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  const h = m.querySelector('h1, h2');
+  if (h) { h.id = h.id || m.id + '-title'; m.setAttribute('aria-labelledby', h.id); }
+  if (!m.hasAttribute('tabindex')) m.setAttribute('tabindex', '-1');
+  const first = inWindow(m).find(x => !x.classList.contains('back')) || inWindow(m)[0] || m;
+  first.focus({ preventScroll: true });
+}
 function closeModal(){
   const m = modal();
   if (!m) return false;
   m.classList.remove('on', 'as-modal');
+  ['role', 'aria-modal', 'aria-labelledby'].forEach(a => m.removeAttribute(a));
   document.body.classList.remove('modal-open');
+  const o = OPENER; OPENER = null;
+  if (o && o.isConnected && !o.closest('[hidden]')) o.focus({ preventScroll: true });
   return true;
 }
+// Tab stays inside the open window
+document.addEventListener('keydown', e => {
+  const m = modal();
+  if (e.key !== 'Tab' || !m) return;
+  const f = inWindow(m);
+  if (!f.length) { e.preventDefault(); m.focus(); return; }
+  const i = f.indexOf(document.activeElement);
+  if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && (i < 0 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+});
 function go(name){
   const dk = document.documentElement.classList.contains('dk');
   const base = [...document.querySelectorAll('.step.on')].find(s => !s.classList.contains('as-modal'));
   if (dk && MODAL.includes(name) && base && UNDER.includes(base.id.slice(3))) {
     tap();
     const m = modal();
-    if (m && m.id !== 'st-' + name) m.classList.remove('on', 'as-modal');
+    // the opener is what was focused before the first window: one window
+    // replacing another hands it on
+    if (!m) OPENER = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+    if (m && m.id !== 'st-' + name) { m.classList.remove('on', 'as-modal'); ['role', 'aria-modal', 'aria-labelledby'].forEach(a => m.removeAttribute(a)); }
     // as-modal before on, in one write: the room move (scene.js) leaves it alone
-    $('#st-' + name).classList.add('as-modal', 'on');
+    const w = $('#st-' + name);
+    w.classList.add('as-modal', 'on');
     document.body.classList.add('modal-open');
+    enterModal(w);
     return;
   }
   closeModal();

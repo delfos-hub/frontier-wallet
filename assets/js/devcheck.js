@@ -7,9 +7,26 @@
      one: a switch of wallet, chain, node or gas settings refuses it;
    - simulate(run) throws a result away if the key changed while it ran.
 
+   - forms() numbers each form's edits: a check keeps the revision it was
+     built from, and is thrown away (or refused at signing) once the form was
+     edited after it, so only the values that were checked can be signed.
+
    No DOM and no imports: tests/devcheck.mjs runs it in Node. */
 
 export const STALE = 'the wallet or the network changed since the check: check again';
+export const EDITED = 'the form changed since the check: check again';
+
+// one revision per form, raised by every edit (typed, picked or set by the wallet)
+export function forms(){
+  const rev = {};
+  const now = k => rev[k] || 0;
+  return {
+    edit(k){ rev[k] = now(k) + 1; },
+    now: now,
+    // still the form the check was built from
+    same(k, r){ if (r !== now(k)) throw new Error(EDITED); return true; }
+  };
+}
 
 export function checks(get){
   const key = () => { const g = get(); return [g.addr, g.net.chain, g.net.lcd, g.net.gasPrice, g.net.gasAdjust].join('|'); };

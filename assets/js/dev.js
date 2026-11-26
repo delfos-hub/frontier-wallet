@@ -15,7 +15,7 @@ import { esc, fmt } from './chain.js';
 import { $, $$, go } from './shell.js';
 import { S } from './state.js';
 import { DEV_URLS, dryRunDev, sendDev, toRaw } from './tx.js';
-import { blockLine, checks } from './devcheck.js';
+import { blockLine, checks, forms } from './devcheck.js';
 
 const MAINNET = 'columbus-5';
 
@@ -215,7 +215,8 @@ function editor(id, key){
   const runsExample = id === 'dv-q-msg';
   ta.value = (key && store.get(key, '')) || example;
   draw();
-  return { set(v){ ta.value = v; draw(); }, get: () => ta.value.trim() ? ta.value : (runsExample ? example : '') };
+  // set by the wallet (a template, formatting) counts as an edit of its form
+  return { set(v){ ta.value = v; draw(); ta.dispatchEvent(new Event('input')); }, get: () => ta.value.trim() ? ta.value : (runsExample ? example : '') };
 }
 const ED = {
   q: editor('dv-q-msg', 'fw:dev:q'),
@@ -405,6 +406,11 @@ if (tokList) new MutationObserver(() => {
 /* Every check is bound to the wallet and the network it ran for (devcheck.js);
    a switch of either drops them all (#76 review). */
 const CHK = checks(() => ({ addr: addrOf(), net: NET }));
+/* Each form's edits are numbered (devcheck.js forms): a check is built from
+   the values read before it runs, kept only when no edit came while it ran,
+   and signed only while the form is still at that revision (#76 review). */
+const F = forms();
+const onEdit = (sels, k, drop) => sels.forEach(s => ['input', 'change'].forEach(t => $(s).addEventListener(t, () => { F.edit(k); drop(); })));
 const bound = CHK.bound, fresh = CHK.fresh;
 const simulate = (msgs, memo) => CHK.simulate((from, net) => dryRunDev(from, msgs, S.MNEMONIC, net, memo));
 const GO = ['#dv-send-go', '#dv-x-go', '#dv-s1-go', '#dv-i-go', '#dv-a-go'];
@@ -433,16 +439,18 @@ function sendMsg(){
   if (h.cw20) return { kind: 'exec', contract: h.id, msg: JSON.stringify({ transfer: { recipient: to, amount: raw } }), funds: [] };
   return { kind: 'send', to: to, coins: [{ denom: h.id, amount: raw }] };
 }
-['#dv-to', '#dv-amt', '#dv-denom', '#dv-memo'].forEach(s => $(s).addEventListener('input', () => { SEND = null; $('#dv-send-go').disabled = true; }));
+onEdit(['#dv-to', '#dv-amt', '#dv-denom', '#dv-memo'], 'send', () => { SEND = null; $('#dv-send-go').disabled = true; });
 $('#dv-send-sim').addEventListener('click', async e => {
   const out = $('#dv-send-out'), btn = e.currentTarget;
   busy(btn, true);
   try {
     needKey();
+    const rev = F.now('send');
     const m = sendMsg();
     const memo = $('#dv-memo').value;
     const res = await simulate([m], memo);
-    SEND = bound({ m: m, fee: res.gasFee, memo: memo });
+    F.same('send', rev);
+    SEND = bound({ m: m, fee: res.gasFee, memo: memo, rev: rev });
     out.innerHTML = feeLine(res, [m]);
     $('#dv-send-go').disabled = false;
   } catch (err) { bad(out, err); }
@@ -454,6 +462,7 @@ $('#dv-send-go').addEventListener('click', async e => {
   busy(btn, true);
   try {
     const P0 = fresh(SEND);
+    F.same('send', P0.rev);
     SEND = null; $('#dv-send-go').disabled = true;
     const r = await sendDev(P0.from, [P0.m], S.MNEMONIC, P0.net, P0.fee, P0.memo);
     out.innerHTML = '<div class="dv-okl">Sent · ' + txLink(r.hash) + '</div>';
@@ -563,6 +572,8 @@ $$('.dv-tabs button').forEach(b => b.addEventListener('click', () => {
 const contractOk = c => /^terra1[0-9a-z]{38,58}$/.test(c);
 function setContract(c){
   $('#dv-q-addr').value = c; $('#dv-x-addr').value = c; $('#dv-a-addr').value = c;
+  // the execute and admin forms see it as an edit
+  ['#dv-x-addr', '#dv-a-addr'].forEach(s => $(s).dispatchEvent(new Event('input')));
   store.set('fw:dev:contract', c);
 }
 setContract(store.get('fw:dev:contract', ''));
@@ -594,18 +605,20 @@ $('#dv-q-info').addEventListener('click', async e => {
 });
 
 let EXEC = null;
-['#dv-x-addr', '#dv-x-msg', '#dv-x-funds', '#dv-x-memo'].forEach(s => $(s).addEventListener('input', () => { EXEC = null; $('#dv-x-go').disabled = true; }));
+onEdit(['#dv-x-addr', '#dv-x-msg', '#dv-x-funds', '#dv-x-memo'], 'x', () => { EXEC = null; $('#dv-x-go').disabled = true; });
 $('#dv-x-sim').addEventListener('click', async e => {
   const out = $('#dv-x-out'), btn = e.currentTarget;
   busy(btn, true);
   try {
     needKey();
+    const rev = F.now('x');
     const c = $('#dv-x-addr').value.trim();
     if (!contractOk(c)) throw new Error('the contract is not a terra1 address');
     const m = { kind: 'exec', contract: c, msg: minify(ED.x.get(), 'the message'), funds: coinsOf($('#dv-x-funds').value) };
     const memo = $('#dv-x-memo').value;
     const res = await simulate([m], memo);
-    EXEC = bound({ m: m, fee: res.gasFee, memo: memo });
+    F.same('x', rev);
+    EXEC = bound({ m: m, fee: res.gasFee, memo: memo, rev: rev });
     out.innerHTML = feeLine(res, [m]);
     $('#dv-x-go').disabled = false;
   } catch (err) { bad(out, err); }
@@ -617,6 +630,7 @@ $('#dv-x-go').addEventListener('click', async e => {
   busy(btn, true);
   try {
     const P0 = fresh(EXEC);
+    F.same('x', P0.rev);
     EXEC = null; $('#dv-x-go').disabled = true;
     const r = await sendDev(P0.from, [P0.m], S.MNEMONIC, P0.net, P0.fee, P0.memo);
     out.innerHTML = '<div class="dv-okl">Sent · ' + txLink(r.hash) + '</div>';
@@ -642,7 +656,8 @@ async function gzip(bytes){
 const size = n => n < 1024 ? n + ' bytes' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
 async function takeWasm(file){
   const meta = $('#dv-wasm-meta'), name = $('#dv-wasm-name');
-  STORE = null; $('#dv-s1-go').disabled = true;
+  // another file is an edit of the upload form, when chosen and once read
+  F.edit('store'); STORE = null; $('#dv-s1-go').disabled = true;
   try {
     if (!file) return;
     const raw = new Uint8Array(await file.arrayBuffer());
@@ -650,12 +665,13 @@ async function takeWasm(file){
     const sum = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), x => x.toString(16).padStart(2, '0')).join('');
     const gz = await gzip(raw);
     WASM = { bytes: gz, size: raw.length, sum: sum };
+    F.edit('store');
     name.textContent = file.name;
     meta.textContent = size(raw.length) + ' · sends ' + size(gz.length) + ' compressed · sha256 ' + sum.slice(0, 8) + '…' + sum.slice(-6);
     $('#dv-s1-sim').disabled = false;
     $('#dv-s1-nb').className = 'dv-nb';
     $('#dv-s1-txt').textContent = 'Ready to upload. Check the fee first.';
-  } catch (e) { WASM = null; meta.textContent = e.message; $('#dv-s1-sim').disabled = true; }
+  } catch (e) { WASM = null; F.edit('store'); meta.textContent = e.message; $('#dv-s1-sim').disabled = true; }
 }
 $('#dv-wasm').addEventListener('change', e => takeWasm(e.target.files[0]));
 const zone = $('#dv-zone');
@@ -669,8 +685,11 @@ $('#dv-s1-sim').addEventListener('click', async e => {
   try {
     needKey();
     if (!WASM) throw new Error('choose a .wasm file first');
-    const res = await simulate([{ kind: 'store', wasm: WASM.bytes }]);
-    STORE = bound({ fee: res.gasFee, wasm: WASM });
+    // the file checked is the one signed: taken once, before the check
+    const rev = F.now('store'), w = WASM;
+    const res = await simulate([{ kind: 'store', wasm: w.bytes }]);
+    F.same('store', rev);
+    STORE = bound({ fee: res.gasFee, wasm: w, rev: rev });
     $('#dv-s1-txt').textContent = 'Fee ' + fmt(res.gasFee / 1e6) + ' test LUNC · ' + res.gas.toLocaleString() + ' gas';
     $('#dv-s1-go').disabled = false;
     out.innerHTML = '';
@@ -683,6 +702,7 @@ $('#dv-s1-go').addEventListener('click', async e => {
   busy(btn, true);
   try {
     const P0 = fresh(STORE);
+    F.same('store', P0.rev);
     if (P0.wasm !== WASM) throw new Error('another file was chosen since the check: check again');
     STORE = null; $('#dv-s1-go').disabled = true;
     const r = await sendDev(P0.from, [{ kind: 'store', wasm: P0.wasm.bytes }], S.MNEMONIC, P0.net, P0.fee);
@@ -693,9 +713,9 @@ $('#dv-s1-go').addEventListener('click', async e => {
     if (!code) throw new Error('stored, but the code id was not in the events: look the transaction up below');
     $('#dv-s1-nb').className = 'dv-nb ok';
     $('#dv-s1-txt').innerHTML = 'Code id <b>' + esc(code) + '</b> · ' + txLink(r.hash);
-    $('#dv-i-code').value = code;
+    $('#dv-i-code').value = code; $('#dv-i-code').dispatchEvent(new Event('input'));
     const codes = store.get('fw:dev:codes:' + NET.chain + ':' + addrOf(), []);
-    codes.unshift({ code: code, sum: WASM.sum, at: Date.now(), tx: r.hash });
+    codes.unshift({ code: code, sum: P0.wasm.sum, at: Date.now(), tx: r.hash });
     store.set('fw:dev:codes:' + NET.chain + ':' + addrOf(), codes.slice(0, 50));
     balance();
   } catch (err) { bad(out, err); }
@@ -703,8 +723,8 @@ $('#dv-s1-go').addEventListener('click', async e => {
 });
 
 const adminBox = $('#dv-i-admin'), noAdmin = $('#dv-i-noadmin');
-noAdmin.addEventListener('change', () => { adminBox.disabled = noAdmin.checked; INST = null; $('#dv-i-go').disabled = true; });
-['#dv-i-code', '#dv-i-label', '#dv-i-msg', '#dv-i-admin', '#dv-i-funds'].forEach(s => $(s).addEventListener('input', () => { INST = null; $('#dv-i-go').disabled = true; }));
+noAdmin.addEventListener('change', () => { adminBox.disabled = noAdmin.checked; });
+onEdit(['#dv-i-code', '#dv-i-label', '#dv-i-msg', '#dv-i-admin', '#dv-i-funds', '#dv-i-noadmin'], 'inst', () => { INST = null; $('#dv-i-go').disabled = true; });
 function instMsg(){
   const code = $('#dv-i-code').value.trim();
   const admin = noAdmin.checked ? '' : (adminBox.value.trim() || addrOf());
@@ -717,9 +737,11 @@ $('#dv-i-sim').addEventListener('click', async e => {
   busy(btn, true);
   try {
     needKey();
+    const rev = F.now('inst');
     const m = instMsg();
     const res = await simulate([m]);
-    INST = bound({ m: m, fee: res.gasFee });
+    F.same('inst', rev);
+    INST = bound({ m: m, fee: res.gasFee, rev: rev });
     out.innerHTML = feeLine(res, [m]);
     $('#dv-i-go').disabled = false;
   } catch (err) { bad(out, err); }
@@ -731,6 +753,7 @@ $('#dv-i-go').addEventListener('click', async e => {
   busy(btn, true);
   try {
     const P0 = fresh(INST), m = P0.m;
+    F.same('inst', P0.rev);
     INST = null; $('#dv-i-go').disabled = true;
     const r = await sendDev(P0.from, [m], S.MNEMONIC, P0.net, P0.fee);
     out.innerHTML = '<div class="dv-okl">Sent · ' + txLink(r.hash) + '</div>';
@@ -977,9 +1000,9 @@ $$('.dv-seg button').forEach(b => b.addEventListener('click', () => {
   ACT = b.dataset.act;
   $$('.dv-seg button').forEach(x => x.classList.toggle('on', x === b));
   $$('.dv-a-f').forEach(f => { f.hidden = f.dataset.for !== ACT; });
-  ADM = null; $('#dv-a-go').disabled = true; $('#dv-a-out').innerHTML = '';
+  F.edit('adm'); ADM = null; $('#dv-a-go').disabled = true; $('#dv-a-out').innerHTML = '';
 }));
-['#dv-a-addr', '#dv-a-code', '#dv-a-msg', '#dv-a-new'].forEach(s => $(s).addEventListener('input', () => { ADM = null; $('#dv-a-go').disabled = true; }));
+onEdit(['#dv-a-addr', '#dv-a-code', '#dv-a-msg', '#dv-a-new'], 'adm', () => { ADM = null; $('#dv-a-go').disabled = true; });
 function admMsg(){
   const c = $('#dv-a-addr').value.trim();
   if (!contractOk(c)) throw new Error('the contract is not a terra1 address');
@@ -992,9 +1015,11 @@ $('#dv-a-sim').addEventListener('click', async e => {
   busy(btn, true);
   try {
     needKey();
+    const rev = F.now('adm');
     const m = admMsg();
     const res = await simulate([m]);
-    ADM = bound({ m: m, fee: res.gasFee });
+    F.same('adm', rev);
+    ADM = bound({ m: m, fee: res.gasFee, rev: rev });
     out.innerHTML = feeLine(res, [m]);
     $('#dv-a-go').disabled = false;
   } catch (err) { bad(out, err); }
@@ -1006,6 +1031,7 @@ $('#dv-a-go').addEventListener('click', async e => {
   busy(btn, true);
   try {
     const P0 = fresh(ADM), m = P0.m;
+    F.same('adm', P0.rev);
     ADM = null; $('#dv-a-go').disabled = true;
     const r = await sendDev(P0.from, [m], S.MNEMONIC, P0.net, P0.fee);
     out.innerHTML = '<div class="dv-okl">Sent · ' + txLink(r.hash) + '</div>';
