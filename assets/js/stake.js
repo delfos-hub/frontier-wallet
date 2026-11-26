@@ -9,11 +9,12 @@
    rewards, unbonding entries, and the validator set. Every action goes through
    one sheet: pick, amount, review with the fee measured by simulation, and a
    second press to sign - the same two-press rule as Send. */
-import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=c44d372a';
-import { $, buzz } from './shell.js?v=c44d372a';
-import { S } from './state.js?v=c44d372a';
-import { luncRaw, refreshBalances } from './tokens.js?v=c44d372a';
-import { dryRunStake, sendStake, toRaw } from './tx.js?v=c44d372a';
+import { LCD, amt, fmt, getJSON, prices } from './chain.js?v=581388d4';
+import { $, buzz } from './shell.js?v=581388d4';
+import { S } from './state.js?v=581388d4';
+import { luncRaw, refreshBalances } from './tokens.js?v=581388d4';
+import { dryRunStake, sendStake, toRaw } from './tx.js?v=581388d4';
+import { currentLang, formatRaw } from './amount.js?v=581388d4';
 
 const UNBOND_DAYS = 21;
 // Left behind by "max" so the stake itself can still pay for its gas and the
@@ -493,7 +494,7 @@ function startAmount(f){
     (lim.note ? '<div class="tiny" style="text-align:left">' + lim.note + '</div>' : '') + '</div>' +
     '<div class="sbad" id="stk-err" hidden></div>' +
     '<button class="btn solid" id="stk-next" type="button">Review</button>');
-  $('#stk-max').addEventListener('click', () => { $('#stk-amt').value = amt(String(lim.max), 6).toFixed(6).replace(/\.?0+$/, ''); });
+  $('#stk-max').addEventListener('click', () => { $('#stk-amt').value = formatRaw(String(lim.max), 6, currentLang(), { group: false }); });
   $('#stk-next').addEventListener('click', () => {
     const err = $('#stk-err');
     err.hidden = true;
@@ -545,7 +546,8 @@ function msgsOf(f){
 }
 
 function reviewLines(f){
-  const a = L(f.amount) + ' LUNC';
+  // every digit of what is signed, in the interface language (#85)
+  const a = formatRaw(String(f.amount), 6, currentLang()) + ' LUNC';
   const cnt = xs => xs.length + ' validator' + (xs.length > 1 ? 's' : '');
   const dest = DATA.withdrawTo && DATA.withdrawTo !== addrOf() ? shortVal(DATA.withdrawTo) + ' (your withdraw address)' : 'this wallet';
   if (f.kind === 'claim') return [['Action', 'Claim rewards'], ['Amount', 'about ' + a], ['From', cnt(f.only)], ['Paid to', dest]];
