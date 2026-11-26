@@ -265,19 +265,24 @@ function voters(id, onStep){
     const q = encodeURIComponent('proposal_vote.proposal_id=' + id);
     const page = n => getJSON(LCD + '/cosmos/tx/v1beta1/txs?query=' + q + '&limit=100&page=' + n + '&order_by=ORDER_BY_DESC', 25000, 2);
     const take = r => (r && r.tx_responses || []).forEach(t => {
-      // the vote for this proposal: one transaction can vote on several
-      const m = ((t.tx && t.tx.body && t.tx.body.messages) || []).find(x => x.voter && String(x.proposal_id) === String(id));
-      if (!m || seen[m.voter]) return;
-      seen[m.voter] = 1;
-      const sp = m.options ? splitOf(m.options) : [];
-      const o = m.option || (sp[0] && sp[0][0]);
-      if (o) out.txv[m.voter] = String(NUM_OPT[o] || o);
-      // the chain's current record (step 1) is the vote that counts: an older
-      // vote transaction never replaces its option or its weights (#67 review)
-      if (sp.length > 1 && !(m.voter in out.votes) && !out.split[m.voter]) out.split[m.voter] = sp;
-      if (/^[0-9A-F]{64}$/i.test(String(t.txhash || ''))) out.tx[m.voter] = { hash: String(t.txhash).toUpperCase(), time: String(t.timestamp || '') };
-      const text = String(t.tx.body.memo || '').trim();
-      if (text && !APP_TAG.test(text)) out.memo[m.voter] = text.slice(0, 600);
+      // one transaction can hold several votes, on this proposal and others:
+      // the later message is the later choice, so they are read last to
+      // first and the first one met per voter is the one kept (#67 review)
+      const ms = ((t.tx && t.tx.body && t.tx.body.messages) || []).filter(x => x && x.voter && String(x.proposal_id) === String(id));
+      for (let k = ms.length - 1; k >= 0; k--) {
+        const m = ms[k];
+        if (seen[m.voter]) continue;
+        seen[m.voter] = 1;
+        const sp = m.options ? splitOf(m.options) : [];
+        const o = m.option || (sp[0] && sp[0][0]);
+        if (o) out.txv[m.voter] = String(NUM_OPT[o] || o);
+        // the chain's current record (step 1) is the vote that counts: an older
+        // vote transaction never replaces its option or its weights (#67 review)
+        if (sp.length > 1 && !(m.voter in out.votes) && !out.split[m.voter]) out.split[m.voter] = sp;
+        if (/^[0-9A-F]{64}$/i.test(String(t.txhash || ''))) out.tx[m.voter] = { hash: String(t.txhash).toUpperCase(), time: String(t.timestamp || '') };
+        const text = String(t.tx.body.memo || '').trim();
+        if (text && !APP_TAG.test(text)) out.memo[m.voter] = text.slice(0, 600);
+      }
     });
     let first = null;
     try { first = await page(1); } catch (e) { first = null; }
@@ -295,14 +300,31 @@ function voters(id, onStep){
 
     // the stake of every voter who is not a validator (commenters first), to
     // weigh and rank them; shown as it arrives, a batch at a time
+    // every page of a voter's delegations, summed here in micro-LUNC; the
+    // amount is known only once the last page is read. A failed page or a
+    // cursor seen twice leaves it missing; no delegations at all is a known 0
+    const stakeOf = async a => {
+      let sum = 0n, key = '';
+      const keys = new Set();
+      for (let n = 0; n < 50; n++) {
+        const r = await getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + a + (key ? '?pagination.key=' + encodeURIComponent(key) : ''), 10000, 1);
+        if (!r || typeof r !== 'object') throw new Error('no answer');
+        (r.delegation_responses || []).forEach(d => { sum += BigInt(d.balance && d.balance.amount || '0'); });
+        const next = r.pagination && r.pagination.next_key;
+        if (!next) return sum;
+        if (keys.has(next)) throw new Error('the same page again');
+        keys.add(next); key = next;
+      }
+      throw new Error('too many pages');
+    };
     const vals = await validators();
     const valAcc = new Set(vals.map(x => x.acc));
     const who = Object.keys(Object.assign({}, out.votes, out.txv, out.memo)).filter(a => !valAcc.has(a));
     who.sort((a, b) => (out.memo[b] ? 1 : 0) - (out.memo[a] ? 1 : 0));
     const ask = who.slice(0, 300);
     for (let i = 0; i < ask.length; i += 24) {
-      await Promise.all(ask.slice(i, i + 24).map(a => getJSON(LCD + '/cosmos/staking/v1beta1/delegations/' + a, 10000, 1)
-        .then(r => { out.stake[a] = (r.delegation_responses || []).reduce((s, d) => s + BigInt(d.balance && d.balance.amount || '0'), 0n); })
+      await Promise.all(ask.slice(i, i + 24).map(a => stakeOf(a)
+        .then(sum => { out.stake[a] = sum; })
         // not read is not zero: left out of stake, and named as missing
         .catch(() => { out.stakeMiss[a] = true; })));
       if (i + 24 < ask.length) { VOTERS[id] = Object.assign({}, out); tell(VOTERS[id]); }

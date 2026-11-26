@@ -312,6 +312,50 @@ console.log('\nthe current vote, the phone list, missing stakes');
   const zero = G1.delegatorSums(['d1', 'd3'], { d1: 'VOTE_OPTION_NO', d3: 'VOTE_OPTION_YES' }, {}, { d1: 100000000n, d3: 0n });
   check('a successful zero balance is a known amount of 0', zero.known + ' of ' + zero.all + ', ' + String(zero.total), '2 of 2, 100000000');
 
+  // #67 review on a390d83: several votes in one transaction, paged delegations
+  const pctOf = new Function('return ' + gsrc.slice(gsrc.indexOf('(x, t) =>', gsrc.indexOf('const pctOf = (x, t) =>')), gsrc.indexOf(';\n', gsrc.indexOf('const pctOf = (x, t) =>'))))();
+  const vt = (voter, option, pid = '9') => ({ voter, proposal_id: pid, option });
+  const txOf = (h, msgs) => ({ txhash: h.repeat(64), timestamp: '', tx: { body: { memo: '', messages: msgs } } });
+  const closed = (aliceTwo) => async (url) => {
+    if (/\/votes\?/.test(url)) return { votes: [], pagination: {} };
+    // newest first: Alice Yes then No and Bob Yes in one transaction; an older Alice Abstain
+    // Nans's stake case, proposal 10: Alice Yes, Bob No
+    if (/txs\?query=.*%3D10&/.test(url)) return { total: '1', tx_responses: [txOf('D', [vt('alice', 'VOTE_OPTION_YES', '10'), vt('bob', 'VOTE_OPTION_NO', '10')])] };
+    if (/txs\?query=/.test(url)) return { total: '2', tx_responses: [
+      txOf('B', [vt('alice', 'VOTE_OPTION_YES'), vt('bob', 'VOTE_OPTION_YES'), { voter: 'alice', proposal_id: '8', option: 'VOTE_OPTION_YES' }, vt('alice', 'VOTE_OPTION_NO')]),
+      txOf('C', [vt('alice', 'VOTE_OPTION_ABSTAIN')]),
+    ] };
+    if (/delegations\/alice\?pagination\.key=/.test(url)) {
+      check('the next page is asked for with the cursor, encoded', /pagination\.key=k%2B1%3D/.test(url), true);
+      if (aliceTwo === 'fail') throw new Error('timeout');
+      return { delegation_responses: [{ balance: { amount: '99000000' } }], pagination: { next_key: aliceTwo === 'loop' ? 'k+1=' : null } };
+    }
+    if (/delegations\/alice/.test(url)) return { delegation_responses: [{ balance: { amount: '1000000' } }], pagination: { next_key: 'k+1=' } };
+    if (/delegations\/bob/.test(url)) return { delegation_responses: [{ balance: { amount: '99000000' } }], pagination: { next_key: null } };
+    return {};
+  };
+  const G3 = runVoters(closed('ok'), '', '', /^$/, async () => []);
+  const v3 = await G3.voters('9');
+  check('one transaction, Alice Yes then No, Bob Yes: Alice is No, Bob is Yes', v3.txv.alice + ' ' + v3.txv.bob, 'VOTE_OPTION_NO VOTE_OPTION_YES');
+  check('each voter once, the vote on another proposal and the older Abstain ignored', Object.keys(v3.txv).sort().join(','), 'alice,bob');
+  check('Alice’s vote points at the transaction that holds it', v3.tx.alice.hash, 'B'.repeat(64));
+  check('Alice’s stake is both pages: 1 + 99 LUNC', String(v3.stake.alice), '100000000');
+  const v10 = await runVoters(closed('ok'), '', '', /^$/, async () => []).voters('10');
+  const ab = G3.delegatorSums(['alice', 'bob'], Object.assign({}, v10.txv), v10.split, v10.stake);
+  check('Alice Yes with 1 + 99 LUNC on two pages, Bob No with 99: 50.25% Yes, 49.75% No, 2 of 2 known',
+    pctOf(ab.st('VOTE_OPTION_YES'), ab.total).toFixed(2) + '/' + pctOf(ab.st('VOTE_OPTION_NO'), ab.total).toFixed(2) + ' ' + ab.known + ' of ' + ab.all, '50.25/49.75 2 of 2');
+
+  const G4 = runVoters(closed('fail'), '', '', /^$/, async () => []);
+  const v4 = await G4.voters('10');
+  check('Alice’s second page fails: no partial 1 LUNC, her stake is missing', ('alice' in v4.stake) + ' ' + (v4.stakeMiss.alice === true), 'false true');
+  const ab4 = G4.delegatorSums(['alice', 'bob'], Object.assign({}, v4.txv), v4.split, v4.stake);
+  check('coverage 1 of 2, Bob’s 99 LUNC is all of the known stake', ab4.known + ' of ' + ab4.all + ', ' + String(ab4.total), '1 of 2, 99000000');
+  check('her row reads "stake not read"', /\(!val && v\.stakeMiss && v\.stakeMiss\[a\]\) \? 'stake not read'/.test(gsrc), true);
+
+  const G5 = runVoters(closed('loop'), '', '', /^$/, async () => []);
+  const v5 = await G5.voters('9');
+  check('a cursor given twice stops the read and leaves the stake missing', ('alice' in v5.stake) + ' ' + (v5.stakeMiss.alice === true), 'false true');
+
   // the phone list, rendered
   const listLib = new Function('OPT', 'OPT_CLASS', 'esc', 'share', 'L', 'face', 'shortAcc',
     pick('const NUM_OPT =', 'const shareOf =') + '\n' + pick('function voterState(', 'async function showVoters(') + '\nreturn { voterListHTML };')(
