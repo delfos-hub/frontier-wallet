@@ -274,7 +274,7 @@ group('network fees: top-level events and logs');
 {
   const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
   const fx0 = new Function(
-    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function feePayer(') + '\n' + liftLine(src, 'const MOVES =') + '\n' + lift(src, 'function collectorMoves(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
+    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function feePayer(') + '\n' + liftLine(src, 'const MOVES =') + '\n' + lift(src, 'function reconcile(') + '\n' + lift(src, 'function txEvents(') + '\n' + lift(src, 'function collectorMoves(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
     lift(src, 'function feePaid(') + '\nreturn { feePaid, taxPaid };')();
   const fees = fx0; const fx = (t, me) => fees.feePaid(t, me);
   const tr = (from, to, amount) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }] });
@@ -437,7 +437,7 @@ group('#68 review on 308e9be: pending sends, fee and tax lists, unstake rewards,
   // 2. fee transfers and tax markers in different lists
   const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
   const T = new Function('coins',
-    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function feePayer(') + '\n' + liftLine(src, 'const MOVES =') + '\n' + lift(src, 'function collectorMoves(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
+    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function feePayer(') + '\n' + liftLine(src, 'const MOVES =') + '\n' + lift(src, 'function reconcile(') + '\n' + lift(src, 'function txEvents(') + '\n' + lift(src, 'function collectorMoves(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
     lift(src, 'function feePaid(') + '\n' + lift(src, 'function feeOf(') + '\nreturn { feePaid, taxPaid, feeOf };')(
     cs => cs.map(c => Number(c.amount) / 1e6 + ' LUNC').join(', '));
   const tr = (from, to, amount) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }] });
@@ -463,11 +463,11 @@ group('#68 review on 308e9be: pending sends, fee and tax lists, unstake rewards,
   const sym = () => 'LUNC';
   const amountText = f => (f.raw > 0 ? '+' : '-') + H(f) + ' ' + sym(f.key);
   const LK = new Function('primaryMsg', 'describe', 'intentOf', 'flows', 'alsoOf', 'alsoTitle', 'placeOf', 'symOfKey', 'fmt', 'human', 'amountText', 'worthOf',
-    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT',
+    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT', 'short',
     lift(src, 'function byAsset(') + '\n' + liftLine(src, 'const rewardText =') + '\n' + lift(src, 'function look(') + '\nreturn look;')(
     ms => ms[0], () => ({ title: 'Undelegated', kind: 'stake', sub: 'terra1val' }), () => '', t => t._flows, () => [], () => '', () => '',
     sym, x => String(x), H, amountText, () => 0, () => null, () => '', {}, {}, {},
-    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/);
+    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/, x => x);
   const und = (amount, reward) => ({ code: 0, _flows: [{ key: 'native:uluna', raw: reward }],
     tx: { body: { messages: [{ '@type': '/cosmos.staking.v1beta1.MsgUndelegate', validator_address: 'terravaloper1x', amount: { denom: 'uluna', amount: String(amount) } }] } } });
   const u20 = LK(und(20e6, 1e6), 'me'), u30 = LK(und(30e6, 2e6), 'me');
@@ -501,7 +501,7 @@ group('#68 review on be90cfe: equal fee and tax, rewards in several assets');
   const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
   const coinsTxt = cs => cs.map(c => Number(c.amount) / 1e6 + ' LUNC').join(', ');
   const L = new Function('coins', 'esc',
-    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function feePayer(') + '\n' + liftLine(src, 'const MOVES =') + '\n' + lift(src, 'function collectorMoves(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
+    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function feePayer(') + '\n' + liftLine(src, 'const MOVES =') + '\n' + lift(src, 'function reconcile(') + '\n' + lift(src, 'function txEvents(') + '\n' + lift(src, 'function collectorMoves(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
     lift(src, 'function feePaid(') + '\n' + lift(src, 'function feeOf(') + '\n' + lift(src, 'function row(') +
     '\nreturn { feePaid, taxPaid, feeOf, row };')(coinsTxt, x => String(x));
   const tr = (from, to, amount, mi) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }]
@@ -541,11 +541,11 @@ group('#68 review on be90cfe: equal fee and tax, rewards in several assets');
   const sym = k => k === 'native:uusd' ? 'USTC' : 'LUNC';
   const amountText = f => (f.raw > 0 ? '+' : '-') + H(f) + ' ' + sym(f.key);
   const LK = new Function('primaryMsg', 'describe', 'intentOf', 'flows', 'alsoOf', 'alsoTitle', 'placeOf', 'symOfKey', 'fmt', 'human', 'amountText', 'worthOf',
-    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT',
+    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT', 'short',
     lift(src, 'function byAsset(') + '\n' + liftLine(src, 'const rewardText =') + '\n' + lift(src, 'function look(') + '\nreturn look;')(
     ms => ms[0], () => ({ title: 'Undelegated', kind: 'stake', sub: 'terra1val' }), () => '', t => t._flows, () => [], () => '', () => '',
     sym, x => String(x), H, amountText, () => 0, () => null, () => '', {}, {}, {},
-    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/);
+    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/, x => x);
   const und = (h, amount, flows) => ({ txhash: h, code: 0, timestamp: '', _flows: flows,
     tx: { body: { messages: [{ '@type': '/cosmos.staking.v1beta1.MsgUndelegate', validator_address: 'terravaloper1x', amount: { denom: 'uluna', amount: String(amount) } }] } } });
   const t20 = und('A', 20e6, [{ key: 'native:uluna', raw: 1e6 }, { key: 'native:uusd', raw: 4e6 }]), t30 = und('B', 30e6, [{ key: 'native:uluna', raw: 2e6 }]);
@@ -571,7 +571,7 @@ group('#68 review on 8d313f8: who paid the tax, markers across lists, unstakes i
   const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
   const coinsTxt = cs => cs.map(c => Number(c.amount) / 1e6 + ' LUNC').join(', ');
   const L = new Function('coins', 'esc', 'wasmCalls', 'worthOf', 'short',
-    [liftLine(src, 'const FEE_COLLECTOR ='), lift(src, 'function eventsOf('), lift(src, 'function feePayer('), liftLine(src, 'const MOVES ='), lift(src, 'function collectorMoves('),
+    [liftLine(src, 'const FEE_COLLECTOR ='), lift(src, 'function eventsOf('), lift(src, 'function feePayer('), liftLine(src, 'const MOVES ='), lift(src, 'function reconcile(') + '\n' + lift(src, 'function txEvents(') + '\n' + lift(src, 'function collectorMoves('),
      lift(src, 'function taxPaid('), lift(src, 'function flows('), lift(src, 'function feePaid('), lift(src, 'function feeOf('), lift(src, 'function row('),
      'return { feePaid, taxPaid, flows, feeOf, row, feePayer };'].join('\n'))(coinsTxt, x => String(x), () => [], () => 0, x => x);
   const tr = (from, to, amount, mi) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }]
@@ -630,11 +630,11 @@ group('#68 review on 8d313f8: who paid the tax, markers across lists, unstakes i
   const sym = k => k === 'native:uusd' ? 'USTC' : 'LUNC';
   const amountText = f => (f.raw > 0 ? '+' : '-') + H(f) + ' ' + sym(f.key);
   const LK = new Function('primaryMsg', 'describe', 'intentOf', 'flows', 'alsoOf', 'alsoTitle', 'placeOf', 'symOfKey', 'fmt', 'human', 'amountText', 'worthOf',
-    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT',
+    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT', 'short',
     lift(src, 'function byAsset(') + '\n' + liftLine(src, 'const rewardText =') + '\n' + lift(src, 'function look(') + '\nreturn look;')(
     ms => ms[0], () => ({ title: 'Undelegated', kind: 'stake', sub: 'terra1val' }), () => '', t => t._flows, () => [], () => '', () => '',
     sym, x => String(x), H, amountText, () => 0, () => null, () => '', {}, {}, {},
-    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/);
+    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/, x => x);
   const um = a => ({ '@type': '/cosmos.staking.v1beta1.MsgUndelegate', delegator_address: 'me', validator_address: 'terravaloper1x', amount: { denom: 'uluna', amount: String(a) } });
   const one = { txhash: 'U', code: 0, timestamp: '', _flows: [{ key: 'native:uluna', raw: 1e6 }, { key: 'native:uusd', raw: 4e6 }], tx: { body: { messages: [um(20e6), um(30e6)] } } };
   const lu = LK(one, 'me');
@@ -673,4 +673,57 @@ group('#68 review on 8d313f8: who paid the tax, markers across lists, unstakes i
   ok('clicking yesterday’s bar draws its heading and its row', list.innerHTML.indexOf('id="ac-d-' + yk + '"') >= 0 && list.innerHTML.indexOf('>Y<') >= 0, B.shown());
   ok('and scrolls to that heading', scrolled.length === 1 && scrolled[0] === 'ac-d-' + yk, JSON.stringify(scrolled));
   ok('the summary’s bars use this click', /box\.addEventListener\('click', sumClick\);/.test(src));
+}
+
+group('#68 review on 8b99a18: events found only at the top level, unstakes of this wallet only');
+{
+  const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
+  const coinsTxt = cs => cs.map(c => Number(c.amount) / 1e6 + ' LUNC').join(', ');
+  const L = new Function('coins', 'esc', 'wasmCalls', 'worthOf', 'short',
+    [liftLine(src, 'const FEE_COLLECTOR ='), lift(src, 'function eventsOf('), lift(src, 'function feePayer('), liftLine(src, 'const MOVES ='), lift(src, 'function reconcile('),
+     lift(src, 'function txEvents('), lift(src, 'function collectorMoves('), lift(src, 'function taxPaid('), lift(src, 'function flows('), lift(src, 'function feePaid('),
+     lift(src, 'function feeOf('), lift(src, 'function row('), 'return { feePaid, taxPaid, flows, feeOf, row };'].join('\n'))(coinsTxt, x => String(x), () => [], () => 0, x => x);
+  const tr = (from, to, amount, mi) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }]
+    .concat(mi != null ? [{ key: 'msg_index', value: String(mi) }] : []) });
+  const box = { hidden: true, innerHTML: '', dataset: {}, addEventListener(){} };
+  const sumFns = new Function('document', 'S', 'isDesk', 'ALL', 'LOADED_FOR', 'PERIOD', 'calDay', 'flows', 'worthOf', 'dayKey', 'feePaid', 'fmt', 'usd', 'esc', '$',
+    lift(src, 'function clearSummary(') + '\n' + lift(src, 'function summary(') + '\nreturn summary;');
+  const tile = (t, me) => {
+    sumFns({ getElementById: id => id === 'ac-sum' ? box : null }, { ADDR: me }, () => true, [t], me, 0, (n, i) => new Date(n - i * 864e5),
+      () => [], () => 0, () => 'd', L.feePaid, v => String(v), v => '$' + v, x => String(x), () => null)(me);
+    return (/<span>Network fees<\/span><b>([^<]*)<\/b>/.exec(box.innerHTML) || [])[1];
+  };
+  // 1. everything at the top level; the log has only Bob's 95
+  const t1 = { code: 0, timestamp: new Date().toISOString(),
+    tx: { body: { messages: [{ '@type': '/cosmos.bank.v1beta1.MsgSend', from_address: 'alice', to_address: 'bob' }] }, auth_info: { fee: { amount: [{ denom: 'uluna', amount: '10000000' }] } } },
+    events: [tr('alice', FEE, '10000000uluna'), tr('alice', 'bob', '95000000uluna', 0), tr('alice', FEE, '5000000uluna', 0),
+             { type: 'tax_payment', attributes: [{ key: 'tax_amount', value: '5000000uluna' }, { key: 'msg_index', value: '0' }] }],
+    logs: [{ msg_index: 0, events: [tr('alice', 'bob', '95000000uluna')] }] };
+  const fa = L.flows(t1, 'alice');
+  ok('Alice’s row: -100 LUNC, the tax found only at the top level included', fa.length === 1 && fa[0].raw === -100000000, JSON.stringify(fa));
+  const d = L.row('Network fee', L.feeOf(t1)) + L.taxPaid(t1, 'alice').map(c => L.row('Burn tax', coinsTxt([c]))).join('');
+  ok('the detail: 5 LUNC burn tax', /Burn tax<\/span><b>5 LUNC<\/b>/.test(d), d);
+  ok('the summary: 10 LUNC in network fees', tile(t1, 'alice') === '10 LUNC', tile(t1, 'alice'));
+  ok('Bob’s 95 is counted once, not twice', L.flows(t1, 'bob')[0].raw === 95000000, JSON.stringify(L.flows(t1, 'bob')));
+  // two equal events in one message: two moves, each with at most one copy dropped
+  const t2 = { events: [tr('me', 'terra1a', '1000000uluna', 0), tr('me', 'terra1a', '1000000uluna', 0)], logs: [{ events: [tr('me', 'terra1a', '1000000uluna')] }] };
+  ok('two equal moves at the top level, one in the log: both counted', L.flows(t2, 'me')[0].raw === -2000000, JSON.stringify(L.flows(t2, 'me')));
+
+  // 3. undelegations: this wallet's messages give the count, amount and validator
+  const H = f => Math.abs(f.raw) / 1e6;
+  const sym = () => 'LUNC';
+  const amountText = f => (f.raw > 0 ? '+' : '-') + H(f) + ' ' + sym(f.key);
+  const describe = new Function('t', 'me', 'return { title: "Undelegated", kind: "stake", sub: t.tx.body.messages[0].validator_address };');
+  const LK = new Function('primaryMsg', 'describe', 'intentOf', 'flows', 'alsoOf', 'alsoTitle', 'placeOf', 'symOfKey', 'fmt', 'human', 'amountText', 'worthOf',
+    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT', 'short',
+    lift(src, 'function byAsset(') + '\n' + liftLine(src, 'const rewardText =') + '\n' + lift(src, 'function look(') + '\nreturn look;')(
+    ms => ms[0], describe, () => '', t => t._flows, () => [], () => '', () => '',
+    sym, x => String(x), H, amountText, () => 0, () => null, () => '', {}, {}, {},
+    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/, x => x);
+  const um = (who, val, a) => ({ '@type': '/cosmos.staking.v1beta1.MsgUndelegate', delegator_address: who, validator_address: val, amount: { denom: 'uluna', amount: String(a) } });
+  const ab = LK({ code: 0, _flows: [], tx: { body: { messages: [um('me', 'valA', 20e6), um('me', 'valB', 30e6)] } } }, 'me');
+  ok('20 from A and 30 from B: ×2, 50 LUNC across two validators', ab.title === 'Undelegated ×2' && ab.top === '50 LUNC' && ab.sub === '2 validators', ab.title + ' | ' + ab.top + ' | ' + ab.sub);
+  const mix = LK({ code: 0, _flows: [], tx: { body: { messages: [um('terra1else', 'valA', 20e6), um('me', 'valB', 30e6)] } } }, 'me');
+  ok('another delegator’s 20 from A first, this wallet’s 30 from B: one request, 30 LUNC, validator B',
+    mix.title === 'Undelegated' && mix.top === '30 LUNC' && mix.sub === 'valB' && mix.main.req === 30e6, mix.title + ' | ' + mix.top + ' | ' + mix.sub);
 }

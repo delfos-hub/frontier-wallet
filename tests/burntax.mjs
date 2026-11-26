@@ -25,7 +25,7 @@ const liftLine = (s, h) => { const i = s.indexOf(h); return s.slice(i, s.indexOf
 const { burnTaxOn } = new Function(lift(tx, 'function burnTaxOn(') + '\nreturn { burnTaxOn };')();
 const A = new Function('wasmCalls', 'worthOf', 'coins', [
   liftLine(act, 'const FEE_COLLECTOR ='),
-  lift(act, 'function eventsOf('), lift(act, 'function feePayer('), liftLine(act, 'const MOVES ='), lift(act, 'function collectorMoves('), lift(act, 'function taxPaid('), lift(act, 'function flows('),
+  lift(act, 'function eventsOf('), lift(act, 'function feePayer('), liftLine(act, 'const MOVES ='), lift(act, 'function reconcile('), lift(act, 'function txEvents('), lift(act, 'function collectorMoves('), lift(act, 'function taxPaid('), lift(act, 'function flows('),
   lift(act, 'function transfersIn('),
   'return { taxPaid, flows, transfersIn };'].join('\n'))(() => [], () => 0, l => l.map(c => c.amount + c.denom).join(', '));
 
@@ -65,4 +65,24 @@ ok('events only: the sender\'s flow is the whole amount sent', fe.length === 1 &
 ok('events only: the recipient\'s flow is what arrived', ge.length === 1 && ge[0].raw === 56772931722, JSON.stringify(ge));
 const ti = A.transfersIn(viaEvents, ME).filter(m => !m.mine);
 ok('events only: "Recipient got" has the recipient\'s move', ti.length === 1 && ti[0].other === TO, JSON.stringify(ti));
+
+group('the fee once, from either list or both (#68 review)');
+{
+  const B = new Function('wasmCalls', 'worthOf', 'coins', [
+    liftLine(act, 'const FEE_COLLECTOR ='), lift(act, 'function eventsOf('), lift(act, 'function feePayer('), liftLine(act, 'const MOVES ='),
+    lift(act, 'function reconcile('), lift(act, 'function txEvents('), lift(act, 'function collectorMoves('), lift(act, 'function taxPaid('), lift(act, 'function feePaid('),
+    'return { taxPaid, feePaid };'].join('\n'))(() => [], () => 0, () => '');
+  const cases = [['the original logs alone', { logs: T.logs }], ['the top-level list alone', { logs: [], events: T.logs[0].events }],
+    ['both together', { logs: T.logs, events: T.logs[0].events }]];
+  for (const [name, t] of cases) {
+    const fee = B.feePaid(t, ME), tax = B.taxPaid(t, ME);
+    ok(name + ': 349,017,885 uluna fee and one 864,562,411 uluna burn tax', fee === 349017885 && tax.length === 1 && tax[0].amount === '864562411', fee + ' / ' + JSON.stringify(tax));
+  }
+  // a fee and a tax of the same amount, in both lists: still one of each
+  const X = '5000000uluna';
+  const pair = [ev('transfer', { recipient: FC, sender: ME, amount: X }), ev('transfer', { recipient: FC, sender: ME, amount: X, msg_index: '0' }),
+    ev('tax_payment', { tax_amount: X, msg_index: '0' })];
+  const tp = { logs: [{ events: pair }], events: pair, tx: { body: { messages: [{ from_address: ME }] }, auth_info: { fee: { amount: [{ denom: 'uluna', amount: '5000000' }] } } } };
+  ok('fee and tax both 5 LUNC, listed in both: 5 LUNC fee, one 5 LUNC tax', B.feePaid(tp, ME) === 5000000 && B.taxPaid(tp, ME).length === 1, B.feePaid(tp, ME) + ' / ' + JSON.stringify(B.taxPaid(tp, ME)));
+}
 report();

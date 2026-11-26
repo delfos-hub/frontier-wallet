@@ -331,7 +331,7 @@ const FEE_COLLECTOR = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
 
 function transfersIn(t, me){
   const out = [];
-  for (const e of eventsOf(t)) {
+  for (const e of txEvents(t)) {
     if (e.type !== 'transfer') continue;
     let to = '', from = '', what = '';
     for (const a of (e.attributes || [])) {
@@ -377,62 +377,77 @@ function feePayer(t){
   const m = ((((t.tx || {}).body || {}).messages) || [])[0] || {};
   return m.from_address || m.sender || m.delegator_address || m.voter || m.depositor || m.proposer || m.granter || '';
 }
+/* The transaction's events once, from both lists (#68 review).
+   The message logs hold each message's events under its index; the top level
+   holds the fee's own events and, depending on the node, copies of the
+   messages' events, with msg_index or without. Each top-level event is dropped
+   only when an equal event (same type and attributes, msg_index aside, and the
+   same message when it names one) is in the logs, one copy for one; anything
+   found only at the top level is kept.
+   The fee asked for, from its payer, at the top level (and on a node that
+   indexes message events, any top-level move without an index) is the fee:
+   it is taken as the copy of a log move only when that log move is not a
+   burn tax already claimed by its own message's marker, so a 5 LUNC fee and a
+   5 LUNC tax stay two moves. */
+const MOVES = new WeakMap(), RECON = new WeakMap();
+function reconcile(t){
+  if (RECON.has(t)) return RECON.get(t);
+  const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
+  const keyOf = e => e.type + '|' + (e.attributes || []).filter(a => a.key !== 'msg_index').map(a => a.key + '=' + a.value).sort().join('&');
+  const top = (t.events || []).map(e => ({ e: e, msg: attr(e, 'msg_index') || null, top: true, ante: false }));
+  const logs = [];
+  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e => logs.push({ e: e, msg: String(lg.msg_index != null ? lg.msg_index : i), top: false, ante: false })));
+  const isMove = x => x.e.type === 'transfer' && attr(x.e, 'recipient') === FEE_COLLECTOR;
+  // log moves claimed by a marker of their own message (same amount, payer)
+  const claimed = new Set();
+  for (const k of logs.filter(x => x.e.type === 'tax_payment')) {
+    const payer = attr(k.e, 'payer') || attr(k.e, 'sender');
+    const m = logs.find(x => isMove(x) && !claimed.has(x) && x.msg === k.msg && attr(x.e, 'amount') === attr(k.e, 'tax_amount') && (!payer || attr(x.e, 'sender') === payer));
+    if (m) claimed.add(m);
+  }
+  // the fee's own moves at the top level
+  const indexed = top.some(x => x.msg !== null);
+  const payer = feePayer(t);
+  for (const c of ((((t.tx || {}).auth_info || {}).fee || {}).amount || [])) {
+    const m = top.find(x => isMove(x) && !x.ante && attr(x.e, 'sender') === payer && attr(x.e, 'amount') === String(c.amount) + c.denom);
+    if (m) m.ante = true;
+  }
+  if (indexed) top.forEach(x => { if (isMove(x) && x.msg === null) x.ante = true; });
+  // one log copy for one top-level event: the fee first, then the rest
+  const used = new Set();
+  const copyOf = x => logs.find(l => !used.has(l) && keyOf(l.e) === keyOf(x.e) && (x.msg === null || x.msg === l.msg) && !(x.ante && claimed.has(l)));
+  const keep = [];
+  for (const x of top.filter(x => x.ante).concat(top.filter(x => !x.ante))) {
+    const l = copyOf(x);
+    if (l) { used.add(l); continue; }
+    keep.push(x);
+  }
+  // in their own order: the top level as it came, then the logs
+  const out = top.filter(x => keep.includes(x)).concat(logs);
+  RECON.set(t, out);
+  return out;
+}
+// the events alone, for the moves between addresses
+function txEvents(t){ return reconcile(t).map(x => x.e); }
 /* Every move to the fee collector, once, each marked as the fee or as a burn
-   tax, with the address that made it (#68 review).
-   The two event lists are reconciled first: the message logs hold each
-   message's events under its index; the top level holds the fee's own events
-   (no msg_index) and, on newer nodes, copies of the messages' events (with
-   msg_index), dropped when the logs have them. On a node that does not index
-   them, a top-level move equal to a log move from the same sender is that
-   copy, except the move of the fee asked for, from its payer, which is the fee.
-   Markers the same way. Then each tax_payment marker takes one move: of the
-   same coin, from its own message, sent by the payer it names; the move's
-   sender is who paid that tax. What is left is fee. */
-const MOVES = new WeakMap();
+   tax, with the address that made it. Each tax_payment marker (the logs'
+   first) takes one move: of the same coin, from its own message, sent by the
+   payer it names; the move's sender is who paid that tax. What is left is fee. */
 function collectorMoves(t){
   if (MOVES.has(t)) return MOVES.get(t);
   const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
   const split = what => String(what || '').split(',').map(p => /^(\d+)(.+)$/.exec(p.trim())).filter(Boolean).map(mm => ({ amount: mm[1], denom: mm[2] }));
-  const top = (t.events || []).map(e => ({ e: e, msg: attr(e, 'msg_index') || null }));
-  const logs = [];
-  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e => logs.push({ e: e, msg: String(lg.msg_index != null ? lg.msg_index : i) })));
-  const indexed = top.some(x => x.msg !== null);
-  const movesOf = xs => {
-    const out = [];
-    for (const x of xs) if (x.e.type === 'transfer' && attr(x.e, 'recipient') === FEE_COLLECTOR)
-      for (const c of split(attr(x.e, 'amount'))) out.push({ from: attr(x.e, 'sender'), c: c, msg: x.msg, ante: false, tax: false });
-    return out;
-  };
-  const marksOf = xs => {
-    const out = [];
-    for (const x of xs) if (x.e.type === 'tax_payment')
-      for (const c of split(attr(x.e, 'tax_amount'))) out.push({ payer: attr(x.e, 'payer') || attr(x.e, 'sender'), c: c, msg: x.msg });
-    return out;
-  };
+  const evs = reconcile(t);
+  const indexed = (t.events || []).some(e => attr(e, 'msg_index'));
+  const moves = [], marks = [];
+  for (const x of evs) {
+    if (x.e.type === 'transfer' && attr(x.e, 'recipient') === FEE_COLLECTOR)
+      for (const c of split(attr(x.e, 'amount'))) moves.push({ from: attr(x.e, 'sender'), c: c, msg: x.msg, ante: x.ante, tax: false });
+    if (x.e.type === 'tax_payment')
+      for (const c of split(attr(x.e, 'tax_amount'))) marks.push({ payer: attr(x.e, 'payer') || attr(x.e, 'sender'), c: c, msg: x.msg, top: x.top });
+  }
   const same = (a, b) => a.c.denom === b.c.denom && a.c.amount === b.c.amount;
-  const logMoves = movesOf(logs), logMarks = marksOf(logs);
-  const topXs = top.filter(x => !(logs.length && x.msg !== null));
-  let topMoves = movesOf(topXs), topMarks = marksOf(topXs);
-  // the fee: the top-level move of the amount asked for, from its payer, or
-  // on an indexing node any top-level move without an index
-  const payer = feePayer(t);
-  for (const c of ((((t.tx || {}).auth_info || {}).fee || {}).amount || [])) {
-    const m = topMoves.find(x => !x.ante && x.from === payer && x.c.denom === c.denom && x.c.amount === String(c.amount));
-    if (m) m.ante = true;
-  }
-  if (indexed) topMoves.forEach(m => { if (m.msg === null) m.ante = true; });
-  else if (logs.length) {
-    const drop = (xs, ls, eq) => { const used = new Set(); return xs.filter(x => {
-      if (x.ante) return true;
-      const i = ls.findIndex((l, k) => !used.has(k) && eq(l, x));
-      if (i < 0) return true;
-      used.add(i); return false;
-    }); };
-    topMoves = drop(topMoves, logMoves, (l, x) => l.from === x.from && same(l, x));
-    topMarks = drop(topMarks, logMarks, (l, x) => l.payer === x.payer && same(l, x));
-  }
-  const moves = topMoves.concat(logMoves);
-  for (const k of topMarks.concat(logMarks)) {
+  for (const k of marks.filter(k => !k.top).concat(marks.filter(k => k.top))) {
     const fits = m => !m.tax && !m.ante && same(m, k) && (!k.payer || m.from === k.payer);
     const hit = (k.msg !== null && moves.find(m => fits(m) && m.msg === k.msg)) ||
       // where the marker or its move cannot be placed (no index): by coin
@@ -560,7 +575,7 @@ function permSet(k, v){ try { localStorage.setItem('fw:perm:' + k, JSON.stringif
 function flows(t, me){
   const net = {};
   const add = (k, n) => { if (k && n) net[k] = (net[k] || 0) + n; };
-  for (const e of eventsOf(t)) {
+  for (const e of txEvents(t)) {
     if (e.type !== 'transfer') continue;
     let to = '', from = '', what = '';
     for (const a of (e.attributes || [])) {
@@ -790,15 +805,26 @@ function look(t, me){
   // so a folded run can add it up. A contract's is in its message, a native
   // (un)delegation's is the one coin it names.
   let req = msgKey ? Number(m.msg[intent].amount) : 0;
-  const coin = m.amount && !Array.isArray(m.amount) && m.amount.denom ? m.amount : null;
+  // native unstakes: this wallet's own messages, from which the count, the
+  // amount and the validator all come (another delegator's in the same
+  // transaction are not this wallet's request) (#68 review)
+  const unMsgs = /MsgUndelegate/.test(type) ? msgs.filter(x => x['@type'] === m['@type'] && x.amount && x.amount.denom &&
+    (!x.delegator_address || x.delegator_address === me)) : [];
+  const um = unMsgs[0] || m;
+  const coin = um.amount && !Array.isArray(um.amount) && um.amount.denom ? um.amount : null;
   if (!msgKey && coin && STAKING_MSG.test(type)) { msgKey = 'native:' + coin.denom; req = Number(coin.amount); }
   // a native unstake asks for the amount in its message; the rewards the chain
   // pays out with it are income, kept apart under it (#68 review)
-  const undel = !swap && !!coin && /MsgUndelegate/.test(type) && req > 0;
-  // several unstakes in one transaction (x2): all that this wallet asked for
-  // in the same coin, not only the first message's
-  if (undel) req = msgs.filter(x => x['@type'] === m['@type'] && x.amount && x.amount.denom === coin.denom && (!x.delegator_address || x.delegator_address === me))
-    .reduce((a, x) => a + Number(x.amount.amount || 0), 0);
+  const undel = !swap && !!coin && unMsgs.length > 0 && req > 0;
+  if (undel) {
+    // several unstakes in one transaction: all this wallet asked for in the
+    // coin, counted and placed from the same messages
+    const ours = unMsgs.filter(x => x.amount.denom === coin.denom);
+    req = ours.reduce((a, x) => a + Number(x.amount.amount || 0), 0);
+    const vals = ours.map(x => x.validator_address).filter((v, i, a) => v && a.indexOf(v) === i);
+    title = 'Undelegated' + (ours.length > 1 ? ' \u00d7' + ours.length : '') + alsoTitle(also);
+    sub = vals.length === 1 ? short(vals[0]) : vals.length + ' validators';
+  }
   let rewards = [];
   if (undel) {
     top = fmt(human({ key: msgKey, raw: req })) + ' ' + symOfKey(msgKey); topIn = false;
