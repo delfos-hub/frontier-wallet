@@ -1074,10 +1074,14 @@ const C_OF = { y: '#3ecf8e', n: '#f06a6a', v: '#c77dff', a: '#8a93a6', none: 'rg
 const MEMO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H9l-4 4z"/></svg>';
 
 function donut(title, center, sub, parts, rows){
-  // parts: [{k, w}] by weight; drawn as a ring with conic-gradient
-  const sum = parts.reduce((a, p) => a + p.w, 0) || 1;
-  let at = 0;
-  const stops = parts.filter(p => p.w > 0).map(p => { const a = at; at += p.w / sum * 100; return C_OF[p.k] + ' ' + a.toFixed(2) + '% ' + at.toFixed(2) + '%'; });
+  // parts: [{k, w}] by weight, w in micro-LUNC (or a count) as given, never
+  // cut to whole LUNC; each boundary is the running total over the sum,
+  // rounded to 0.01% like the legend's pctOf, so 1.5 / 1 LUNC turns at 60%
+  const ws = parts.map(p => ({ k: p.k, w: BigInt(p.w || 0) }));
+  const sum = ws.reduce((a, p) => a + p.w, 0n) || 1n;
+  const pos = x => Number((x * 20000n / sum + 1n) / 2n) / 100;
+  let run = 0n;
+  const stops = ws.filter(p => p.w > 0n).map(p => { const a = pos(run); run += p.w; return C_OF[p.k] + ' ' + a.toFixed(2) + '% ' + pos(run).toFixed(2) + '%'; });
   return '<div class="gvd-sum"><h3>' + title + '</h3><div class="gvd-sum-b">' +
     '<div class="gvd-ring" style="background:conic-gradient(' + (stops.length ? stops.join(',') : C_OF.none + ' 0 100%') + ')"><span><b>' + center + '</b><small>' + sub + '</small></span></div>' +
     '<div class="gvd-sum-l">' + rows.map(r => '<div class="' + r.k + '"><span><i></i>' + r.label + '<em>' + r.n + '</em></span><small>' + r.stake + '</small><b>' + r.pct + '</b></div>').join('') + '</div></div></div>';
@@ -1140,10 +1144,10 @@ function paintTable(id, live, v, vals, T, again){
       const useStake = dTot > 0n;
       sum.innerHTML = '<div class="gvd-sums">' +
         donut('Validators', vVoted.length + ' / ' + vv.length, known ? 'voted' : 'vote found \u00b7 history incomplete',
-          opts.map(o => ({ k: K(o), w: Number(vStake(o) / 1000000n) })).concat([{ k: 'none', w: Number(vNone / 1000000n) }]),
+          opts.map(o => ({ k: K(o), w: vStake(o) })).concat([{ k: 'none', w: vNone > 0n ? vNone : 0n }]),
           opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: vBy(o).length, stake: big(vStake(o)), pct: pctOf(vStake(o), vTot).toFixed(2) + '%' }))) +
         donut('Delegators', String(dl.length), dKnown < dl.length ? 'voted \u00b7 stake read for ' + dKnown + ' of ' + dl.length : 'voted',
-          opts.map(o => ({ k: K(o), w: useStake ? Number(dSt(o) / 1000000n) : dBy(o).length })),
+          opts.map(o => ({ k: K(o), w: useStake ? dSt(o) : BigInt(dBy(o).length) })),
           opts.map(o => ({ k: K(o), label: OPT_SHORT[o], n: dBy(o).length, stake: useStake ? big(dSt(o)) : '\u2014',
             pct: useStake ? pctOf(dSt(o), dTot).toFixed(2) + '%' : '' }))) +
         '</div><p class="tiny gvd-src">Validators weigh what is bonded to them; a delegator who votes overrides their validator for their own stake.' +
@@ -1188,16 +1192,21 @@ function paintTable(id, live, v, vals, T, again){
     (shown.length ? '<div class="gvd-tbl-wrap"><table class="gvd-tbl"><thead><tr><th>Voter</th><th class="r c-stake">Voting stake</th><th>Voting power</th><th>Vote</th></tr></thead><tbody>' +
       shown.map(r => {
         const c = v.memo[r.a], tx = v.tx[r.a], k = K(r.o), p = r.stake ? pctOf(r.stake, bonded) : 0, isOpen = !!T.open[r.a];
+        // the stake's state, once per row: the Voting stake column and, where
+        // a narrow card folds that column away, the line under the power bar.
+        // A known amount (zero as a dash); "..." only while its read can still
+        // finish; "stake not read" once it failed or the reading phase ended
+        const stk = r.stake !== undefined ? (r.stake > 0n ? big(r.stake) : '\u2014')
+          : (v.stakeMiss && v.stakeMiss[r.a]) || v.step === 3 ? 'stake not read' : '\u2026';
+        const stkHTML = r.stake > 0n ? stk : '<span class="gvd-dim">' + stk + '</span>';
         return '<tr class="gvd-tr' + (c ? ' has' : '') + (isOpen ? ' open' : '') + '" data-a="' + esc(r.a) + '">' +
           '<td><span class="gvd-voter">' + (r.val ? '<span class="gvd-rank">' + r.rank + '</span>' + face(r.val.name, r.a, r.val.op, r.val.ident)
             : '<span class="gvd-rank d">D</span><span class="gv-ava gvd-del" style="--h:' + hue(r.a) + '"><em>' + esc(r.a.slice(6, 7).toUpperCase()) + '</em></span>') +
             '<span class="gvd-vn"><b>' + esc(r.val ? r.val.name : shortAcc(r.a)) + '</b><small>' + (r.val ? 'Validator' : 'Delegator') + '</small></span></span></td>' +
-          // a known amount first (zero as a dash); an unknown one waits with
-          // "..." only while its read can still finish, then says it failed
-          '<td class="r c-stake">' + (r.stake !== undefined ? (r.stake > 0n ? big(r.stake) : '<span class="gvd-dim">\u2014</span>')
-            : (v.stakeMiss && v.stakeMiss[r.a]) || v.step === 3 ? '<span class="gvd-dim">stake not read</span>' : '<span class="gvd-dim">\u2026</span>') + '</td>' +
-          // the stake again as a tooltip: in a narrow card its own column is folded away
-          '<td><span class="gvd-vp"' + (r.stake > 0n ? ' title="' + esc(big(r.stake)) + ' LUNC"' : '') + '><i style="width:' + Math.min(100, p * 10).toFixed(1) + '%"></i><b>' + (p ? (p < 0.01 ? '<0.01' : p.toFixed(2)) + '%' : '\u2014') + '</b></span></td>' +
+          '<td class="r c-stake">' + stkHTML + '</td>' +
+          // the stake again under the bar, shown only when its column is folded away
+          '<td><span class="gvd-vp"' + (r.stake > 0n ? ' title="' + esc(big(r.stake)) + ' LUNC"' : '') + '><i style="width:' + Math.min(100, p * 10).toFixed(1) + '%"></i><b>' + (p ? (p < 0.01 ? '<0.01' : p.toFixed(2)) + '%' : '\u2014') + '</b></span>' +
+            '<small class="gvd-vp-st">' + stkHTML + (r.stake > 0n ? ' LUNC' : '') + '</small></td>' +
           '<td><span class="gvd-vcell">' + (v.split && v.split[r.a]
               // a split vote, said as one: every option with its share
               ? '<span class="gvd-vote split" title="Split vote">' + esc(splitText(v.split[r.a])) + '</span>'

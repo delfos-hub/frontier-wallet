@@ -377,6 +377,42 @@ console.log('\nthe current vote, the phone list, missing stakes');
   check('desktop: a read that ended without marking her missing still does not stay …', cell(Object.assign({}, v4, { stakeMiss: {} }), 'alice'), 'stake not read');
   check('desktop: a successful zero balance keeps its dash', cell(Object.assign({}, v4, { stake: { alice: 0n, bob: 99000000n }, stakeMiss: {} }), 'alice'), '\u2014');
 
+  // #67 review on c7402d9: the compact table (container 700 px or less) folds
+  // the Voting stake column away; the same state shows under the power bar
+  const compact = (st, a) => {
+    desk.paintTable('10', false, st, [], T0(), () => {});
+    const html = boxes['#gov-voters'].innerHTML, at = html.indexOf('data-a="' + a + '"');
+    const m = at < 0 ? null : html.slice(at).match(/<small class="gvd-vp-st">([\s\S]*?)<\/small>/);
+    return m ? m[1].replace(/<[^>]+>/g, '') : 'no row';
+  };
+  const zeroA = Object.assign({}, v4, { stake: { alice: 0n, bob: 99000000n }, stakeMiss: {} });
+  check('compact: Alice pending reads … under her bar', compact(pending, 'alice'), '\u2026');
+  check('compact: after her failed second page, stake not read', compact(v4, 'alice'), 'stake not read');
+  check('compact: a confirmed zero, the dash', compact(zeroA, 'alice'), '\u2014');
+  check('compact: Bob’s 99 LUNC is still there to read', compact(v4, 'bob'), '99 LUNC');
+  check('compact: and the summary reports 1 of 2 amounts read', /stake read for 1 of 2/.test(boxes['#gov-sum'].innerHTML), true);
+  check('both cells come from one state per row', /const stk = r\.stake !== undefined/.test(gsrc) && (gsrc.match(/stkHTML/g) || []).length === 3, true);
+  {
+    // which of the two is seen at 700 px and at 701 px of container width
+    const css = fs.readFileSync(path.resolve('assets/css/app.css'), 'utf8');
+    const q = css.indexOf('@container (max-width:700px){'), body = css.slice(q, css.indexOf('}\n@container', q));
+    const base = /\.gvd-vp-st\{display:none[;}]/.test(css) && css.indexOf('.gvd-vp-st{display:none') < q;
+    check('701 px: the Voting stake column shows, the line under the bar does not', base && !/\.gvd-tbl \.c-stake\{display:none\}/.test(css.slice(0, q)), true);
+    check('700 px: the column folds and the line under the bar shows', /\.gvd-tbl \.c-stake\{display:none\}/.test(body) && /\.gvd-tbl \.gvd-vp-st\{display:block\}/.test(body), true);
+  }
+
+  // the rings: micro-LUNC, not whole LUNC, and the legend's rounding
+  const sumOf = (a, b) => Object.assign({}, v4, { txv: { alice: 'VOTE_OPTION_YES', bob: 'VOTE_OPTION_NO' }, stake: { alice: a, bob: b }, stakeMiss: {}, txok: true });
+  const ring = st => {
+    desk.paintTable('10', false, st, [], T0(), () => {});
+    const h = boxes['#gov-sum'].innerHTML, d = h.slice(h.indexOf('<h3>Delegators</h3>'));
+    const g = /conic-gradient\([^ ]+ ([0-9.]+)% ([0-9.]+)%/.exec(d), yes = /<div class="y">[\s\S]*?<b>([^<]*)<\/b>/.exec(d);
+    return g[2] + ' / ' + (yes && yes[1]);
+  };
+  check('1.5 LUNC Yes, 1 LUNC No: the ring turns at 60% and the label says 60%', ring(sumOf(1500000n, 1000000n)), '60.00 / 60.00%');
+  check('0.6 LUNC Yes, 0.4 LUNC No: both below one LUNC, still 60%', ring(sumOf(600000n, 400000n)), '60.00 / 60.00%');
+  check('no stake read at all: the ring falls back to the count (1 of 2 is 50%)', ring(sumOf(0n, 0n)).split(' / ')[0], '50.00');
+
   const G5 = runVoters(closed('loop'), '', '', /^$/, async () => []);
   const v5 = await G5.voters('9');
   check('a cursor given twice stops the read and leaves the stake missing', ('alice' in v5.stake) + ' ' + (v5.stakeMiss.alice === true), 'false true');

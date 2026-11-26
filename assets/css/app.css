@@ -2707,6 +2707,8 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
 .gvd-vp{position:relative;display:block;width:120px;height:26px;border-radius:7px;background:rgba(255,184,107,.12);overflow:hidden}
 .gvd-vp i{position:absolute;left:0;top:0;bottom:0;background:rgba(255,184,107,.45)}
 .gvd-vp b{position:relative;display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;font-weight:600;color:#FFE2C2;font-variant-numeric:tabular-nums}
+/* the stake under the power bar: only when the Voting stake column is folded */
+.gvd-vp-st{display:none;margin-top:3px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .gvd-vote{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:999px}
 .gvd-vote::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
 .gvd-vote.y{color:#3ecf8e;background:rgba(62,207,142,.12)} .gvd-vote.n{color:#f06a6a;background:rgba(240,106,106,.12)}
@@ -2717,6 +2719,7 @@ html.dk .gvd{display:flex;flex-direction:column;gap:18px}
    power tooltip and the names give way, so Vote and its link stay in view */
 @container (max-width:700px){
   .gvd-tbl .c-stake{display:none}
+  .gvd-tbl .gvd-vp-st{display:block}
   .gvd-voter{max-width:180px;gap:8px}
   .gvd-voter .gv-ava{width:28px;height:28px}
   .gvd-vp{width:84px}
