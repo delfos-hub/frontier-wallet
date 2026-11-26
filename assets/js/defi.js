@@ -21,7 +21,7 @@
    unstaking and withdrawing come once the execute messages are confirmed
    from real transactions. */
 import { amt, clean, fmt, getJSON, iconHTML, LCD, LCD2, paintIcons, smart, usd } from './chain.js';
-import { DEC, knownAsset, mapLimit, mapPrice, poolPrice, reserves, txCandidates } from './market.js';
+import { DEC, knownAsset, mapLimit, reserves, txCandidates, mapPrice, poolPrice } from './market.js';
 import { $, buzz, go, tap } from './shell.js';
 import { S } from './state.js';
 import { fiatOf, heldTokens, refreshBalances, setExtraUsd, tokKey } from './tokens.js';

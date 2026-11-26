@@ -937,6 +937,7 @@ button.row.gov-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:
 .gov-v.y{color:#3ecf8e;background:rgba(62,207,142,.12)}.gov-v.n{color:#f06a6a;background:rgba(240,106,106,.12)}
 .gov-v.v{color:#c77dff;background:rgba(176,74,232,.14)}.gov-v.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
 .gov-v.none{color:var(--muted);font-weight:500}
+.gov-v.split{color:#FFD27A;background:rgba(255,210,122,.10)}
 .gov-memo{margin-top:6px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 #gov-memo{width:100%;box-sizing:border-box;resize:vertical;font:inherit}
 body.sheet-open .tabs{visibility:hidden}
@@ -1803,6 +1804,7 @@ button.wname svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-wid
 .gv-you.done.n{color:#f06a6a;background:rgba(240,106,106,.12)}
 .gv-you.done.v{color:#c77dff;background:rgba(176,74,232,.14)}
 .gv-you.done.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
+.gv-you.done.split{color:#FFD27A;background:rgba(255,210,122,.10)}
 
 .gv-recent{border:1px solid var(--border);border-radius:18px;overflow:hidden;
   background:linear-gradient(180deg,rgba(22,30,48,.92),rgba(18,24,42,.92))}
@@ -1867,7 +1869,8 @@ button.wname svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-wid
 .gv-filter button{padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:none;color:var(--muted);
   font:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .gv-filter button.on{color:#0B0F1A;background:#00D4FF;border-color:#00D4FF}
-#gov-vals[data-f="yes"] .gov-voter[data-v="no"],#gov-vals[data-f="no"] .gov-voter[data-v="yes"],
+/* "Not voted" holds confirmed non-voters only; Unknown (history incomplete) is under All */
+#gov-vals[data-f="yes"] .gov-voter:not([data-v="yes"]),#gov-vals[data-f="no"] .gov-voter:not([data-v="no"]),
 #gov-vals[data-f="memo"] .gov-voter:not([data-m]){display:none !important}
 .gv-filter{flex-wrap:wrap}
 .gv-comments .gov-memo{margin-left:64px}
@@ -2550,6 +2553,203 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 .fav-nol{height:34px;margin-top:auto}
 .fav-grid{align-items:stretch}
 
+/* Vote on a wide screen (gov.js drawDesk): the list beside the open proposal */
+html.dk #st-gov{max-width:min(1400px,calc(100vw - var(--rail) - 64px))!important}
+html.dk .gvd{display:flex;flex-direction:column;gap:18px}
+/* the tiles share the columns of the list and the pane below (.gvd-cols):
+   the empty 0 column plus the 10px gaps make the same 20px gutter */
+.gvd-stats{display:grid;grid-template-columns:minmax(290px,340px) 0 repeat(3,minmax(0,1fr));gap:10px}
+.gvd-stats .gvd-tile:nth-child(2){grid-column:3}
+.gvd-tile{position:relative;display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 14px;border-radius:16px;
+  background:linear-gradient(180deg,rgba(22,30,48,.92),rgba(18,24,42,.92));border:1px solid var(--border)}
+.gvd-tile>span{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.gvd-tile>b{display:flex;align-items:center;gap:8px;font-family:'Rajdhani','Exo 2',sans-serif;font-size:16px;font-weight:700;color:#fff;line-height:1.2}
+.gvd-tile small{font-size:12px;color:#A9B9D6;line-height:1.4}
+.gvd-tile small .gvd-todo{color:#FFD27A;font-weight:600}
+.gvd-tile-go{position:absolute;top:12px;right:12px;min-height:32px;padding:0 12px;border-radius:10px;border:1px solid rgba(0,212,255,.45);
+  background:rgba(0,212,255,.08);color:#7FE3FF;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+/* a narrow tile (about 1280-1450 px windows): the button goes under the value
+   instead of over it */
+.gvd-tile{container-type:inline-size}
+@container (max-width:260px){
+  .gvd-tile-go{position:static;align-self:flex-start;margin-top:6px;min-height:28px}
+}
+.gvd-faces{display:inline-flex}
+.gvd-faces .gv-ava{width:26px;height:26px;box-shadow:0 0 0 2px #12182A}
+.gvd-faces .gv-ava+.gv-ava{margin-left:-8px}
+.gvd-cols{display:grid;grid-template-columns:minmax(290px,340px) minmax(0,1fr);gap:20px;align-items:start}
+.gvd-side{position:sticky;top:20px;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:calc(100vh - 40px)}
+.gvd-filter{display:flex;gap:6px;flex-wrap:wrap}
+.gvd-filter button{min-height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--border);background:#12182A;color:#A9B9D6;
+  font:inherit;font-size:12.5px;cursor:pointer}
+.gvd-filter button.on{border-color:#7B5CFF;background:rgba(123,92,255,.18);color:#E8F0FF;font-weight:600}
+.gvd-items{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;padding-right:4px}
+/* no scrollbar-width here: in Chrome it turns off the styled bar (::-webkit-scrollbar) and brings back the browser's white one */
+.gvd-item{display:flex;flex-direction:column;gap:6px;width:100%;padding:13px 14px;border-radius:16px;border:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(22,30,48,.92),rgba(18,24,42,.92));color:var(--text);font:inherit;text-align:left;cursor:pointer;
+  transition:border-color .15s,box-shadow .15s}
+.gvd-item:hover{border-color:rgba(123,92,255,.45)}
+.gvd-item.on{border-color:#7B5CFF;background:linear-gradient(140deg,rgba(123,92,255,.2),rgba(0,152,234,.07)),#12182A;
+  box-shadow:0 10px 30px -18px rgba(123,92,255,.9)}
+.gvd-item .gov-bar{height:5px;margin:2px 0 0}
+.gvd-item .gv-title{font-size:14px}
+.gvd-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.gvd-meta .gv-time,.gvd-meta .gv-pill{margin-left:auto}
+.gvd-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+.gvd-you{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.gvd-you.todo{color:#FFD27A;background:rgba(255,186,73,.1)}
+.gvd-you.split{color:#FFD27A;background:rgba(255,210,122,.10)}
+.gvd-you.y{color:#3ecf8e;background:rgba(62,207,142,.12)} .gvd-you.n{color:#f06a6a;background:rgba(240,106,106,.12)}
+.gvd-you.v{color:#c77dff;background:rgba(176,74,232,.14)} .gvd-you.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
+.gvd-pane{display:flex;flex-direction:column;gap:14px;min-width:0}
+.gvd-head{display:flex;flex-direction:column;gap:12px;padding:20px 22px;border-radius:20px;border:1px solid #2A3A5C;
+  background:linear-gradient(140deg,rgba(123,92,255,.14),rgba(0,152,234,.06) 60%),#12182A}
+.gvd-head.passed{border-color:rgba(62,207,142,.45);background:linear-gradient(140deg,rgba(62,207,142,.12),rgba(0,152,234,.05) 60%),#12182A}
+.gvd-head.rejected,.gvd-head.failed{border-color:rgba(240,106,106,.4);background:linear-gradient(140deg,rgba(240,106,106,.1),rgba(0,152,234,.04) 60%),#12182A}
+.gvd-head .gv-sh-meta{margin:0}
+.gvd-head h2{margin:0;font-family:'Rajdhani','Exo 2',sans-serif;font-size:26px;font-weight:700;line-height:1.15;color:#fff;overflow-wrap:anywhere}
+.gvd-dates{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-radius:14px;background:rgba(11,15,26,.55);overflow:hidden}
+.gvd-dates>div{display:flex;flex-direction:column;padding:10px 14px;border-right:1px solid var(--border)}
+.gvd-dates>div:last-child{border-right:0}
+.gvd-dates span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.gvd-dates b{font-size:13.5px;color:#E8F0FF}
+.gvd-me{font-size:14px;color:#C9D6EE}
+.gvd-me:empty{display:none}
+.gvd-row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch}
+.gvd-card{display:flex;flex-direction:column;gap:10px;min-width:0;padding:18px 20px;border-radius:20px;border:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(22,30,48,.92),rgba(18,24,42,.92))}
+.gvd-card h3{margin:0;font-size:15px;color:#fff}
+.gvd-row .gvd-t{flex:3 1 330px}
+.gvd-row .gvd-v{flex:2 1 280px;border-color:rgba(123,92,255,.45)}
+.gvd-t .gv-tally{margin:0;padding:0;border:0;background:none}
+.gvd-v .gv-vote{margin:0;padding:0;border:0;background:none}
+.gvd-if{margin-top:12px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.gvd-t .gvd-if+.gv-verdict{margin-top:2px;font-size:14px}
+#gov-myvals:empty{display:none}
+#gov-myvals{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--border)}
+.gvd-v>#gov-myvals:first-child{padding-top:0;border-top:0}
+.gvd-mv-h{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.gvd-mv{display:flex;align-items:center;gap:10px}
+.gvd-mv>span:not(.gv-ava){display:flex;flex-direction:column;flex:1;min-width:0}
+.gvd-mv>span:not(.gv-ava) b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gvd-mv>span:not(.gv-ava) small{font-size:11.5px;color:var(--muted)}
+.gvd-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.gvd-ch>div{display:flex;flex-direction:column;padding:11px 14px;border-radius:12px;background:rgba(11,15,26,.55);min-width:0}
+.gvd-raw{margin-top:10px}.gvd-raw summary{cursor:pointer;font-size:12.5px;color:#7FE3FF}
+.gvd-raw pre{max-height:360px;overflow:auto;margin:8px 0 0;font-size:12px}
+.gvd-ch span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.gvd-ch b{font-size:14px;color:#E8F0FF;overflow-wrap:anywhere}
+.gvd-src{margin:0;text-align:left}
+.gvd-card .gov-text{max-width:none;font-size:14px}
+.gvd-card .gov-text.clip{max-height:340px}
+.gvd-wkey .y::before{border-color:#3ecf8e} .gvd-wkey .v::before{border-color:#c77dff} /* who voted: two summaries and the table of votes */
+.gvd-sums{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.gvd-sum{display:flex;flex-direction:column;gap:12px;padding:4px 2px}
+.gvd-sum h3{margin:0;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#FFB86B}
+.gvd-sum-b{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.gvd-ring{position:relative;flex:none;width:132px;height:132px;border-radius:50%}
+.gvd-ring>span{position:absolute;inset:16px;border-radius:50%;background:#141B2D;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gvd-ring b{font-family:'Rajdhani','Exo 2',sans-serif;font-size:22px;font-weight:700;color:#fff;line-height:1.1}
+.gvd-ring small{font-size:10.5px;color:var(--muted);text-align:center;padding:0 8px}
+.gvd-sum-l{flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px}
+.gvd-sum-l>div{display:grid;grid-template-columns:1fr auto 64px;align-items:center;gap:10px;font-size:13px}
+.gvd-sum-l span{display:flex;align-items:center;gap:7px;color:#C9D6EE}
+.gvd-sum-l span i{width:9px;height:9px;border-radius:3px;flex:none;background:#4A5878}
+.gvd-sum-l .y i{background:#3ecf8e} .gvd-sum-l .n i{background:#f06a6a} .gvd-sum-l .v i{background:#c77dff} .gvd-sum-l .a i{background:#8a93a6}
+.gvd-sum-l .y span{color:#3ecf8e} .gvd-sum-l .n span{color:#f06a6a} .gvd-sum-l .v span{color:#c77dff}
+.gvd-sum-l em{font-style:normal;font-size:11px;font-weight:700;color:#E8F0FF;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.07)}
+.gvd-sum-l small{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.gvd-sum-l b{text-align:right;color:#fff;font-variant-numeric:tabular-nums}
+.gvd-tcard{padding:16px 0 8px}
+.gvd-tcard>#gov-voters>.empty{margin:0 20px}
+.gvd-tb-head{display:flex;align-items:baseline;gap:10px;padding:0 20px}
+.gvd-tb-head h3{margin:0;font-size:15px;color:#fff}
+.gvd-tb-head span{font-size:12px;color:var(--muted)}
+.gvd-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 20px 14px;border-bottom:1px solid var(--border)}
+.gvd-seg{display:inline-flex;padding:3px;border-radius:12px;background:#0F1424;border:1px solid var(--border)}
+.gvd-seg button{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border:0;border-radius:9px;background:none;color:#A9B9D6;font:inherit;font-size:13px;cursor:pointer}
+.gvd-seg button em{font-style:normal;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.07);color:#E8F0FF}
+.gvd-seg button.on{background:rgba(123,92,255,.22);color:#fff;font-weight:600}
+.gvd-sel select{min-height:40px;padding:0 30px 0 12px;border-radius:12px;border:1px solid var(--border);color:#E8F0FF;font:inherit;font-size:13px;cursor:pointer;
+  -webkit-appearance:none;appearance:none;background:#0F1424 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA3C6' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") right 10px center/14px no-repeat}
+.gvd-sw,.gvd-find,.gvd-sel{text-transform:none;letter-spacing:normal;font-weight:400}
+.gvd-sw{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--border);background:#0F1424;
+  color:#C9D6EE;font-size:13px;cursor:pointer;user-select:none}
+.gvd-sw input{position:absolute;opacity:0;width:1px;height:1px}
+.gvd-sw i{position:relative;width:32px;height:18px;border-radius:999px;background:#2A3A5C;transition:background .15s;flex:none}
+.gvd-sw i::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#E8F0FF;transition:transform .15s}
+.gvd-sw input:checked+i{background:#7B5CFF}
+.gvd-sw input:checked+i::after{transform:translateX(14px)}
+.gvd-sw input:focus-visible+i{outline:2px solid #3BE3FF;outline-offset:2px}
+.gvd-sw em{font-style:normal;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.07)}
+.gvd-find{display:inline-flex;align-items:center;gap:8px;flex:1 1 200px;min-height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--border);background:#0F1424}
+.gvd-find svg{width:15px;height:15px;fill:none;stroke:#8FA3C6;stroke-width:2;stroke-linecap:round;flex:none}
+.gvd-find input{flex:1;min-width:0;border:0;outline:0;background:none;color:#E8F0FF;font:inherit;font-size:13px}
+.gvd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.gvd-tbl-wrap{overflow-x:auto;container-type:inline-size}
+.gvd-tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.gvd-tbl th{padding:12px 10px 10px;text-align:left;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.gvd-tbl th:first-child,.gvd-tbl td:first-child{padding-left:20px}
+.gvd-tbl th:last-child,.gvd-tbl td:last-child{padding-right:20px}
+.gvd-tbl td{padding:9px 10px;border-top:1px solid rgba(30,42,66,.8);vertical-align:middle;white-space:nowrap}
+.gvd-tbl .r{text-align:right;font-variant-numeric:tabular-nums}
+.gvd-tr:hover td{background:rgba(123,92,255,.05)}
+.gvd-tr.has{cursor:pointer}
+.gvd-tr.open td{background:rgba(123,92,255,.08)}
+.gvd-voter{display:flex;align-items:center;gap:10px;min-width:0;max-width:260px}
+.gvd-voter .gv-ava{width:32px;height:32px}
+.gvd-del{background:hsl(var(--h),30%,30%)!important}
+.gvd-rank{flex:none;min-width:24px;text-align:center;font-size:11px;font-weight:600;color:var(--muted);padding:2px 4px;border-radius:6px;background:rgba(255,255,255,.05)}
+.gvd-rank.d{color:#7FE3FF;background:rgba(0,212,255,.08)}
+.gvd-vn{display:flex;flex-direction:column;min-width:0}
+.gvd-vn b{font-weight:600;color:#E8F0FF;overflow:hidden;text-overflow:ellipsis}
+.gvd-vn small{font-size:11px;color:var(--muted)}
+.gvd-vp{position:relative;display:block;width:120px;height:26px;border-radius:7px;background:rgba(255,184,107,.12);overflow:hidden}
+.gvd-vp i{position:absolute;left:0;top:0;bottom:0;background:rgba(255,184,107,.45)}
+.gvd-vp b{position:relative;display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;font-weight:600;color:#FFE2C2;font-variant-numeric:tabular-nums}
+/* the stake under the power bar: only when the Voting stake column is folded */
+.gvd-vp-st{display:none;margin-top:3px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.gvd-vote{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:999px}
+.gvd-vote::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+.gvd-vote.y{color:#3ecf8e;background:rgba(62,207,142,.12)} .gvd-vote.n{color:#f06a6a;background:rgba(240,106,106,.12)}
+.gvd-vote.v{color:#c77dff;background:rgba(176,74,232,.14)} .gvd-vote.a{color:#a7b0c2;background:rgba(138,147,166,.14)}
+.gvd-vote.none{color:var(--muted);background:rgba(255,255,255,.04)}
+.gvd-vote.split{color:#FFD27A;background:rgba(255,210,122,.10)}
+/* a narrow card (a 1200 px laptop): the stake column folds into the voting
+   power tooltip and the names give way, so Vote and its link stay in view */
+@container (max-width:700px){
+  .gvd-tbl .c-stake{display:none}
+  .gvd-tbl .gvd-vp-st{display:block}
+  .gvd-voter{max-width:180px;gap:8px}
+  .gvd-voter .gv-ava{width:28px;height:28px}
+  .gvd-vp{width:84px}
+}
+@container (max-width:520px){
+  .gvd-tbl th,.gvd-tbl td{padding-left:7px;padding-right:7px}
+  .gvd-tbl th:first-child,.gvd-tbl td:first-child{padding-left:14px}
+  .gvd-tbl th:last-child,.gvd-tbl td:last-child{padding-right:14px}
+  .gvd-voter{max-width:140px}
+  .gvd-rank{display:none}
+  .gvd-vp{width:64px}
+}
+.gvd-mbtn{display:inline-grid;place-items:center;width:30px;height:30px;margin-left:6px;vertical-align:middle;border-radius:50%;border:1px solid rgba(0,212,255,.35);
+  background:rgba(0,212,255,.08);cursor:pointer;padding:0}
+.gvd-mbtn svg{width:15px;height:15px;fill:none;stroke:#7FE3FF;stroke-width:2;stroke-linejoin:round}
+.gvd-mbtn[aria-expanded="true"]{background:#00D4FF;border-color:#00D4FF}
+.gvd-mbtn[aria-expanded="true"] svg{stroke:#0B0F1A}
+.gvd-memo-r td{padding:0 20px 14px 66px;background:rgba(123,92,255,.08);border-top:0;white-space:normal}
+.gvd-memo{max-width:80ch;padding:10px 14px;border-radius:12px;border-left:0;background:rgba(11,15,26,.6);font-size:13.5px;line-height:1.55;color:#C9D6EE;
+  white-space:pre-wrap;overflow-wrap:anywhere}
+.gvd-hash{display:inline-flex;align-items:center;gap:3px;color:var(--muted);text-decoration:none}
+.gvd-hash svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
+.gvd-hash:hover{color:#7FE3FF}
+.gvd-hash:hover{text-decoration:underline}
+.gvd-dim{color:var(--muted)}
+.gvd-vcell{display:flex;align-items:center}
+.gvd-when{display:block;margin-top:3px;padding-left:2px;font-size:11px;color:var(--muted)}
+.gvd-more{display:block;margin:12px auto 4px}
+@media (max-width:1280px){.gvd-stats{grid-template-columns:minmax(290px,340px) minmax(0,1fr);column-gap:20px}
+  .gvd-stats .gvd-tile:nth-child(2){grid-column:2}.gvd-sums{grid-template-columns:1fr}}
 /* the send review names the recipient in full (tx.js review) */
 .sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}
 
@@ -2689,3 +2889,4 @@ html.dk .xch-soon{margin-top:-1px}
 html .xc.xg:hover,html .xc.xg:active{transform:none!important;filter:none!important}
 .xc.xg:has(.xch:hover){border-color:rgba(120,140,255,.28)!important;box-shadow:none!important}
 .xc.xg[data-chain=tron]:has(.xch:hover){border-color:rgba(255,90,100,.32)!important}
+.gov-v.none.unknown{color:#FFB547;border-color:rgba(255,181,71,.35)}
