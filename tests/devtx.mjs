@@ -35,6 +35,7 @@ export const iconHTML=()=>''; export const paintIcons=()=>{};`,
 for (const [f, src] of Object.entries(stubs)) fs.writeFileSync(path.join(dir, f), src);
 const src = fs.readFileSync(path.resolve('assets/js/tx.js'), 'utf8').replace(/\?v=[0-9a-f]+/g, '');
 fs.writeFileSync(path.join(dir, 'tx.js'), src);
+fs.writeFileSync(path.join(dir, 'amount.js'), fs.readFileSync(path.resolve('assets/js/amount.js'), 'utf8'));
 globalThis.document = { getElementById: () => null, querySelector: () => null, addEventListener(){} };
 const tx = await import(pathToFileURL(path.join(dir, 'tx.js')).href);
 
