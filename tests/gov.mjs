@@ -350,7 +350,32 @@ console.log('\nthe current vote, the phone list, missing stakes');
   check('Alice’s second page fails: no partial 1 LUNC, her stake is missing', ('alice' in v4.stake) + ' ' + (v4.stakeMiss.alice === true), 'false true');
   const ab4 = G4.delegatorSums(['alice', 'bob'], Object.assign({}, v4.txv), v4.split, v4.stake);
   check('coverage 1 of 2, Bob’s 99 LUNC is all of the known stake', ab4.known + ' of ' + ab4.all + ', ' + String(ab4.total), '1 of 2, 99000000');
-  check('her row reads "stake not read"', /\(!val && v\.stakeMiss && v\.stakeMiss\[a\]\) \? 'stake not read'/.test(gsrc), true);
+  check('her phone row reads "stake not read"', /\(!val && v\.stakeMiss && v\.stakeMiss\[a\]\) \? 'stake not read'/.test(gsrc), true);
+
+  // the desktop table, rendered: each voter's own Voting stake cell
+  const deskSrc = pick('const big = raw =>', 'const ago = t =>') + pick('const FINDER_TX =', 'function paintTable(') +
+    pick('function paintTable(', '// a vote flow holds');
+  const boxes = {};
+  const el = () => ({ innerHTML: '', querySelectorAll: () => [], addEventListener(){} });
+  const desk = new Function('$', 'DATA', 'OPT', 'OPT_CLASS', 'esc', 'face', 'shortAcc', 'fillLogos', 'hue', 'splitText', 'shareOf', 'delegatorSums', 'W1', 'addrOf',
+    deskSrc + '\nreturn { paintTable };')(
+    q => (q === '#gov-voters' || q === '#gov-sum') ? (boxes[q] = boxes[q] || el()) : null, null,
+    { VOTE_OPTION_YES: 'Yes', VOTE_OPTION_NO: 'No' }, { VOTE_OPTION_YES: 'y', VOTE_OPTION_NO: 'n' }, String, () => '', a => a, () => {}, () => 0,
+    () => '', G4.shareOf, G4.delegatorSums, G4.W1, () => '');
+  const T0 = () => ({ tab: 'all', opt: 'all', memo: false, quiet: false, q: '', limit: 40, open: {} });
+  const cell = (st, a) => {
+    desk.paintTable('10', false, st, [], T0(), () => {});
+    const html = boxes['#gov-voters'].innerHTML, at = html.indexOf('data-a="' + a + '"');
+    const m = at < 0 ? null : html.slice(at).match(/<td class="r c-stake">([\s\S]*?)<\/td>/);
+    return m ? m[1].replace(/<[^>]+>/g, '') : 'no row';
+  };
+  const pending = Object.assign({}, v4, { step: 2, stake: { bob: 99000000n }, stakeMiss: {} });
+  check('desktop: while the stakes are still being read, Alice’s cell shows …', cell(pending, 'alice'), '\u2026');
+  check('desktop: after her second page failed, Alice’s cell says stake not read', cell(v4, 'alice'), 'stake not read');
+  check('desktop: Bob’s cell still shows 99', cell(v4, 'bob'), '99');
+  check('desktop: and the summary says stake read for 1 of 2', /stake read for 1 of 2/.test(boxes['#gov-sum'].innerHTML), true);
+  check('desktop: a read that ended without marking her missing still does not stay …', cell(Object.assign({}, v4, { stakeMiss: {} }), 'alice'), 'stake not read');
+  check('desktop: a successful zero balance keeps its dash', cell(Object.assign({}, v4, { stake: { alice: 0n, bob: 99000000n }, stakeMiss: {} }), 'alice'), '\u2014');
 
   const G5 = runVoters(closed('loop'), '', '', /^$/, async () => []);
   const v5 = await G5.voters('9');

@@ -1192,7 +1192,10 @@ function paintTable(id, live, v, vals, T, again){
           '<td><span class="gvd-voter">' + (r.val ? '<span class="gvd-rank">' + r.rank + '</span>' + face(r.val.name, r.a, r.val.op, r.val.ident)
             : '<span class="gvd-rank d">D</span><span class="gv-ava gvd-del" style="--h:' + hue(r.a) + '"><em>' + esc(r.a.slice(6, 7).toUpperCase()) + '</em></span>') +
             '<span class="gvd-vn"><b>' + esc(r.val ? r.val.name : shortAcc(r.a)) + '</b><small>' + (r.val ? 'Validator' : 'Delegator') + '</small></span></span></td>' +
-          '<td class="r c-stake">' + (r.stake === undefined ? '<span class="gvd-dim">\u2026</span>' : r.stake > 0n ? big(r.stake) : '<span class="gvd-dim">\u2014</span>') + '</td>' +
+          // a known amount first (zero as a dash); an unknown one waits with
+          // "..." only while its read can still finish, then says it failed
+          '<td class="r c-stake">' + (r.stake !== undefined ? (r.stake > 0n ? big(r.stake) : '<span class="gvd-dim">\u2014</span>')
+            : (v.stakeMiss && v.stakeMiss[r.a]) || v.step === 3 ? '<span class="gvd-dim">stake not read</span>' : '<span class="gvd-dim">\u2026</span>') + '</td>' +
           // the stake again as a tooltip: in a narrow card its own column is folded away
           '<td><span class="gvd-vp"' + (r.stake > 0n ? ' title="' + esc(big(r.stake)) + ' LUNC"' : '') + '><i style="width:' + Math.min(100, p * 10).toFixed(1) + '%"></i><b>' + (p ? (p < 0.01 ? '<0.01' : p.toFixed(2)) + '%' : '\u2014') + '</b></span></td>' +
           '<td><span class="gvd-vcell">' + (v.split && v.split[r.a]
