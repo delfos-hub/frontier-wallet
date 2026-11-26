@@ -1,5 +1,5 @@
-import { $, report, tg } from './shell.js?v=a8311c4d';
-import { S } from './state.js?v=a8311c4d';
+import { $, report, tg } from './shell.js?v=27cbef9d';
+import { S } from './state.js?v=27cbef9d';
 
 /* ---------------- storage ----------------
    The encrypted key is kept on this device only, in the best place the client
