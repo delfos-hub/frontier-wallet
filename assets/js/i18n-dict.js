@@ -486,6 +486,16 @@ Object.assign(EXTRA, {
   'Burn tax': ['Налог на сжигание', 'Taxe de burn', 'Tassa di burn', 'Impuesto de quema', 'Yakım vergisi'],
   'Recipient got': ['Получатель получил', 'Reçu par le destinataire', 'Ricevuto dal destinatario', 'El destinatario recibió', 'Alıcıya ulaşan'],
 });
+// amounts (amount.js, #85)
+Object.assign(EXTRA, {
+  'Enter an amount first.': ['Сначала введите сумму.', 'Saisissez d’abord un montant.', 'Inserisci prima un importo.', 'Introduce primero un importe.', 'Önce bir tutar girin.'],
+  'That is not an amount: use digits, and one decimal separator.': ['Это не сумма: используйте цифры и один десятичный разделитель.', 'Ce n’est pas un montant : utilisez des chiffres et un seul séparateur décimal.', 'Non è un importo: usa cifre e un solo separatore decimale.', 'No es un importe: usa dígitos y un solo separador decimal.', 'Bu bir tutar değil: rakam ve tek bir ondalık ayırıcı kullanın.'],
+  'That is not an amount: digits are grouped by three.': ['Это не сумма: цифры группируются по три.', 'Ce n’est pas un montant : les chiffres se groupent par trois.', 'Non è un importo: le cifre si raggruppano per tre.', 'No es un importe: los dígitos se agrupan de tres en tres.', 'Bu bir tutar değil: rakamlar üçerli gruplanır.'],
+  'That is not an amount: one decimal separator only.': ['Это не сумма: допускается только один десятичный разделитель.', 'Ce n’est pas un montant : un seul séparateur décimal.', 'Non è un importo: un solo separatore decimale.', 'No es un importe: un solo separador decimal.', 'Bu bir tutar değil: yalnızca bir ondalık ayırıcı.'],
+  'That is not an amount.': ['Это не сумма.', 'Ce n’est pas un montant.', 'Non è un importo.', 'No es un importe.', 'Bu bir tutar değil.'],
+  'This token has {d} decimals: that amount has more.': ['У этого токена {d} знаков после запятой, а в сумме больше.', 'Ce jeton a {d} décimales : ce montant en a davantage.', 'Questo token ha {d} decimali: questo importo ne ha di più.', 'Este token tiene {d} decimales: este importe tiene más.', 'Bu tokenin {d} ondalık basamağı var: bu tutarda daha fazlası var.'],
+  'That could be {a} or {b}: write {c}, or {e} for the decimals.': ['Это может быть {a} или {b}: напишите {c}, или {e}, если это дробная часть.', 'Cela peut se lire {a} ou {b} : écrivez {c}, ou {e} pour les décimales.', 'Potrebbe essere {a} o {b}: scrivi {c}, oppure {e} per i decimali.', 'Podría ser {a} o {b}: escribe {c}, o {e} para los decimales.', 'Bu {a} ya da {b} olabilir: {c} yazın ya da ondalık için {e}.'],
+});
 const XL = ['ru', 'fr', 'it', 'es', 'tr'];
 for (const k in EXTRA) XL.forEach((code, i) => { DICT[code][k] = EXTRA[k][i]; });
 

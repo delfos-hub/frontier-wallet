@@ -1,8 +1,9 @@
-import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=ea84df22';
-import { $, buzz, go, sha, tap } from './shell.js?v=ea84df22';
-import { S } from './state.js?v=ea84df22';
-import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=ea84df22';
-import { notify } from './notify.js?v=ea84df22';
+import { amt, fmt, getJSON, iconHTML, LCD, paintIcons } from './chain.js?v=30e71107';
+import { $, buzz, go, sha, tap } from './shell.js?v=30e71107';
+import { S } from './state.js?v=30e71107';
+import { heldTokens, refreshBalances, sortHeld } from './tokens.js?v=30e71107';
+import { notify } from './notify.js?v=30e71107';
+import { currentLang, formatRaw, parseAmount, rawFromNumber } from './amount.js?v=30e71107';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -130,28 +131,12 @@ async function keyOf(mnemonic){
 }
 
 /* ---------------- amounts ----------------
-   Base units from a typed decimal, by moving the point in the string rather
-   than multiplying. 189286693.38 * 1e6 is not an integer in binary floating
-   point, and every digit of error lands in somebody's transfer. Digits past
-   the token's precision are dropped, not rounded: a wallet should never send
-   more than what was typed.
-*/
+   Base units from a typed amount, read in the interface language by
+   amount.js (#85): one parse, an integer from then on. A review hands on
+   { raw } so the send and the signed message use the value that was shown,
+   never the text read again. */
 function toRaw(human, dec){
-  let s = String(human == null ? '' : human).trim().replace(/[\s\u00a0\u202f']/g, '');
-  // "1,000.5": the comma groups thousands. "1,5": the comma is the decimal
-  // point. "1,000" could be either (a thousand, or one with three decimals
-  // written the European way) and used to be read as 1, so it is refused
-  // rather than guessed. "0,001" cannot be a thousands group, so it is not.
-  if (s.indexOf('.') >= 0) s = s.replace(/,(?=\d{3}(\D|$))/g, '');
-  else if (/^[1-9]\d{0,2}(,\d{3})+$/.test(s)) throw new Error('write it as 1000 or 1.5: a comma there could mean either');
-  else s = s.replace(',', '.');
-  if (s === '' || s === '.' || !/^\d*\.?\d*$/.test(s))
-    throw new Error('that is not an amount');
-  const cut = s.split('.');
-  const whole = cut[0] || '0';
-  const frac = (cut[1] || '').slice(0, dec);
-  const out = (whole + frac + '0'.repeat(dec - frac.length)).replace(/^0+(?=\d)/, '');
-  return out === '' ? '0' : out;
+  return parseAmount(human, dec, currentLang());
 }
 
 /* ---------------- building ---------------- */
@@ -447,7 +432,7 @@ async function review(){
   const my = ++REV;
   const out = $('#send-out');
   const to = $('#send-to').value.trim();
-  const human = $('#send-amt').value.trim();
+  let human = $('#send-amt').value.trim();
   const memo = $('#send-memo').value.trim();
   const from = S.SAVED && S.SAVED.addr;
   const t = SEND_TOK, dec = decOf(t);
@@ -470,8 +455,11 @@ async function review(){
     return;
   }
   let rawAmt;
-  try { rawAmt = toRaw(human || '0', dec); }
+  try { rawAmt = toRaw(human, dec); }
   catch (e) { out.innerHTML = '<div class="sbad">' + esc(e.message || e) + '</div>'; return; }
+  // from here on the amount is this integer, not the text in the field
+  human = { raw: rawAmt };
+  const full = r => formatRaw(r, dec, currentLang());
   if (!(Number(rawAmt) > 0)) {
     out.innerHTML = '<div class="sbad">Enter an amount first.</div>';
     return;
@@ -481,7 +469,7 @@ async function review(){
   const toContract = to.length > 44 ? '<div class="swarn">This is a contract address, not a wallet. What is sent to a contract is handled by its code, and most contracts cannot send it back.</div>' : '';
   out.innerHTML = '<div class="tiny">Asking the chain what this would cost...</div>';
   try {
-    const sending = Number(toRaw(human, dec)) / Math.pow(10, dec);
+    const sending = Number(rawAmt) / Math.pow(10, dec);   // for comparisons only; shown with full()
     const have = balanceOf(t);
     let gasFee, gas, extra = '';
 
@@ -500,17 +488,17 @@ async function review(){
       }
       out.innerHTML =
         line('To', '<code class="saddr">' + esc(to) + '</code>') + toContract +
-        line('Amount', fmt(sending) + ' ' + t.sym) +
+        line('Amount', full(rawAmt) + ' ' + t.sym) +
         line('Fee \u00b7 ' + gas.toLocaleString() + ' gas', fmt(gasFee / 1e6) + ' LUNC') +
-        line('Leaves your wallet', fmt(sending) + ' ' + t.sym + ' and ' +
+        line('Leaves your wallet', full(rawAmt) + ' ' + t.sym + ' and ' +
              fmt(gasFee / 1e6) + ' LUNC', true) +
-        line('Recipient gets', fmt(sending) + ' ' + t.sym, true) +
+        line('Recipient gets', full(rawAmt) + ' ' + t.sym, true) +
         (sending > have ? '<div class="sbad">More than this address holds - ' +
            fmt(have) + ' ' + t.sym + ' available.</div>' : extra) +
         '<div class="tiny" style="margin-top:12px">Nothing has been sent yet.</div>' +
         (sending > have || extra ? '' :
           '<button class="btn solid" id="send-go" style="margin-top:14px">Send ' +
-          fmt(sending) + ' ' + t.sym + '</button>');
+          full(rawAmt) + ' ' + t.sym + '</button>');
       LAST_GAS = gas;
     } else {
       const d = await dryRunNative(from, to, t.denom, human, memo, S.MNEMONIC);
@@ -524,23 +512,23 @@ async function review(){
       const over = same ? d.total > avail : Number(d.amount) > avail;
       out.innerHTML =
         line('To', '<code class="saddr">' + esc(to) + '</code>') + toContract +
-        line('Amount', fmt(amt(d.amount, 6)) + ' ' + t.sym) +
+        line('Amount', full(d.amount) + ' ' + t.sym) +
         line('Fee \u00b7 ' + d.gas.toLocaleString() + ' gas at ' + GAS_PRICE,
              fmt(amt(d.gasFee, 6)) + ' LUNC') +
         line('Leaves your wallet', same
-              ? fmt(amt(total, 6)) + ' LUNC'
-              : fmt(amt(d.amount, 6)) + ' ' + t.sym + ' and ' + fmt(amt(d.gasFee, 6)) + ' LUNC',
+              ? full(total) + ' LUNC'
+              : full(d.amount) + ' ' + t.sym + ' and ' + fmt(amt(d.gasFee, 6)) + ' LUNC',
              true) +
         line('Recipient gets', d.received === null
-              ? fmt(amt(d.amount, 6)) + ' ' + t.sym + ', before the burn tax'
-              : fmt(amt(d.received, 6)) + ' ' + t.sym +
+              ? full(d.amount) + ' ' + t.sym + ', before the burn tax'
+              : full(d.received) + ' ' + t.sym +
                 (Number(d.tax) > 0 ? ' (' + Number((d.rate * 100).toFixed(4)) + '% burn tax)' : ''), true) +
         (over ? '<div class="sbad">More than this address holds - ' +
                 fmt(amt(avail, 6)) + ' ' + t.sym + ' available.</div>' : '') +
         '<div class="tiny" style="margin-top:12px">Signed at ' + d.bytes +
         ' bytes, sequence ' + d.seq + '. Nothing has been sent yet.</div>' +
         (over ? '' : '<button class="btn solid" id="send-go" style="margin-top:14px">Send ' +
-          fmt(amt(d.amount, 6)) + ' ' + t.sym + '</button>');
+          full(d.amount) + ' ' + t.sym + '</button>');
       LAST_GAS = d.gas;
     }
 
@@ -609,7 +597,7 @@ async function confirmSend(btn, to, human, memo, from, maxFee){
      screen keeps a line for it while the block is awaited, and a card comes
      up when it lands - the same card the GRAM swap uses. */
   const job = { hash: hash, tok: t, sym: t.sym, to: to,
-                amount: fmt(Number(toRaw(human, dec)) / Math.pow(10, dec)),
+                amount: formatRaw(toRaw(human, dec), dec, currentLang()),
                 state: 'wait', note: '' };
   clearSend();
   go('home');
@@ -757,7 +745,7 @@ function fillMax(){
   // Only LUNC pays for its own departure. Everything else leaves the fee to a
   // balance it does not touch, so all of it can go.
   if (t.denom !== 'uluna') {
-    $('#send-amt').value = bal > 0 ? bal.toFixed(Math.min(dec, 8)) : '0';
+    $('#send-amt').value = bal > 0 ? formatRaw(rawFromNumber(bal, dec), dec, currentLang(), { group: false }) : '0';
     tap();
     return;
   }
@@ -765,7 +753,7 @@ function fillMax(){
   // little here makes an unsendable transaction; too much costs a fraction.
   const gasFee = Math.ceil((LAST_GAS || 345000) * GAS_PRICE);
   const raw = Math.floor(bal * 1e6 - gasFee);
-  $('#send-amt').value = raw > 0 ? (raw / 1e6).toFixed(6) : '0';
+  $('#send-amt').value = raw > 0 ? formatRaw(String(raw), 6, currentLang(), { group: false }) : '0';
   tap();
 }
 
