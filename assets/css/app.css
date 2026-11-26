@@ -2803,9 +2803,7 @@ html.dk #st-epos .ep-act{flex:0 0 auto;min-width:0;white-space:nowrap;padding:0 
 html.dk body.modal-open::before{content:'';position:fixed;inset:0 0 0 var(--rail-now);z-index:54;
   background:radial-gradient(70% 60% at 50% 45%,rgba(20,16,60,.55),rgba(4,6,16,.78));
   backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);animation:modal-dim .2s ease both}
-html.dk body .step.as-modal:is(#st-receive,#st-send,#st-swap,#st-tsend){position:fixed!important;z-index:55;inset:0 0 0 var(--rail)!important;margin:auto!important;
-  width:min(560px,calc(100vw - var(--rail) - 64px))!important;max-width:none!important;height:fit-content;max-height:calc(100vh - 64px);
-html.dk body .step.as-modal:is(#st-receive,#st-send,#st-swap){position:fixed!important;z-index:55;inset:0 0 0 var(--rail-now)!important;margin:auto!important;
+html.dk body .step.as-modal:is(#st-receive,#st-send,#st-swap,#st-tsend){position:fixed!important;z-index:55;inset:0 0 0 var(--rail-now)!important;margin:auto!important;
   width:min(560px,calc(100vw - var(--rail-now) - 64px))!important;max-width:none!important;height:fit-content;max-height:calc(100vh - 64px);
   min-height:0!important;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;padding:22px 26px 20px!important;
   border-radius:22px;border:1px solid rgba(160,140,255,.30);
