@@ -376,20 +376,30 @@ function taxEvents(t){
   const top = t.events || [];
   return top.some(e => e.type === 'tax_payment') ? top : eventsOf(t);
 }
+// The tax this address paid, as coins. The tax_payment markers are read where
+// taxEvents finds them; each is matched to one transfer from this address to
+// the fee collector in `events` (by default the same list) with the same denom
+// and amount, each transfer used once, so a tax listed twice or a marker in
+// one list and its transfer in both is counted once. A caller passes the list
+// its own total came from (feePaid), so only a tax inside that total is taken
+// off it (#68 review).
 function taxPaid(t, me, events){
   const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
-  const evs = events || taxEvents(t), mine = [], out = [];
+  const split = what => String(what || '').split(',').map(p => /^(\d+)(.+)$/.exec(p.trim())).filter(Boolean).map(mm => ({ amount: mm[1], denom: mm[2] }));
+  const marks = taxEvents(t), evs = events || marks, mine = [], out = [];
   for (const e of evs) {
-    if (e.type === 'transfer' && attr(e, 'sender') === me && attr(e, 'recipient') === FEE_COLLECTOR) mine.push(attr(e, 'amount'));
+    if (e.type === 'transfer' && attr(e, 'sender') === me && attr(e, 'recipient') === FEE_COLLECTOR) mine.push(...split(attr(e, 'amount')));
   }
-  for (const e of evs) {
+  for (const e of marks) {
     if (e.type !== 'tax_payment') continue;
-    const what = attr(e, 'tax_amount'), i = mine.indexOf(what);
-    if (!what || i < 0) continue;
-    mine.splice(i, 1);
-    for (const part of what.split(',')) {
-      const mm = /^(\d+)(.+)$/.exec(part.trim());
-      if (mm) out.push({ amount: mm[1], denom: mm[2] });
+    // a marker that names its payer is only this address's when it is this one
+    const payer = attr(e, 'payer') || attr(e, 'sender');
+    if (payer && payer !== me) continue;
+    for (const c of split(attr(e, 'tax_amount'))) {
+      const i = mine.findIndex(x => x.denom === c.denom && x.amount === c.amount);
+      if (i < 0) continue;
+      mine.splice(i, 1);
+      out.push(c);
     }
   }
   return out;
@@ -726,11 +736,21 @@ function look(t, me){
   let req = msgKey ? Number(m.msg[intent].amount) : 0;
   const coin = m.amount && !Array.isArray(m.amount) && m.amount.denom ? m.amount : null;
   if (!msgKey && coin && STAKING_MSG.test(type)) { msgKey = 'native:' + coin.denom; req = Number(coin.amount); }
-  const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0, req: req } : null));
+  // a native unstake asks for the amount in its message; the rewards the chain
+  // pays out with it are income, kept apart under it (#68 review)
+  const undel = !swap && !!coin && /MsgUndelegate/.test(type) && req > 0;
+  let reward = null;
+  if (undel) {
+    top = fmt(human({ key: msgKey, raw: req })) + ' ' + symOfKey(msgKey); topIn = false;
+    below = ins.length ? ins.map(amountText).join(' \u00b7 ') + ' rewards' : '';
+    if (ins.length && ins.every(x => x.key === ins[0].key)) reward = { key: ins[0].key, raw: ins.reduce((a, x) => a + x.raw, 0) };
+  }
+  const main = undel ? { key: msgKey, raw: 0, req: req }
+    : swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0, req: req } : null));
   const second = swap ? ins[0] : null;
   const usdMain = main ? worthOf(main) : 0;
   return { title: title, kind: kind, group: group, sub: sub, top: top, topIn: topIn, below: below,
-           main: main, second: second, usd: usdMain, flows: f, place: place, also: also };
+           main: main, second: second, usd: usdMain, flows: f, place: place, also: also, reward: reward, undel: undel };
 }
 
 const BADGE = {
@@ -854,7 +874,8 @@ function render(){
   const rows = ALL.map(t => ({ t: t, l: look(t, me) }))
     .filter(x => FILTER === 'all' || x.l.group === FILTER).slice(0, SHOWN);
   // sends still waiting for their block go on top, as the first thing today
-  const pend = FILTER === 'all' || FILTER === 'transfers' ? PENDING : [];
+  // only this wallet's: a send from another wallet never shows here (#68)
+  const pend = FILTER === 'all' || FILTER === 'transfers' ? PENDING.filter(j => j.from && j.from === me) : [];
   if (!rows.length && !pend.length) {
     list.innerHTML = '<div class="empty">' + (ALL.length ? 'Nothing of this kind in the history read so far.' : 'Nothing on chain for this address yet.') + '</div>';
   } else {
@@ -905,19 +926,28 @@ function foldDay(xs, me){
       const main = run.map(x => x.l.main);
       const sameKey = main.every(f => f && f.key === main[0].key);
       let fold = { n: run.length };
-      const second = run.map(x => x.l.second);
-      if (run.every(x => x.l.kind === 'swap') && sameKey && second.every(f => f && f.key === second[0].key)) {
-        // swaps: what came in above, what went out below, each with its sign
-        fold.top = amountText({ key: second[0].key, raw: second.reduce((a, f) => a + f.raw, 0) });
-        fold.topIn = true;
-        fold.below = amountText({ key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) });
-        fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
-      } else if (run.every(x => x.l.kind === 'swap')) {
-        // swaps into different tokens: no sum that could mix them
+      if (run.every(x => x.l.kind === 'swap')) {
+        // swaps: what came in above, what went out below, each side once. A
+        // row's known flows (main and second can be the same one) split by
+        // sign; a side is added up only when every swap has one of it and
+        // they are all the same token, else it is left out (#68 review)
+        const sides = run.map(x => [x.l.main, x.l.second].filter((f, i, a) => f && a.indexOf(f) === i));
+        const side = pos => {
+          const fs = sides.map(ss => ss.filter(f => pos ? f.raw > 0 : f.raw < 0));
+          if (!fs.every(ss => ss.length === 1) || !fs.every(ss => ss[0].key === fs[0][0].key)) return null;
+          return { key: fs[0][0].key, raw: fs.reduce((a, ss) => a + ss[0].raw, 0) };
+        };
+        const got = side(true), paid = side(false);
+        if (got) { fold.top = amountText(got); fold.topIn = true; }
+        if (paid) fold.below = amountText(paid);
+        if (got || paid) fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
       } else if (sameKey && main.every(f => f.req > 0)) {
         // requests (unstakes) move nothing yet: add up what was asked for
         const asked = main.reduce((a, f) => a + f.req, 0);
         fold.top = fmt(human({ key: main[0].key, raw: asked })) + ' ' + symOfKey(main[0].key);
+        // and the rewards paid out with them, still as income, when one token
+        const rw = run.map(x => x.l.reward).filter(Boolean);
+        if (rw.length && rw.every(f => f.key === rw[0].key)) fold.below = amountText({ key: rw[0].key, raw: rw.reduce((a, f) => a + f.raw, 0) }) + ' rewards';
       } else if (sameKey && main.every(f => f.raw !== 0)) {
         const tot = { key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) };
         fold.top = amountText(tot);

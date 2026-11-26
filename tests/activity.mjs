@@ -401,3 +401,96 @@ group('rows: approvals to others, grouped unstakes, wallet switch');
   const rd = lift(src, 'async function read(');
   ok('and read() clears it before waiting for the old wallet’s read', rd.indexOf('clearSummary()') >= 0 && rd.indexOf('clearSummary()') < rd.indexOf('while (FETCH_P)'));
 }
+
+group('#68 review on 308e9be: pending sends, fee and tax lists, unstake rewards, one-sided swaps');
+{
+  // 1. a pending send stays with the wallet it was sent from
+  const tx = fs.readFileSync(path.join(SRC, 'tx.js'), 'utf8');
+  ok('tx.js: the job keeps the sender address', /const job = \{ hash: hash, tok: t, sym: t\.sym, to: to, from: from,/.test(tx));
+  ok('tx.js: frontier:pending carries it', /to: j\.to, from: j\.from, state: j\.state/.test(tx));
+  const listeners = {};
+  const el = () => ({ innerHTML: '', textContent: '', classList: { contains: () => true } });
+  const els = { '#ac-list': el(), '#ac-chips': null, '#ac-note': el() };
+  const fakeDoc = { addEventListener: (n, f) => { listeners[n] = f; }, getElementById: id => id === 'st-activity' ? el() : null };
+  const S = { ADDR: 'A' };
+  const lst = src.slice(src.indexOf("document.addEventListener('frontier:pending'"), src.indexOf("$('#tx-x')"));
+  const P = new Function('document', 'S', '$', 'esc', 'short', 'face', 'look', 'dayKey', 'dayName', 'worthOf', 'usd', 'foldDay', 'paintIcons', 'summary', 'learnPlaces', 'GROUPS',
+    "let ALL = [], FILTER = 'all', SHOWN = 40, PENDING = [], MORE = false;\n" +
+    lift(src, 'function pendingRow(') + '\n' + lift(src, 'function render(') + '\n' + lst +
+    '\nreturn { render, setAll: a => { ALL = a; } };')(
+    fakeDoc, S, q => els[q] || null, x => String(x), x => String(x), () => '', () => ({ group: 'transfers', flows: [] }),
+    () => 'd', () => 'Today', () => 0, v => '$' + v, () => '<div>row</div>', () => {}, () => {}, () => {}, [['all', 'All']]);
+  const send = (state) => listeners['frontier:pending']({ detail: { jobs: [{ hash: 'H', key: 'native:uluna', sym: 'LUNC', amount: '17', to: 'terra1recipientofa', from: 'A', state }] } });
+  const shows = () => /terra1recipientofa|-17 LUNC/.test(els['#ac-list'].innerHTML);
+  P.setAll([{ txhash: 'x', timestamp: '' }]);
+  send('wait'); P.render();
+  ok('A queues a 17 LUNC send: A’s Activity shows it on the way', shows(), els['#ac-list'].innerHTML);
+  S.ADDR = 'B'; P.setAll([]); P.render();
+  ok('switch to B with an empty history: neither the recipient nor the amount', !shows(), els['#ac-list'].innerHTML);
+  send('slow'); P.render();
+  ok('an update for A’s send arrives while B is open: still nothing of A’s', !shows(), els['#ac-list'].innerHTML);
+  P.setAll([{ txhash: 'y', timestamp: '' }]); send('slow');
+  ok('nor when B has a history and the update repaints the list', !shows(), els['#ac-list'].innerHTML);
+  S.ADDR = 'A'; P.setAll([{ txhash: 'x', timestamp: '' }]); P.render();
+  ok('back on A while it is pending: shown there again', shows(), els['#ac-list'].innerHTML);
+
+  // 2. fee transfers and tax markers in different lists
+  const FEE = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
+  const T = new Function('coins',
+    liftLine(src, 'const FEE_COLLECTOR =') + '\n' + lift(src, 'function eventsOf(') + '\n' + lift(src, 'function taxEvents(') + '\n' + lift(src, 'function taxPaid(') + '\n' +
+    lift(src, 'function feeEvents(') + '\n' + lift(src, 'function feePaid(') + '\n' + lift(src, 'function feeOf(') + '\nreturn { feePaid, taxPaid, feeOf };')(
+    cs => cs.map(c => Number(c.amount) / 1e6 + ' LUNC').join(', '));
+  const tr = (from, to, amount) => ({ type: 'transfer', attributes: [{ key: 'recipient', value: to }, { key: 'sender', value: from }, { key: 'amount', value: amount }] });
+  const mark = (v) => ({ type: 'tax_payment', attributes: [{ key: 'tax_amount', value: v }] });
+  const part = { tx: { auth_info: { fee: { amount: [{ denom: 'uluna', amount: '10000000' }] } } },
+    events: [tr('me', FEE, '10000000uluna'), tr('me', FEE, '5000000uluna')],
+    logs: [{ events: [tr('me', 'terra1bob', '200000000uluna'), tr('me', FEE, '5000000uluna'), mark('5000000uluna')] }] };
+  ok('partial duplication: the period summary counts 10 LUNC of network fees, not 15', T.feePaid(part, 'me') === 10000000, T.feePaid(part, 'me'));
+  ok('the detail says 10 LUNC network fee', T.feeOf(part) === '10 LUNC', T.feeOf(part));
+  ok('and 5 LUNC burn tax, on its own line', T.taxPaid(part, 'me').map(c => c.amount + c.denom).join() === '5000000uluna');
+  const twice = { events: [tr('me', FEE, '10000000uluna'), tr('me', FEE, '5000000uluna'), tr('me', FEE, '5000000uluna'), mark('5000000uluna'), mark('5000000uluna')], logs: [] };
+  ok('two 5 LUNC taxes with two transfers: both taken off (10 left)', T.feePaid(twice, 'me') === 10000000, T.feePaid(twice, 'me'));
+  const oneTr = { events: [tr('me', FEE, '10000000uluna'), tr('me', FEE, '5000000uluna'), mark('5000000uluna'), mark('5000000uluna')], logs: [] };
+  ok('two markers but one tax transfer in the fee total: taken off once (10 left)', T.feePaid(oneTr, 'me') === 10000000, T.feePaid(oneTr, 'me'));
+  const notIn = { events: [tr('me', FEE, '10000000uluna')], logs: [{ events: [tr('me', FEE, '5000000uluna'), mark('5000000uluna')] }] };
+  ok('a tax whose transfer is not in the fee total is not taken off it', T.feePaid(notIn, 'me') === 10000000, T.feePaid(notIn, 'me'));
+  const other = { events: [tr('me', FEE, '10000000uluna'), tr('me', FEE, '5000000uluna'),
+    { type: 'tax_payment', attributes: [{ key: 'tax_amount', value: '5000000uluna' }, { key: 'payer', value: 'terra1else' }] }], logs: [] };
+  ok('a marker naming another payer is not this wallet’s tax', T.feePaid(other, 'me') === 15000000 && T.taxPaid(other, 'me').length === 0);
+
+  // 3. native undelegations: the requested amount, rewards as income
+  const H = f => Math.abs(f.raw) / 1e6;
+  const sym = () => 'LUNC';
+  const amountText = f => (f.raw > 0 ? '+' : '-') + H(f) + ' ' + sym(f.key);
+  const LK = new Function('primaryMsg', 'describe', 'intentOf', 'flows', 'alsoOf', 'alsoTitle', 'placeOf', 'symOfKey', 'fmt', 'human', 'amountText', 'worthOf',
+    'gramSwapRow', 'permGet', 'PLACE_CODE', 'PLACE_FIXED', 'PROPHECY', 'STAKING_MSG', 'DEFI_INTENT',
+    lift(src, 'function look(') + '\nreturn look;')(
+    ms => ms[0], () => ({ title: 'Undelegated', kind: 'stake', sub: 'terra1val' }), () => '', t => t._flows, () => [], () => '', () => '',
+    sym, x => String(x), H, amountText, () => 0, () => null, () => '', {}, {}, {},
+    /MsgDelegate|MsgUndelegate|MsgBeginRedelegate|WithdrawDelegatorReward/, /stake/);
+  const und = (amount, reward) => ({ code: 0, _flows: [{ key: 'native:uluna', raw: reward }],
+    tx: { body: { messages: [{ '@type': '/cosmos.staking.v1beta1.MsgUndelegate', validator_address: 'terravaloper1x', amount: { denom: 'uluna', amount: String(amount) } }] } } });
+  const u20 = LK(und(20e6, 1e6), 'me'), u30 = LK(und(30e6, 2e6), 'me');
+  ok('an undelegation of 20 with 1 LUNC rewards: the row shows 20 LUNC requested', u20.top === '20 LUNC' && u20.topIn === false, u20.top);
+  ok('and the 1 LUNC rewards under it, as income', u20.below === '+1 LUNC rewards', u20.below);
+  ok('the 30 one shows 30', u30.top === '30 LUNC', u30.top);
+  const foldSrc = src.slice(src.indexOf('let fold = { n: run.length };'), src.indexOf('// otherwise only the count'));
+  const fold = new Function('fmt', 'human', 'symOfKey', 'amountText', 'run', 'main', 'sameKey', foldSrc + '\nreturn fold;');
+  const F = ls => { const main = ls.map(l => l.main); return fold(x => String(x), H, sym, amountText, ls.map(l => ({ l })), main, main.every(f => f && f.key === main[0].key)); };
+  const fu = F([u20, u30]);
+  ok('folded: 50 LUNC requested, not the +3 of rewards', fu.top === '50 LUNC' && !fu.topIn, JSON.stringify(fu));
+  ok('folded: the 3 LUNC of rewards stay apart, as income', fu.below === '+3 LUNC rewards', fu.below);
+
+  // 4. folded swaps: each known side once
+  const k = { key: 'native:uusd' };
+  const oneSide = r => { const f = Object.assign({ raw: r }, k); return { kind: 'swap', main: f, second: f, usd: 0 }; };
+  const amountUs = f => (f.raw > 0 ? '+' : '-') + H(f) + (f.key === 'native:uusd' ? ' USTC' : ' LUNC');
+  const F2 = ls => { const main = ls.map(l => l.main); return fold(x => String(x), H, sym, amountUs, ls.map(l => ({ l })), main, main.every(f => f && f.key === main[0].key)); };
+  const os2 = F2([oneSide(2e6), oneSide(3e6)]);
+  ok('two swaps with only +2 and +3 USTC known: +5 USTC received, once', os2.top === '+5 USTC' && os2.topIn === true, JSON.stringify(os2));
+  ok('and the spent line left empty', !os2.below, JSON.stringify(os2));
+  const two = [{ kind: 'swap', main: { key: 'native:uluna', raw: -20e6 }, second: { key: 'native:uusd', raw: 2e6 }, usd: 0 },
+               { kind: 'swap', main: { key: 'native:uluna', raw: -30e6 }, second: { key: 'native:uusd', raw: 3e6 }, usd: 0 }];
+  const ts = F2(two);
+  ok('two-sided swaps still: +5 USTC received, -50 LUNC spent', ts.top === '+5 USTC' && ts.below === '-50 LUNC', JSON.stringify(ts));
+}
