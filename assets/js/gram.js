@@ -12,16 +12,17 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=27cbef9d';
-import { GRAM_NET, TERMS } from './gram-net.js?v=27cbef9d';
-import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=27cbef9d';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=27cbef9d';
-import { S } from './state.js?v=27cbef9d';
-import { decryptSeed } from './storage.js?v=27cbef9d';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=27cbef9d';
-import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=27cbef9d';
-import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=27cbef9d';
-import { chime, notify } from './notify.js?v=27cbef9d';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=13e9286f';
+import { GRAM_NET, TERMS } from './gram-net.js?v=13e9286f';
+import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=13e9286f';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=13e9286f';
+import { S } from './state.js?v=13e9286f';
+import { decryptSeed } from './storage.js?v=13e9286f';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=13e9286f';
+import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=13e9286f';
+import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=13e9286f';
+import { chime, notify } from './notify.js?v=13e9286f';
+import { currentLang, formatRaw, rawFromNumber } from './amount.js?v=13e9286f';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -721,11 +722,19 @@ setInterval(function () {
   if (st && st.classList.contains('on') && !document.hidden) loadMarket();
 }, 60000);
 
-const val = id => $('#gx-' + id).value.trim().replace(',', '.');
-const rawOf = (id, dec) => { try { return BigInt(toRaw(val(id), dec)); } catch (e) { return 0n; } };
+// the fields are read by the one amount parser, in the interface language
+// (#85); a refusal other than "empty" is kept and said by readForm
+const val = id => $('#gx-' + id).value.trim();
+const PARSE_ERR = {};
+const rawOf = (id, dec) => {
+  try { delete PARSE_ERR[id]; return BigInt(toRaw(val(id), dec)); }
+  catch (e) { if (e.code && e.code !== 'empty') PARSE_ERR[id] = e.message; return 0n; }
+};
+const numOf = (id, d) => Number(rawOf(id, d)) / Math.pow(10, d);
 const usdTxt = (n, price) => price ? ' \u2248 $' + (n * price).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '';
 // a decimal for an input field: no exponent, at most `d` decimals, trailing zeros off
-const dec = (n, d) => n.toFixed(d).replace(/\.?0+$/, '');
+// written with the interface language's decimal separator, so it reads back
+const dec = (n, d) => formatRaw(rawFromNumber(n, d), d, currentLang(), { group: false });
 
 // what can still be offered: the balance after the burn tax, less my other live offers
 // LUNC kept out of Max for the gas of answering takes (review of #15):
@@ -742,7 +751,7 @@ function available(){
 
 // the GRAM field follows the market while a market button is on
 function follow(){
-  const sell = Number(val('sell')) || 0;
+  const sell = numOf('sell', 6) || 0;
   $('#gx-mkt').textContent = MARKET && sell
     ? 'Market \u2248 ' + dec(sell * MARKET, 4) + ' GRAM' : (MARKET ? 'Market price loaded' : 'No market price right now');
   document.querySelectorAll('.gx-chip[data-pct]').forEach(b => {
@@ -760,12 +769,15 @@ function readForm(){
   else if (!tonOk(out.ton)) out.errs.push('That TON address does not look right.');
   out.total = rawOf('sell', 6);
   out.gram = rawOf('get', 9);
-  if (!(out.total > 0n)) out.errs.push('Enter how much LUNC you sell.');
-  if (!(out.gram > 0n)) out.errs.push('Enter how much GRAM you want for it.');
+  if (PARSE_ERR.sell) out.errs.push(PARSE_ERR.sell);
+  else if (!(out.total > 0n)) out.errs.push('Enter how much LUNC you sell.');
+  if (PARSE_ERR.get) out.errs.push(PARSE_ERR.get);
+  else if (!(out.gram > 0n)) out.errs.push('Enter how much GRAM you want for it.');
   // nanoGRAM per 1M LUNC, rounded up: selling everything brings at least what was asked
   out.price = out.total > 0n ? ceilDiv(out.gram * 1000000000000n, out.total) : 0n;
   const minTxt = val('min');
   out.min = minTxt ? rawOf('min', 6) : out.total / 20n;
+  if (minTxt && PARSE_ERR.min) out.errs.push(PARSE_ERR.min);
   if (out.min < 1000000n) out.min = out.total < 1000000n ? out.total : 1000000n;   // at least 1 LUNC
   out.max = out.total;
   // GRAM per deal (audit round 3, E): the default smallest part is raised to
@@ -1620,21 +1632,21 @@ function openBuy(o){
   BUYING = o;
   $('#gx-bb-rate').textContent = '1 GRAM = ' + Math.round(1e15 / Number(o.price)).toLocaleString('en-US') + ' LUNC';
   $('#gx-bb-range').textContent = 'From ' + human(o.min_lunc, 6) + ' to ' + human(o.max_lunc, 6) + ' LUNC';
-  $('#gx-bb-lunc').value = human(o.min_lunc, 6).replace(/,/g, '');
+  $('#gx-bb-lunc').value = formatRaw(String(o.min_lunc), 6, currentLang(), { group: false });
   $('#gx-buybox').hidden = false;
   quote();
   $('#gx-buybox').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 $('#gx-bb-x').addEventListener('click', () => { $('#gx-buybox').hidden = true; BUYING = null; });
-$('#gx-bb-max').addEventListener('click', () => { if (BUYING) { $('#gx-bb-lunc').value = human(BUYING.max_lunc, 6).replace(/,/g, ''); quote(); } });
+$('#gx-bb-max').addEventListener('click', () => { if (BUYING) { $('#gx-bb-lunc').value = formatRaw(String(BUYING.max_lunc), 6, currentLang(), { group: false }); quote(); } });
 $('#gx-bb-lunc').addEventListener('input', quote);
 function buyTerms(){
   const o = BUYING;
   if (!o) return null;
-  let lunc; try { lunc = BigInt(toRaw($('#gx-bb-lunc').value.trim().replace(',', '.'), 6)); } catch (e) { lunc = 0n; }
+  let lunc, bad = ''; try { lunc = BigInt(toRaw($('#gx-bb-lunc').value.trim(), 6)); } catch (e) { lunc = 0n; if (e.code && e.code !== 'empty') bad = e.message; }
   const gram = gramFor(lunc, BigInt(o.price));
   const tip = tipOf(gram);
-  const err = !(lunc > 0n) ? 'Enter how much LUNC you want.'
+  const err = bad ? bad : !(lunc > 0n) ? 'Enter how much LUNC you want.'
     : lunc < BigInt(o.min_lunc) ? 'This seller sells from ' + human(o.min_lunc, 6) + ' LUNC.'
     : lunc > BigInt(o.max_lunc) ? 'This seller has ' + human(o.max_lunc, 6) + ' LUNC available.'
     : dealErr(gram) || openErr();
