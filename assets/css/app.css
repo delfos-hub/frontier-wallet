@@ -2557,6 +2557,30 @@ html.dk .sw-sheet:not(#tx-sheet) .sw-sheet-in{border-radius:22px;border:1px soli
 /* the send review names the recipient in full (tx.js review) */
 .sline code.saddr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:500;word-break:break-all;text-align:right;color:var(--text)}
 
+/* DeFi: every reward at once (defi.js drawClaimAll) */
+.ea-claimall{margin:12px 0 4px;padding:12px 14px;border:1px solid rgba(0,255,176,.22);border-radius:16px;
+  background:linear-gradient(90deg,rgba(0,255,176,.08),rgba(0,212,255,.04) 60%,transparent)}
+.ea-claimall[hidden]{display:none}
+.ea-ca-row{display:flex;align-items:center;gap:14px}
+.ea-ca-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.ea-ca-t b{font-size:14px;font-weight:700;color:#E8FFF6}
+.ea-ca-t span{font-size:12px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
+.ea-ca-btn{flex:none;padding:10px 20px;border:0;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;line-height:1;color:#04140e;
+  clip-path:polygon(10px 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,10px 100%,0 50%);
+  background:linear-gradient(90deg,#00FFB0,#00D4FF);transition:filter .15s}
+.ea-ca-btn:hover{filter:brightness(1.1)}
+.ea-ca-btn.on{background:linear-gradient(90deg,#7CF5D0,#7FE6FF)}
+.ea-ca-panel{margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,255,176,.14);animation:ea-ca-in .25s cubic-bezier(.2,.9,.3,1)}
+.ea-ca-panel .btn{width:100%;margin-top:10px}
+.ea-ca-list .tk-line b{text-align:right}
+.ea-ca-skip{font-style:normal;font-size:11px;color:#FFB547;margin-left:6px}
+@keyframes ea-ca-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media (max-width:420px){.ea-ca-row{flex-wrap:wrap}.ea-ca-btn{width:100%}}
+/* the bar under the card tucks up into it (-6px); under the rewards block it keeps its distance */
+#st-earn .ea-claimall:not([hidden])+.ea-bar{margin-top:10px}
+/* a sum valued with a kept price (market not readable just now) */
+.ea-usd .ea-old{display:block;font-style:normal;font-size:10.5px;font-weight:500;color:#FFB547;opacity:.85;margin-top:2px;cursor:help}
+.ea-ca-btn:disabled{opacity:.5;cursor:default;filter:none}
 /* desktop: moving between sections takes a quarter of a second, not half;
    with a mouse the long room glide read as a delay */
 html.dk body.has-scene .step:is(.on.room-in,.on.room-out,.on.room-right,.on.room-left,.leave-right,.leave-left,.leave-in,.leave-out){animation-duration:.24s}
