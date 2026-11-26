@@ -596,7 +596,8 @@ async function confirmSend(btn, to, human, memo, from, maxFee){
      Watching a hash poll on the send form told nobody anything; the home
      screen keeps a line for it while the block is awaited, and a card comes
      up when it lands - the same card the GRAM swap uses. */
-  const job = { hash: hash, tok: t, sym: t.sym, to: to,
+  // the wallet it was sent from: Activity shows it under that wallet only
+  const job = { hash: hash, tok: t, sym: t.sym, to: to, from: from,
                 amount: formatRaw(toRaw(human, dec), dec, currentLang()),
                 state: 'wait', note: '' };
   clearSend();
@@ -617,7 +618,7 @@ const nap = ms => new Promise(r => setTimeout(r, ms));
 function drawJobs(){
   // Activity shows sends on their way too
   document.dispatchEvent(new CustomEvent('frontier:pending', { detail: { jobs: JOBS.map(j => ({
-    hash: j.hash, key: sendKey(j.tok), sym: j.sym, amount: j.amount, to: j.to, state: j.state })) } }));
+    hash: j.hash, key: sendKey(j.tok), sym: j.sym, amount: j.amount, to: j.to, from: j.from, state: j.state })) } }));
   const box = $('#txq');
   if (!box) return;
   box.hidden = !JOBS.length;
