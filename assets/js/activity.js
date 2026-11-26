@@ -369,40 +369,82 @@ function eventsOf(t){
   for (const lg of (t.logs || [])) for (const e of (lg.events || [])) fromLogs.push(e);
   return fromLogs.length ? fromLogs : (t.events || []);
 }
-// The events that carry the burn tax: the top-level ones when they hold a
-// tax_payment, else the message logs. A caller that has its own event set
-// (the fee) passes it, so the fee and the tax are paired in the same list.
-function taxEvents(t){
-  const top = t.events || [];
-  return top.some(e => e.type === 'tax_payment') ? top : eventsOf(t);
+// Who pays the fee: a granter or a named payer, else the first message's signer
+function feePayer(t){
+  const f = ((t.tx || {}).auth_info || {}).fee || {};
+  if (f.granter) return f.granter;
+  if (f.payer) return f.payer;
+  const m = ((((t.tx || {}).body || {}).messages) || [])[0] || {};
+  return m.from_address || m.sender || m.delegator_address || m.voter || m.depositor || m.proposer || m.granter || '';
 }
-// The tax this address paid, as coins. The tax_payment markers are read where
-// taxEvents finds them; each is matched to one transfer from this address to
-// the fee collector in `events` (by default the same list) with the same denom
-// and amount, each transfer used once, so a tax listed twice or a marker in
-// one list and its transfer in both is counted once. A caller passes the list
-// its own total came from (feePaid), so only a tax inside that total is taken
-// off it (#68 review).
-function taxPaid(t, me, events){
+/* Every move to the fee collector, once, each marked as the fee or as a burn
+   tax, with the address that made it (#68 review).
+   The two event lists are reconciled first: the message logs hold each
+   message's events under its index; the top level holds the fee's own events
+   (no msg_index) and, on newer nodes, copies of the messages' events (with
+   msg_index), dropped when the logs have them. On a node that does not index
+   them, a top-level move equal to a log move from the same sender is that
+   copy, except the move of the fee asked for, from its payer, which is the fee.
+   Markers the same way. Then each tax_payment marker takes one move: of the
+   same coin, from its own message, sent by the payer it names; the move's
+   sender is who paid that tax. What is left is fee. */
+const MOVES = new WeakMap();
+function collectorMoves(t){
+  if (MOVES.has(t)) return MOVES.get(t);
   const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
   const split = what => String(what || '').split(',').map(p => /^(\d+)(.+)$/.exec(p.trim())).filter(Boolean).map(mm => ({ amount: mm[1], denom: mm[2] }));
-  const marks = taxEvents(t), evs = events || marks, mine = [], out = [];
-  for (const e of evs) {
-    if (e.type === 'transfer' && attr(e, 'sender') === me && attr(e, 'recipient') === FEE_COLLECTOR) mine.push(...split(attr(e, 'amount')));
+  const top = (t.events || []).map(e => ({ e: e, msg: attr(e, 'msg_index') || null }));
+  const logs = [];
+  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e => logs.push({ e: e, msg: String(lg.msg_index != null ? lg.msg_index : i) })));
+  const indexed = top.some(x => x.msg !== null);
+  const movesOf = xs => {
+    const out = [];
+    for (const x of xs) if (x.e.type === 'transfer' && attr(x.e, 'recipient') === FEE_COLLECTOR)
+      for (const c of split(attr(x.e, 'amount'))) out.push({ from: attr(x.e, 'sender'), c: c, msg: x.msg, ante: false, tax: false });
+    return out;
+  };
+  const marksOf = xs => {
+    const out = [];
+    for (const x of xs) if (x.e.type === 'tax_payment')
+      for (const c of split(attr(x.e, 'tax_amount'))) out.push({ payer: attr(x.e, 'payer') || attr(x.e, 'sender'), c: c, msg: x.msg });
+    return out;
+  };
+  const same = (a, b) => a.c.denom === b.c.denom && a.c.amount === b.c.amount;
+  const logMoves = movesOf(logs), logMarks = marksOf(logs);
+  const topXs = top.filter(x => !(logs.length && x.msg !== null));
+  let topMoves = movesOf(topXs), topMarks = marksOf(topXs);
+  // the fee: the top-level move of the amount asked for, from its payer, or
+  // on an indexing node any top-level move without an index
+  const payer = feePayer(t);
+  for (const c of ((((t.tx || {}).auth_info || {}).fee || {}).amount || [])) {
+    const m = topMoves.find(x => !x.ante && x.from === payer && x.c.denom === c.denom && x.c.amount === String(c.amount));
+    if (m) m.ante = true;
   }
-  for (const e of marks) {
-    if (e.type !== 'tax_payment') continue;
-    // a marker that names its payer is only this address's when it is this one
-    const payer = attr(e, 'payer') || attr(e, 'sender');
-    if (payer && payer !== me) continue;
-    for (const c of split(attr(e, 'tax_amount'))) {
-      const i = mine.findIndex(x => x.denom === c.denom && x.amount === c.amount);
-      if (i < 0) continue;
-      mine.splice(i, 1);
-      out.push(c);
-    }
+  if (indexed) topMoves.forEach(m => { if (m.msg === null) m.ante = true; });
+  else if (logs.length) {
+    const drop = (xs, ls, eq) => { const used = new Set(); return xs.filter(x => {
+      if (x.ante) return true;
+      const i = ls.findIndex((l, k) => !used.has(k) && eq(l, x));
+      if (i < 0) return true;
+      used.add(i); return false;
+    }); };
+    topMoves = drop(topMoves, logMoves, (l, x) => l.from === x.from && same(l, x));
+    topMarks = drop(topMarks, logMarks, (l, x) => l.payer === x.payer && same(l, x));
   }
-  return out;
+  const moves = topMoves.concat(logMoves);
+  for (const k of topMarks.concat(logMarks)) {
+    const fits = m => !m.tax && !m.ante && same(m, k) && (!k.payer || m.from === k.payer);
+    const hit = (k.msg !== null && moves.find(m => fits(m) && m.msg === k.msg)) ||
+      // where the marker or its move cannot be placed (no index): by coin
+      ((k.msg === null || !indexed) && moves.find(m => fits(m) && (k.msg === null || m.msg === null))) || null;
+    if (hit) hit.tax = true;
+  }
+  MOVES.set(t, moves);
+  return moves;
+}
+// The burn tax this address paid, as coins
+function taxPaid(t, me){
+  return collectorMoves(t).filter(m => m.tax && m.from === me).map(m => ({ amount: m.c.amount, denom: m.c.denom }));
 }
 
 // Token moves are not transfer events; each token contract logs its own
@@ -481,7 +523,9 @@ function openTx(hash){
 
   html += row('Status', failed ? 'Failed' : 'Confirmed', failed ? 'out' : 'in');
   html += row('Block', String(t.height || ''));
-  if (feeOf(t)) html += row('Network fee', feeOf(t));
+  // a fee paid by someone else (a granter) is named as theirs, not this wallet's
+  const payer = feePayer(t);
+  if (feeOf(t)) html += row('Network fee', feeOf(t) + (payer && payer !== me ? ' \u00b7 paid by ' + short(payer) : ''));
   if (!failed) for (const c of taxPaid(t, me)) html += row('Burn tax', coins([c]));
   if (t.gas_used) html += row('Gas', t.gas_used + ' of ' + (t.gas_wanted || '?'));
   if (memo) html += row('Memo', memo);
@@ -751,6 +795,10 @@ function look(t, me){
   // a native unstake asks for the amount in its message; the rewards the chain
   // pays out with it are income, kept apart under it (#68 review)
   const undel = !swap && !!coin && /MsgUndelegate/.test(type) && req > 0;
+  // several unstakes in one transaction (x2): all that this wallet asked for
+  // in the same coin, not only the first message's
+  if (undel) req = msgs.filter(x => x['@type'] === m['@type'] && x.amount && x.amount.denom === coin.denom && (!x.delegator_address || x.delegator_address === me))
+    .reduce((a, x) => a + Number(x.amount.amount || 0), 0);
   let rewards = [];
   if (undel) {
     top = fmt(human({ key: msgKey, raw: req })) + ' ' + symOfKey(msgKey); topIn = false;
@@ -986,70 +1034,38 @@ let PERIOD = 30;
 const isDesk = () => document.documentElement.classList.contains('dk');
 // the network fee this address paid: its moves to the fee collector that are
 // not the burn tax (the tax has its own line)
-// The fee is charged before the messages run, so it is a top-level event;
-// the message logs may not repeat it. Top-level events when there are any
-// (they hold the messages' events too, so nothing is counted twice), the logs
-// only for a node that gives nothing else.
-function feeEvents(t){
-  if ((t.events || []).length) return t.events;
-  return eventsOf(t);
-}
-// Who pays the fee: a granter or a named payer, else the first message's signer
-function feePayer(t){
-  const f = ((t.tx || {}).auth_info || {}).fee || {};
-  if (f.granter) return f.granter;
-  if (f.payer) return f.payer;
-  const m = ((((t.tx || {}).body || {}).messages) || [])[0] || {};
-  return m.from_address || m.sender || m.delegator_address || m.voter || m.depositor || m.proposer || m.granter || '';
-}
+// the network fee this address paid: its moves to the fee collector that
+// are not a burn tax (collectorMoves)
 function feePaid(t, me){
-  const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
-  const split = what => String(what || '').split(',').map(p => /^(\d+)(.+)$/.exec(p.trim())).filter(Boolean).map(mm => ({ amount: mm[1], denom: mm[2] }));
-  // every event with where it came from: the top level (a message's events
-  // there carry msg_index; the fee's own do not) or the log of message i
-  const top = (t.events || []).map(e => ({ e: e, src: 'top', msg: attr(e, 'msg_index') || null }));
-  const logs = [];
-  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e => logs.push({ e: e, src: 'log', msg: String(lg.msg_index != null ? lg.msg_index : i) })));
-  const list = top.length ? top : logs;
-  // the moves this address made to the fee collector: what the total adds up
-  const F = [];
-  for (const x of list) {
-    if (x.e.type !== 'transfer' || attr(x.e, 'sender') !== me || attr(x.e, 'recipient') !== FEE_COLLECTOR) continue;
-    for (const c of split(attr(x.e, 'amount'))) F.push({ c: c, msg: x.msg, used: false });
-  }
-  let fee = F.reduce((a, x) => a + (x.c.denom === 'uluna' ? Number(x.c.amount) : 0), 0);
-  // the list's message events can be told from the fee's
-  const located = list === logs || top.some(x => x.msg !== null);
-  // the fee the transaction asked for, when this address is the one paying it
-  const auth = ((((t.tx || {}).auth_info || {}).fee || {}).amount || []).filter(c => c.denom === 'uluna').reduce((a, c) => a + Number(c.amount), 0);
-  const known = auth > 0 && feePayer(t) === me;
-  // the burn tax also goes to the fee collector and has its own line. Its
-  // marker is matched to its own transfer, and taken off only when that
-  // transfer is inside the total above (#68 review)
-  const marks = (top.some(x => x.e.type === 'tax_payment') ? top : logs).filter(x => x.e.type === 'tax_payment');
-  for (const m of marks) {
-    const payer = attr(m.e, 'payer') || attr(m.e, 'sender');
-    if (payer && payer !== me) continue;
-    for (const c of split(attr(m.e, 'tax_amount'))) {
-      const same = F.filter(x => !x.used && x.c.denom === c.denom && x.c.amount === c.amount);
-      let hit = null;
-      if (located && m.msg !== null) hit = same.find(x => x.msg === m.msg) || null;   // its own message, or not in the total
-      else if (known) {
-        // where it sits cannot be told: what the total has beyond the fee
-        // asked for is the tax, never more
-        if (c.denom === 'uluna' && fee - Number(c.amount) >= auth) hit = same[0] || null;
-      } else hit = same[0] || null;                                                 // by amount, each transfer once
-      if (!hit) continue;
-      hit.used = true;
-      if (c.denom === 'uluna') fee -= Number(c.amount);
-    }
-  }
-  return Math.max(0, fee);
+  return collectorMoves(t).filter(m => !m.tax && m.from === me && m.c.denom === 'uluna').reduce((a, m) => a + Number(m.c.amount), 0);
 }
 // local midnight i calendar days before now's day
 function calDay(now, i){
   const t = new Date(now);
   return new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
+}
+function sumClick(e){
+  const p = e.target.closest('[data-p]');
+  if (p) { PERIOD = Number(p.getAttribute('data-p')); summary(S.ADDR || (S.SAVED && S.SAVED.addr) || ''); return; }
+  const d = e.target.closest('[data-day]');
+  if (d) revealDay(d.getAttribute('data-day'));
+}
+// A bar's day, reached even when its rows are past the ones drawn (a day
+// below the first 40): the list grows to it, then scrolls to its heading.
+// Under a filter that hides the day, the filter goes back to All.
+function revealDay(k){
+  let el = document.getElementById('ac-d-' + k);
+  if (!el) {
+    const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+    const at = () => ALL.filter(t => FILTER === 'all' || look(t, me).group === FILTER).findIndex(t => dayKey(t.timestamp) === k);
+    let i = at();
+    if (i < 0 && FILTER !== 'all') { FILTER = 'all'; i = at(); }
+    if (i < 0) return;
+    SHOWN = Math.max(SHOWN, Math.ceil((i + 1) / 40) * 40);
+    render();
+    el = document.getElementById('ac-d-' + k);
+  }
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 // the summary belongs to one wallet: emptied the moment another one opens
 function clearSummary(){
@@ -1066,13 +1082,7 @@ function summary(me){
     box.id = 'ac-sum'; box.className = 'ac-sum';
     const chips = $('#ac-chips');
     chips.parentNode.insertBefore(box, chips);
-    box.addEventListener('click', e => {
-      const p = e.target.closest('[data-p]');
-      if (p) { PERIOD = Number(p.getAttribute('data-p')); summary(S.ADDR || (S.SAVED && S.SAVED.addr) || ''); return; }
-      const d = e.target.closest('[data-day]');
-      const el = d && document.getElementById('ac-d-' + d.getAttribute('data-day'));
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    box.addEventListener('click', sumClick);
   }
   box.hidden = false;
   box.dataset.for = me;

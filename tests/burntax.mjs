@@ -25,7 +25,7 @@ const liftLine = (s, h) => { const i = s.indexOf(h); return s.slice(i, s.indexOf
 const { burnTaxOn } = new Function(lift(tx, 'function burnTaxOn(') + '\nreturn { burnTaxOn };')();
 const A = new Function('wasmCalls', 'worthOf', 'coins', [
   liftLine(act, 'const FEE_COLLECTOR ='),
-  lift(act, 'function eventsOf('), lift(act, 'function taxEvents('), lift(act, 'function taxPaid('), lift(act, 'function flows('),
+  lift(act, 'function eventsOf('), lift(act, 'function feePayer('), liftLine(act, 'const MOVES ='), lift(act, 'function collectorMoves('), lift(act, 'function taxPaid('), lift(act, 'function flows('),
   lift(act, 'function transfersIn('),
   'return { taxPaid, flows, transfersIn };'].join('\n'))(() => [], () => 0, l => l.map(c => c.amount + c.denom).join(', '));
 
