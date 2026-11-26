@@ -12,17 +12,17 @@
 
    Consent: as in p2p.js, nothing is signed without the PIN typed for that
    one request, and the confirmation shows exactly the text being signed. */
-import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=581388d4';
-import { GRAM_NET, TERMS } from './gram-net.js?v=581388d4';
-import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=581388d4';
-import { $, buzz, go, libs, report as report_ } from './shell.js?v=581388d4';
-import { S } from './state.js?v=581388d4';
-import { decryptSeed } from './storage.js?v=581388d4';
-import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=581388d4';
-import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=581388d4';
-import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=581388d4';
-import { chime, notify } from './notify.js?v=581388d4';
-import { currentLang, formatRaw, rawFromNumber } from './amount.js?v=581388d4';
+import { fmt, getJSON, iconHTML, paintIcons } from './chain.js?v=7a28848b';
+import { GRAM_NET, TERMS } from './gram-net.js?v=7a28848b';
+import { digitsOnly, dots, focusPin, PIN_LEN } from './onboarding.js?v=7a28848b';
+import { $, buzz, go, libs, report as report_ } from './shell.js?v=7a28848b';
+import { S } from './state.js?v=7a28848b';
+import { decryptSeed } from './storage.js?v=7a28848b';
+import { dryRunSwap, sendSwap, signArbitrary, toRaw } from './tx.js?v=7a28848b';
+import { rawOf as tonRaw, readLock, takeRefOf } from './gram-ton.js?v=7a28848b';
+import { buildLock, claimMessage, refundMessage } from './gram-tonlock.js?v=7a28848b';
+import { chime, notify } from './notify.js?v=7a28848b';
+import { currentLang, formatRaw, rawFromNumber } from './amount.js?v=7a28848b';
 
 const NET = GRAM_NET;
 const MAX_PIN_TRIES = 5;
@@ -812,8 +812,9 @@ function summary(){
   const f = readForm();
   const box = $('#gx-sum');
   if (f.total > 0n && f.gram > 0n) {
-    const sell = Number(human(f.total, 6).replace(/,/g, ''));
-    const get = Number(human(f.gram, 9).replace(/,/g, ''));
+    // numbers from the base units, not from display text
+    const sell = Number(f.total) / 1e6;
+    const get = Number(f.gram) / 1e9;
     let vs = '';
     if (MARKET) {
       const d = (get / (sell * MARKET) - 1) * 100;
@@ -850,7 +851,8 @@ $('#gx-min').addEventListener('input', summary);
 $('#gx-max-btn').addEventListener('click', () => {
   const av = available();
   if (av === null) return;
-  $('#gx-sell').value = human(av, 6).replace(/,/g, '');
+  // the language's own separator, so the field reads back as written (#86 review)
+  $('#gx-sell').value = formatRaw(String(av), 6, currentLang(), { group: false });
   follow();
 });
 document.querySelectorAll('.gx-chip[data-pct]').forEach(b => b.addEventListener('click', () => { MODE = Number(b.dataset.pct); follow(); }));
