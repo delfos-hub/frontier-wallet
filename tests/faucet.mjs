@@ -70,6 +70,7 @@ globalThis.fetch = async (url, init) => {
     return reply({ tx_response: { code: 0 } });
   }
   const m = /\/tx\/v1beta1\/txs\/([0-9A-F]+)$/.exec(u);
+  if (m && NODE.txAnswer) return NODE.txAnswer(reply);
   if (m) return NODE.txs[m[1]] ? reply({ tx_response: NODE.txs[m[1]] }) : reply({ message: 'tx not found' }, 404);
   return reply({ message: 'not stubbed: ' + u }, 500);
 };
@@ -87,7 +88,7 @@ const req = (ip = '203.0.113.7') => new Request('https://faucet/claim', {
   method: 'POST', body: JSON.stringify({ address: TO }), headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': ip } });
 const claim = async (e, ip) => { const r = await W.claim(e, req(ip), ORIGIN); return { status: r.status, body: await r.json() }; };
 const rows = db => db.raw.prepare('SELECT id, at, hash FROM claims WHERE address = ?').all(TO);
-const reset = () => { NODE.broadcast = 'ok'; NODE.txs = {}; NODE.sent = 0; NODE.height = 1000; NODE.onBroadcast = null; };
+const reset = () => { NODE.broadcast = 'ok'; NODE.txs = {}; NODE.sent = 0; NODE.height = 1000; NODE.onBroadcast = null; NODE.txAnswer = null; };
 
 console.log('faucet: one payment per claim');
 
@@ -257,6 +258,33 @@ console.log('faucet: one payment per claim');
   const legacy = await W.status(e, 'terra1legacy');
   ok('a legacy p:HASH row a month old: still pending, kept by the purge', legacy.pending === true &&
      db.raw.prepare('SELECT COUNT(*) AS n FROM claims WHERE address = ?').get('terra1legacy').n === 1, JSON.stringify(legacy));
+}
+
+// 8. the unsigned reservation is gone before the hash is written (expired
+// while this request was slow): no row marked, so nothing is broadcast
+{
+  reset(); const db = d1(), e = env(db);
+  const orig = db.prepare.bind(db);
+  db.prepare = sql => {
+    if (/^UPDATE claims SET hash/.test(sql)) db.raw.prepare('DELETE FROM claims').run();   // another request's clean-up got there first
+    return orig(sql);
+  };
+  const a = await claim(e);
+  ok('zero rows updated: 502, and the broadcast was skipped', a.status === 502 && NODE.sent === 0 && !a.body.pending, JSON.stringify(a) + ' sent=' + NODE.sent);
+  db.prepare = orig;
+}
+
+// 9. ambiguous answers past the timeout keep the claim pending
+for (const [name, answer] of [['a malformed 200', r => r({ unexpected: true })], ['a generic 400', r => r({ message: 'bad request' }, 400)],
+                              ['a 200 with an empty tx_response', r => r({ tx_response: {} })]]) {
+  reset(); const db = d1(), e = env(db);
+  const a = await claim(e);
+  NODE.height = 2000; NODE.txAnswer = answer;
+  const s = await W.status(e, TO);
+  ok(name + ' past the timeout height: still pending, the row kept', s.pending === true && rows(db).length === 1 && rows(db)[0].hash.startsWith(W.PENDING + a.body.hash), JSON.stringify(s));
+  NODE.txAnswer = null;
+  const s2 = await W.status(e, TO);
+  ok(name + ', then a plain "tx not found": released', s2.pending === false && rows(db).length === 0, JSON.stringify(s2));
 }
 
 console.log(pass + ' passed, ' + fail + ' failed');

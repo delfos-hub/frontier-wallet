@@ -6,7 +6,8 @@
    The headings were measured at 390 px (17 px, white; the Swap network label
    12 px, muted) and at 1440 px (unchanged). Receive opened at 1440 px and
    narrowed to 390 px stays open with role, aria-modal and aria-labelledby
-   removed. This keeps what those checks
+   removed, and the tab bar hidden exactly as when Receive is opened on a
+   phone. This keeps what those checks
    depend on in place.
 
        node tests/dialog.mjs
@@ -33,6 +34,7 @@ ok('Escape closes the window (and so restores focus)', /if \(e\.key !== 'Escape'
 
 ok('a window that turns into a phone page stays open, no longer a dialog', /m\.classList\.remove\('as-modal'\);[\s\S]{0,200}\['role', 'aria-modal', 'aria-labelledby'\]\.forEach\(a => m\.removeAttribute\(a\)\)/.test(shell) &&
   /\$\$\('\.step'\)\.forEach\(s => \{ if \(s !== m\) s\.classList\.remove\('on'\); \}\)/.test(shell));
+ok('the page a window turns into gets the same tab bar as opening it on a phone', /function tabsFor\(name\)\{/.test(shell) && /closeModal\(\);\s*tap\(\);\s*tabsFor\(name\);/.test(shell) && /tabsFor\(m\.id\.slice\(3\)\); \}/.test(shell));
 console.log('\nheadings on a phone');
 const base = css.indexOf('.head span{font-size:12px;color:var(--muted)}'), fix = css.indexOf('.head h2>span{font-size:inherit;color:inherit;letter-spacing:inherit}');
 ok('a heading’s own span keeps the heading’s size and colour, at every width', fix > base && base > 0 && !/@media|html\.dk/.test(css.slice(base, fix)));

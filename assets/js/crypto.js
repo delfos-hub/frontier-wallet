@@ -1,3 +1,4 @@
+import { b64 } from './b64.js';
 import { $, base, bip32, bip39, ripe, sha } from './shell.js';
 import { S } from './state.js';
 import { saveWallet } from './storage.js';
@@ -5,7 +6,6 @@ import { openWallet } from './tokens.js';
 
 /* ---------------- crypto ---------------- */
 const ITER = 600000;
-const b64 = u8 => btoa(String.fromCharCode(...u8));
 
 async function encryptSeed(mnemonic, pass){
   const enc  = new TextEncoder();

@@ -202,10 +202,25 @@ function editor(id, key){
   };
   ta.addEventListener('input', () => { draw(); if (key) store.set(key, ta.value); });
   ta.addEventListener('scroll', () => { ln.scrollTop = ta.scrollTop; });
+  ta.setAttribute('aria-keyshortcuts', 'Control+] Control+[');
+  ta.title = 'Ctrl+] indents, Ctrl+[ outdents; Tab moves on';
+  // Tab and Shift+Tab move focus as anywhere else (#76 review). Indenting has
+  // its own keys, as in code editors: Ctrl+] (Cmd+] on a Mac) adds two spaces
+  // at the start of each selected line, Ctrl+[ takes up to two away. Through
+  // the input handler like any typed edit, so the form's check is dropped.
   ta.addEventListener('keydown', e => {
-    // two spaces for Tab, through the input handler like any typed edit, so
-    // the form's check is dropped as well (#76 review)
-    if (e.key === 'Tab') { e.preventDefault(); const p = ta.selectionStart; ta.setRangeText('  ', p, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); }
+    if (!(e.ctrlKey || e.metaKey) || (e.key !== ']' && e.key !== '[')) return;
+    e.preventDefault();
+    const v = ta.value, a = ta.selectionStart, b = ta.selectionEnd;
+    const from = v.lastIndexOf('\n', a - 1) + 1, to = b > a && v[b - 1] === '\n' ? b - 1 : b;
+    const lines = v.slice(from, to).split('\n');
+    const out = e.key === ']' ? lines.map(l => '  ' + l) : lines.map(l => l.replace(/^ {1,2}/, ''));
+    const block = out.join('\n');
+    if (block === v.slice(from, to)) return;
+    ta.setRangeText(block, from, to, 'preserve');
+    const d0 = out[0].length - lines[0].length;
+    ta.selectionStart = Math.max(from, a + d0); ta.selectionEnd = Math.max(ta.selectionStart, b + (block.length - (to - from)));
+    ta.dispatchEvent(new Event('input'));
   });
   // The example starts as real text, ready to edit or run. Cleared, the
   // editor shows it greyed out again - and what is shown is what runs, so
@@ -417,6 +432,8 @@ const CHK = checks(() => ({ addr: addrOf(), net: NET }));
 const F = forms();
 const onEdit = (sels, k, drop) => sels.forEach(s => ['input', 'change'].forEach(t => $(s).addEventListener(t, () => { F.edit(k); drop(); })));
 const bound = CHK.bound, fresh = CHK.fresh;
+// the wallet and network a signed check belongs to are still the open ones
+const stillAt = P => addrOf() === P.from && NET.chain === P.net.chain;
 const simulate = (msgs, memo) => CHK.simulate((from, net) => dryRunDev(from, msgs, S.MNEMONIC, net, memo));
 const GO = ['#dv-send-go', '#dv-x-go', '#dv-s1-go', '#dv-i-go', '#dv-a-go'];
 const OUTS = ['#dv-send-out', '#dv-x-out', '#dv-u-out', '#dv-a-out'];
@@ -719,12 +736,15 @@ $('#dv-s1-go').addEventListener('click', async e => {
     if (!res) { $('#dv-s1-txt').innerHTML = 'Confirmation pending · ' + txLink(r.hash); pending(out, r.hash); busy(btn, false); return; }
     const code = attr(res, 'store_code', 'code_id');
     if (!code) throw new Error('stored, but the code id was not in the events: look the transaction up below');
+    // kept under the wallet and network that signed it, whatever is open now;
+    // the form shows it only while that same wallet and network are (#76 review)
+    const codes = store.get('fw:dev:codes:' + P0.net.chain + ':' + P0.from, []);
+    codes.unshift({ code: code, sum: P0.wasm.sum, at: Date.now(), tx: r.hash });
+    store.set('fw:dev:codes:' + P0.net.chain + ':' + P0.from, codes.slice(0, 50));
+    if (!stillAt(P0)) { out.innerHTML = '<div class="dv-okl">Code id ' + esc(code) + ' stored for ' + esc(short(P0.from)) + ' on ' + esc(P0.net.chain) + ' · ' + txLink(r.hash) + '</div>'; busy(btn, false); return; }
     $('#dv-s1-nb').className = 'dv-nb ok';
     $('#dv-s1-txt').innerHTML = 'Code id <b>' + esc(code) + '</b> · ' + txLink(r.hash);
     $('#dv-i-code').value = code; $('#dv-i-code').dispatchEvent(new Event('input'));
-    const codes = store.get('fw:dev:codes:' + NET.chain + ':' + addrOf(), []);
-    codes.unshift({ code: code, sum: P0.wasm.sum, at: Date.now(), tx: r.hash });
-    store.set('fw:dev:codes:' + NET.chain + ':' + addrOf(), codes.slice(0, 50));
     balance();
   } catch (err) { bad(out, err); }
   busy(btn, false);
@@ -769,14 +789,16 @@ $('#dv-i-go').addEventListener('click', async e => {
     if (!res) { pending(out, r.hash); busy(btn, false); return; }
     const c = attr(res, 'instantiate', '_contract_address');
     if (!c) throw new Error('made, but the address was not in the events: look the transaction up');
+    // the signer's list, on the signer's network (#76 review)
+    const list = store.get('fw:dev:mine:' + P0.net.chain + ':' + P0.from, []);
+    list.unshift({ addr: c, code: m.code, label: m.label, admin: m.admin, at: Date.now(), tx: r.hash });
+    store.set('fw:dev:mine:' + P0.net.chain + ':' + P0.from, list.slice(0, 100));
+    if (!stillAt(P0)) { out.innerHTML = '<div class="dv-okl">Contract ' + esc(short(c)) + ' made for ' + esc(short(P0.from)) + ' on ' + esc(P0.net.chain) + ' · ' + txLink(r.hash) + '</div>'; busy(btn, false); return; }
     $('#dv-s2-nb').className = 'dv-nb ok';
     $('#dv-s2-txt').innerHTML = 'Contract <b>' + esc(short(c)) + '</b>';
     out.innerHTML = '<div class="dv-okl">Contract made · ' + txLink(r.hash) + '</div><div class="dv-made"><b>' + esc(c) + '</b><button class="dv-mini-b" type="button" data-c>copy</button><button class="dv-mini-b" type="button" data-use>query it</button></div>';
     out.querySelector('[data-c]').onclick = ev => copy(c, ev.currentTarget);
     out.querySelector('[data-use]').onclick = () => { setContract(c); $('.dv-tabs button[data-dv="q"]').click(); };
-    const list = store.get('fw:dev:mine:' + NET.chain + ':' + addrOf(), []);
-    list.unshift({ addr: c, code: m.code, label: m.label, admin: m.admin, at: Date.now(), tx: r.hash });
-    store.set('fw:dev:mine:' + NET.chain + ':' + addrOf(), list.slice(0, 100));
     setContract(c);
     mine();
     balance();

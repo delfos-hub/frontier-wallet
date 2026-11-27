@@ -256,7 +256,12 @@ async function claim(env, request, origin){
   const mark = (h, t) => PENDING + h + '@' + t;
   let sent;
   try {
-    sent = await send(env, to, c.amount, (h, t) => env.DB.prepare('UPDATE claims SET hash = ?1 WHERE id = ?2').bind(mark(h, t), id).run());
+    // the reservation must still be there (not expired as unsigned while this
+    // request was slow): exactly one row marked, or nothing is broadcast
+    sent = await send(env, to, c.amount, async (h, t) => {
+      const w = await env.DB.prepare("UPDATE claims SET hash = ?1 WHERE id = ?2 AND (hash = '' OR hash LIKE 'p:%')").bind(mark(h, t), id).run();
+      if (!w || !w.meta || w.meta.changes !== 1) throw new Error('the reservation for this claim is gone; nothing was sent');
+    });
   } catch (e) {
     if (!e.unknown) {
       await env.DB.prepare('DELETE FROM claims WHERE id = ?1').bind(id).run().catch(() => {});
@@ -283,23 +288,39 @@ async function claim(env, request, origin){
   return json({ hash: sent.hash, amount: c.amount, pending: true }, 202, origin);
 }
 
+/* One look at a transaction: { tx } when the node shows it in a block (a
+   tx_response with a block height), 'missing' only when it says plainly that
+   it has no such transaction (HTTP 404, or a "tx not found" answer), and
+   'unknown' for anything else: no answer, an error, a malformed 200 (#76
+   review). Only the first two are evidence. */
+async function lookTx(env, hash){
+  let j;
+  try { j = await lcd(env, '/cosmos/tx/v1beta1/txs/' + hash); }
+  catch (e) {
+    if (e.status === 404 || ((e.status === 400 || e.status === 500) && /tx not found|not found: tx|no transaction/i.test(e.message || ''))) return 'missing';
+    return 'unknown';
+  }
+  const tx = j && j.tx_response;
+  if (tx && typeof tx === 'object' && Number(tx.height) > 0 && (tx.code === undefined || Number.isInteger(Number(tx.code)))) return { tx: tx };
+  return 'unknown';
+}
 /* What became of a transaction, from the chain: 'paid' (in a block, code 0),
-   'failed' (in a block with an error, or not on chain once the chain is past
-   its timeout height, after which it can never be included), or 'unknown'
-   (not seen yet, or the node did not answer). */
+   'failed' (in a block with an error, or reported missing once the chain is
+   past its timeout height, after which it can never be included), or
+   'unknown' (not seen yet, or no clear answer). */
 async function outcome(env, hash, timeout){
-  let tx = null;
-  try { tx = (await lcd(env, '/cosmos/tx/v1beta1/txs/' + hash)).tx_response || null; }
-  catch (e) { if (e.status !== 404 && e.status !== 400) return 'unknown'; }
-  if (tx) return tx.code ? 'failed' : 'paid';
-  if (!(timeout > 0)) return 'unknown';
+  const settled = x => Number(x.tx.code || 0) ? 'failed' : 'paid';
+  const a = await lookTx(env, hash);
+  if (a.tx) return settled(a);
+  if (a !== 'missing' || !(timeout > 0)) return 'unknown';
   let h = 0;
   try { h = await height(env); } catch (e) { return 'unknown'; }
   if (h <= timeout) return 'unknown';
-  // past the timeout: asked once more, so a block that just landed is not missed
-  try { tx = (await lcd(env, '/cosmos/tx/v1beta1/txs/' + hash)).tx_response || null; }
-  catch (e) { if (e.status !== 404 && e.status !== 400) return 'unknown'; }
-  return tx ? (tx.code ? 'failed' : 'paid') : 'failed';
+  // past the timeout: asked once more, so a block that just landed is not
+  // missed; released only on a plain "not found" again
+  const b = await lookTx(env, hash);
+  if (b.tx) return settled(b);
+  return b === 'missing' ? 'failed' : 'unknown';
 }
 
 /* Claims whose outcome was not known ('p:HASH@TIMEOUT'), asked about before

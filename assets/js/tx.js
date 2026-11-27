@@ -4,6 +4,7 @@ import { S } from './state.js';
 import { heldTokens, refreshBalances, sortHeld } from './tokens.js';
 import { notify } from './notify.js';
 import { currentLang, formatRaw, parseAmount, rawFromNumber } from './amount.js';
+import { b64 } from './b64.js';
 
 /* ---------------- protobuf ----------------
    Written out by hand because cosmjs is several hundred kilobytes and this is
@@ -58,7 +59,7 @@ const signDoc = (body, auth, chain, accNum) =>
   cat([fBytes(1, body), fBytes(2, auth), fStr(3, chain), fUint(4, accNum)]);
 const txRaw = (body, auth, sigs) =>
   cat([fBytes(1, body), fBytes(2, auth), ...sigs.map(s => fBytes(3, s))]);
-const b64 = b => btoa(String.fromCharCode.apply(null, b));
+// base64 for simulation and broadcast alike: b64.js, in bounded chunks
 
 /* ---------------- chain facts ---------------- */
 const CHAIN = 'columbus-5';

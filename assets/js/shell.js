@@ -124,6 +124,13 @@ document.addEventListener('keydown', e => {
   if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
   else if (!e.shiftKey && (i < 0 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
 });
+// the tab bar for a page: shown on the wallet's tabs only, its own tab picked
+function tabsFor(name){
+  const t = $('#tabs');
+  if (!t) return;
+  t.classList.toggle('on', WALLET_TABS.includes(name));
+  t.querySelectorAll('.tab').forEach(b => b.classList.toggle('sel', b.dataset.tab === name));
+}
 function go(name){
   const dk = document.documentElement.classList.contains('dk');
   const base = [...document.querySelectorAll('.step.on')].find(s => !s.classList.contains('as-modal'));
@@ -143,11 +150,7 @@ function go(name){
   }
   closeModal();
   tap();
-  const t = $('#tabs');
-  if (t) {
-    t.classList.toggle('on', WALLET_TABS.includes(name));
-    t.querySelectorAll('.tab').forEach(b => b.classList.toggle('sel', b.dataset.tab === name));
-  }
+  tabsFor(name);
   // the intro plays once; coming back to welcome later must be instant
   $('#st-welcome').classList.remove('intro');
   $$('.step').forEach(s => s.classList.remove('on'));
@@ -178,7 +181,9 @@ new MutationObserver(() => {
   if (m && !document.documentElement.classList.contains('dk')) { m.classList.remove('as-modal'); document.body.classList.remove('modal-open');
     // a page again, still open: no longer a dialog to assistive tech (#76 review)
     ['role', 'aria-modal', 'aria-labelledby'].forEach(a => m.removeAttribute(a)); OPENER = null;
-    $$('.step').forEach(s => { if (s !== m) s.classList.remove('on'); }); }
+    $$('.step').forEach(s => { if (s !== m) s.classList.remove('on'); });
+    // the same tab bar as opening that page on a phone (#76 review)
+    tabsFor(m.id.slice(3)); }
 }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
 // One promise, not a flag. Two callers arriving together used to start two

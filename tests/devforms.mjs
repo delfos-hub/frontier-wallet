@@ -90,7 +90,8 @@ const stubs = {
 export const toRaw = (v, dec) => { const n = Number(String(v).replace(',', '.')); if (!(n > 0)) throw new Error('bad amount'); return String(Math.round(n * 10 ** dec)); };
 // a simulation held open until the test lets it go
 export const dryRunDev = (from, msgs, mn, net, memo) => new Promise(res => globalThis.__dev.SIMS.push({ msgs, memo, done: () => res({ gasFee: 1000, gas: 100000, fee: 1000 }) }));
-export const sendDev = async (from, msgs, mn, net, fee, memo) => { globalThis.__dev.SENT.push({ msgs, memo }); return { hash: 'H', wait: async () => null }; };`,
+// its confirmation: none (pending) unless the test hands one over
+export const sendDev = async (from, msgs, mn, net, fee, memo) => { globalThis.__dev.SENT.push({ from, msgs, memo }); return { hash: 'H'.repeat(64), wait: () => globalThis.__dev.WAIT ? globalThis.__dev.WAIT() : Promise.resolve(null) }; };`,
 };
 for (const [f, s] of Object.entries(stubs)) fs.writeFileSync(path.join(dir, f), s);
 fs.writeFileSync(path.join(dir, 'devcheck.js'), fs.readFileSync(path.resolve('assets/js/devcheck.js'), 'utf8'));
@@ -186,22 +187,29 @@ console.log('\nexecute, instantiate, admin: an edit during the check');
 console.log('\nprogrammatic edits: Tab in the JSON editor, the token list rebuilt');
 {
   const C = 'terra1' + 'e'.repeat(58);
-  type('#dv-x-addr', C); type('#dv-x-msg', '{"memo":"ab"}');
+  type('#dv-x-addr', C); type('#dv-x-msg', '{\n"memo": "ab"\n}');
   $('#dv-x-sim').click(); await tick();
   SIMS[SIMS.length - 1].done(); await tick(); await tick();
   ok('execute checked: signing on', $('#dv-x-go').disabled === false);
   const ta = $('#dv-x-msg');
+  const key = (k, mods) => { let stopped = false; ta.dispatchEvent(Object.assign({ type: 'keydown', key: k, preventDefault(){ stopped = true; } }, mods || {})); return stopped; };
   ta.selectionStart = ta.selectionEnd = 10;   // inside the string "ab"
-  ta.dispatchEvent({ type: 'keydown', key: 'Tab' });
-  ok('Tab inside a JSON string writes two spaces there', ta.value === '{"memo":"a  b"}', ta.value);
+  ok('Tab is left to the browser: focus moves on, nothing typed', key('Tab') === false && ta.value === '{\n"memo": "ab"\n}');
+  ok('Shift+Tab too', key('Tab', { shiftKey: true }) === false && ta.value === '{\n"memo": "ab"\n}');
+  ok('a check survives moving through the editor with Tab', $('#dv-x-go').disabled === false);
+  ok('Ctrl+] indents the line, even with the caret inside a JSON string', key(']', { ctrlKey: true }) === true && ta.value === '{\n  "memo": "ab"\n}', JSON.stringify(ta.value));
   ok('and signing goes off at once', $('#dv-x-go').disabled === true);
   const n = SENT.length;
   $('#dv-x-go').disabled = false; $('#dv-x-go').click(); await tick(); await tick();
-  ok('the check from before the Tab is not signed', SENT.length === n);
+  ok('the check from before the indent is not signed', SENT.length === n);
+  const before = SIMS.length;
   $('#dv-x-sim').click(); await tick();
-  ok('a fresh check is for the edited message', SIMS[SIMS.length - 1].msgs[0].msg === '{"memo":"a  b"}', JSON.stringify(SIMS[SIMS.length - 1].msgs[0]));
+  ok('a fresh check runs for it', SIMS.length === before + 1 && SIMS[before].msgs[0].msg === '{"memo":"ab"}', JSON.stringify(SIMS[SIMS.length - 1].msgs[0]));
   SIMS[SIMS.length - 1].done(); await tick(); await tick();
   ok('then signing is on again', $('#dv-x-go').disabled === false);
+  ta.selectionStart = 0; ta.selectionEnd = ta.value.length;
+  key('[', { metaKey: true });
+  ok('Cmd+[ outdents every selected line, and drops the check too', ta.value === '{\n"memo": "ab"\n}' && $('#dv-x-go').disabled === true, JSON.stringify(ta.value));
 
   // the send form on a token that a balance refresh takes away
   BAL = [{ denom: 'uluna', amount: '900000000' }, { denom: 'uusd', amount: '5000000' }];
@@ -242,6 +250,51 @@ console.log('\nthe faucet: 202, a failure in the block, then a status refresh');
   FAUCET.status = Object.assign({}, base, { next: 0, pending: false, pending_hash: '' });
   await show('#st-dev'); await new Promise(r => setTimeout(r, 50));
   ok('a status refresh alone turns the button back on, with no second POST', $('#dv-fc-go').disabled === false && POSTS === 1 && $('#dv-fc-next').textContent === 'Ready', $('#dv-fc-next').textContent + ' posts=' + POSTS);
+}
+
+console.log('\na confirmation that lands after the wallet changed');
+{
+  const S = (await import(pathToFileURL(path.join(dir, 'state.js')).href)).S;
+  const A = S.ADDR, B = 'terra1' + 'f'.repeat(38);
+  const held = () => { let open; const p = new Promise(r => { open = r; }); globalThis.__dev.WAIT = () => p; return open; };
+  const LSget = k => JSON.parse(LS[k] || '[]');
+  // upload: a fresh check, signed as A, confirmed after the switch to B
+  const file = bytes => ({ name: 'c.wasm', arrayBuffer: async () => Uint8Array.from(bytes).buffer });
+  const meta0 = $('#dv-wasm-meta').textContent;
+  $('#dv-wasm').dispatchEvent({ type: 'change', target: { files: [file([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0, 3])] } });
+  await fileRead(meta0);
+  $('#dv-s1-sim').click(); await tick(); SIMS[SIMS.length - 1].done(); await tick(); await tick();
+  let land = held();
+  $('#dv-i-code').value = '';
+  $('#dv-s1-go').click(); await tick(); await tick();
+  ok('the upload is signed by A', SENT[SENT.length - 1].from === A);
+  S.ADDR = B; (listeners['frontier:wallet'] || []).forEach(f => f({}));
+  land({ events: [{ type: 'store_code', attributes: [{ key: 'code_id', value: '42' }] }] }); await tick(); await tick(); await tick();
+  ok('code id 42 is saved in A’s history on rebel-2', LSget('fw:dev:codes:rebel-2:' + A).some(c => c.code === '42'), JSON.stringify(LSget('fw:dev:codes:rebel-2:' + A)));
+  ok('and not in B’s', !LSget('fw:dev:codes:rebel-2:' + B).some(c => c.code === '42'));
+  ok('B’s instantiate form is not filled with A’s code id', $('#dv-i-code').value === '');
+
+  // instantiate: signed as B, confirmed after the switch back to A
+  type('#dv-i-code', '7'); type('#dv-i-label', 'made'); type('#dv-i-msg', '{}');
+  $('#dv-i-sim').click(); await tick(); SIMS[SIMS.length - 1].done(); await tick(); await tick();
+  land = held();
+  $('#dv-i-go').click(); await tick(); await tick();
+  ok('the contract is made by B', SENT[SENT.length - 1].from === B);
+  S.ADDR = A; (listeners['frontier:wallet'] || []).forEach(f => f({}));
+  const X = 'terra1' + '9'.repeat(58);
+  type('#dv-x-addr', '');
+  land({ events: [{ type: 'instantiate', attributes: [{ key: '_contract_address', value: X }] }] }); await tick(); await tick(); await tick();
+  ok('the new contract is saved in B’s list on rebel-2', LSget('fw:dev:mine:rebel-2:' + B).some(c => c.addr === X), JSON.stringify(LSget('fw:dev:mine:rebel-2:' + B)));
+  ok('and not in A’s', !LSget('fw:dev:mine:rebel-2:' + A).some(c => c.addr === X));
+  ok('A’s forms are not pointed at B’s contract', $('#dv-x-addr').value === '');
+
+  // the same wallet still open: the form shows the result as before
+  land = held();
+  $('#dv-i-sim').click(); await tick(); SIMS[SIMS.length - 1].done(); await tick(); await tick();
+  $('#dv-i-go').click(); await tick(); await tick();
+  land({ events: [{ type: 'instantiate', attributes: [{ key: '_contract_address', value: 'terra1' + '8'.repeat(58) }] }] }); await tick(); await tick(); await tick();
+  ok('no switch: saved for A and the forms take the new contract', LSget('fw:dev:mine:rebel-2:' + A).some(c => c.addr === 'terra1' + '8'.repeat(58)) && $('#dv-x-addr').value === 'terra1' + '8'.repeat(58));
+  globalThis.__dev.WAIT = null;
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
