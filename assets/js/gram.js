@@ -378,9 +378,16 @@ document.addEventListener('click', e => {
 // market is read then, not 30 s later on the next tick
 {
   const st = card && card.closest('.step');
-  if (st && window.MutationObserver) new MutationObserver(() => { if (onHome()) later(() => homeCard(false)); })
+  // the deal part is local and drawn at once; only the market read waits for the move
+  if (st && window.MutationObserver) new MutationObserver(() => { if (onHome() && card && !card.hidden) { homeDeal(); later(() => homeCard(false)); } })
     .observe(st, { attributes: true, attributeFilter: ['class'] });
 }
+// another wallet: the old one's deal state goes at once, and the card (and
+// its Open button's tab) is drawn for the new one before any delay (#77 review)
+document.addEventListener('frontier:wallet', () => {
+  WAITING_N = 0; HOME_TAB = '';
+  if (card && !card.hidden) homeDeal();
+});
 if (card && !card.hidden) paintMarket(keptMarket());
 setTimeout(() => homeCard(true), 1500);
 
