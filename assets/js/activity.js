@@ -159,8 +159,12 @@ const VERB = {
   claim_reward: 'Claimed rewards', harvest: 'Claimed rewards',
   stake: 'Staked', unstake: 'Unstaked', unbond: 'Unstaked', bond: 'Staked',
   deposit: 'Deposited', withdraw: 'Withdrew', vote: 'Voted', enter: 'Entered',
-  register: 'Registered', mint_nft: 'Minted an NFT', approve: 'Approved'
+  register: 'Registered', mint_nft: 'Minted an NFT', approve: 'Approved',
+  predict: 'Prediction placed', settle: 'Settled', resolve: 'Resolved'
 };
+// Oracle Prophecy's own calls, in its words
+const PROPHECY = { predict: 'Prediction placed', create: 'Market created', create_market: 'Market created',
+  settle: 'Market settled', resolve: 'Market settled', claim: 'Winnings claimed', refund: 'Refunded' };
 
 /* Which face a contract call wears.
    Only swaps had one, so staking, unstaking and claiming all came out wearing
@@ -187,6 +191,45 @@ function hookOf(msg){
   } catch (e) { return null; }
 }
 
+/* The message that says what happened. A pool deposit comes as two token
+   approvals and then the deposit; the row read "Approved spending \u00d72"
+   because it named the first message. An approval is skipped only when it is
+   for the contract the rest of the transaction calls (or sends to): that is
+   the deposit. One for anyone else is what a history should show. */
+const PREP = /^(increase_allowance|decrease_allowance|approve|approve_all)$/;
+function spenderOf(m){
+  const msg = (m && m.msg) || {};
+  const a = msg[Object.keys(msg)[0]] || {};
+  return a.spender || a.operator || '';
+}
+// An approval in a transaction that is about something else, for a spender
+// that thing does not involve: kept in sight, with its direction (an
+// allowance raised or lowered reads differently).
+function alsoOf(msgs, m){
+  return msgs.filter(x => x !== m && PREP.test(intentOf(x)) && !isPrep(x, msgs))
+    .map(x => ({ sp: spenderOf(x), down: intentOf(x) === 'decrease_allowance' }))
+    .filter(a => a.sp);
+}
+function alsoTitle(also){
+  if (!also.length) return '';
+  const up = also.filter(a => !a.down).length, down = also.length - up;
+  if (!down) return ' +' + (up === 1 ? 'approval' : up + ' approvals');
+  if (!up) return ' +' + (down === 1 ? 'allowance lowered' : down + ' allowances lowered');
+  return ' +' + also.length + ' allowance changes';
+}
+function alsoRow(a){
+  return a.down ? ['Also lowered', 'allowance of ' + short(a.sp)] : ['Also approved', 'spending by ' + short(a.sp)];
+}
+function isPrep(x, msgs){
+  if (!PREP.test(intentOf(x))) return false;
+  const sp = spenderOf(x);
+  return !!sp && msgs.some(o => o !== x && !PREP.test(intentOf(o)) &&
+    (o.contract === sp || (o.msg && o.msg.send && o.msg.send.contract === sp)));
+}
+function primaryMsg(msgs){
+  return msgs.find(x => !isPrep(x, msgs) && !PREP.test(intentOf(x))) ||
+    msgs.find(x => !isPrep(x, msgs)) || msgs[0] || {};
+}
 function intentOf(m){
   const msg = m && m.msg;
   if (!msg || typeof msg !== 'object') return '';
@@ -215,9 +258,10 @@ const ICON = {
 // what the transaction was, and which face it wears
 function describe(t, me){
   const msgs = ((t.tx || {}).body || {}).messages || [];
-  const m = msgs[0] || {};
+  const m = primaryMsg(msgs);
   const type = String(m['@type'] || '');
-  const extra = msgs.length > 1 ? ' +' + (msgs.length - 1) : '';
+  const rest = msgs.filter(x => x !== m && !isPrep(x, msgs)).length;
+  const extra = rest ? ' +' + rest : '';
 
   if (type.indexOf('MsgSend') >= 0) {
     const mine = m.from_address === me;
@@ -287,7 +331,7 @@ const FEE_COLLECTOR = 'terra17xpfvakm2amg962yls6f84z3kell8c5lkaeqfa';
 
 function transfersIn(t, me){
   const out = [];
-  for (const e of eventsOf(t)) {
+  for (const e of txEvents(t)) {
     if (e.type !== 'transfer') continue;
     let to = '', from = '', what = '';
     for (const a of (e.attributes || [])) {
@@ -325,23 +369,113 @@ function eventsOf(t){
   for (const lg of (t.logs || [])) for (const e of (lg.events || [])) fromLogs.push(e);
   return fromLogs.length ? fromLogs : (t.events || []);
 }
-function taxPaid(t, me){
+// Who pays the fee: a granter or a named payer, else the first message's signer
+function feePayer(t){
+  const f = ((t.tx || {}).auth_info || {}).fee || {};
+  if (f.granter) return f.granter;
+  if (f.payer) return f.payer;
+  const m = ((((t.tx || {}).body || {}).messages) || [])[0] || {};
+  return m.from_address || m.sender || m.delegator_address || m.voter || m.depositor || m.proposer || m.granter || '';
+}
+/* The transaction's events once, from both lists (#68 review).
+   The message logs hold each message's events under its index; the top level
+   holds the fee's own events and, depending on the node, copies of the
+   messages' events, with msg_index or without. Each top-level event is dropped
+   only when an equal event (same type and attributes, msg_index aside, and the
+   same message when it names one) is in the logs, one copy for one; anything
+   found only at the top level is kept.
+   The fee asked for, from its payer, at the top level (and on a node that
+   indexes message events, any top-level move without an index) is the fee:
+   it is taken as the copy of a log move only when that log move is not a
+   burn tax already claimed by its own message's marker, so a 5 LUNC fee and a
+   5 LUNC tax stay two moves. */
+const MOVES = new WeakMap(), RECON = new WeakMap();
+function reconcile(t){
+  if (RECON.has(t)) return RECON.get(t);
   const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
-  const evs = eventsOf(t), mine = [], out = [];
-  for (const e of evs) {
-    if (e.type === 'transfer' && attr(e, 'sender') === me && attr(e, 'recipient') === FEE_COLLECTOR) mine.push(attr(e, 'amount'));
-  }
-  for (const e of evs) {
-    if (e.type !== 'tax_payment') continue;
-    const what = attr(e, 'tax_amount'), i = mine.indexOf(what);
-    if (!what || i < 0) continue;
-    mine.splice(i, 1);
-    for (const part of what.split(',')) {
-      const mm = /^(\d+)(.+)$/.exec(part.trim());
-      if (mm) out.push({ amount: mm[1], denom: mm[2] });
+  const keyOf = e => e.type + '|' + (e.attributes || []).filter(a => a.key !== 'msg_index').map(a => a.key + '=' + a.value).sort().join('&');
+  // the older SDK log puts a message's transfers into one event, their
+  // recipient / sender / amount repeated in order: one movement each, the
+  // other attributes (msg_index) kept with every one (#68 review)
+  const MOVE_KEYS = ['recipient', 'sender', 'amount'];
+  const expand = e => {
+    if (e.type !== 'transfer') return [e];
+    const rest = (e.attributes || []).filter(a => !MOVE_KEYS.includes(a.key)), groups = [];
+    let cur = null;
+    for (const a of (e.attributes || [])) {
+      if (!MOVE_KEYS.includes(a.key)) continue;
+      if (!cur || cur.some(x => x.key === a.key)) groups.push(cur = []);
+      cur.push(a);
     }
+    return groups.length < 2 ? [e] : groups.map(g => ({ type: e.type, attributes: g.concat(rest) }));
+  };
+  const top = [];
+  (t.events || []).forEach(e0 => expand(e0).forEach(e => top.push({ e: e, msg: attr(e, 'msg_index') || null, top: true, ante: false })));
+  const logs = [];
+  (t.logs || []).forEach((lg, i) => (lg.events || []).forEach(e0 => expand(e0).forEach(e => logs.push({ e: e, msg: String(lg.msg_index != null ? lg.msg_index : i), top: false, ante: false }))));
+  const isMove = x => x.e.type === 'transfer' && attr(x.e, 'recipient') === FEE_COLLECTOR;
+  // log moves claimed by a marker of their own message (same amount, payer)
+  const claimed = new Set();
+  for (const k of logs.filter(x => x.e.type === 'tax_payment')) {
+    const payer = attr(k.e, 'payer') || attr(k.e, 'sender');
+    const m = logs.find(x => isMove(x) && !claimed.has(x) && x.msg === k.msg && attr(x.e, 'amount') === attr(k.e, 'tax_amount') && (!payer || attr(x.e, 'sender') === payer));
+    if (m) claimed.add(m);
   }
+  // the fee's own moves at the top level
+  const indexed = top.some(x => x.msg !== null);
+  const payer = feePayer(t);
+  for (const c of ((((t.tx || {}).auth_info || {}).fee || {}).amount || [])) {
+    const m = top.find(x => isMove(x) && !x.ante && attr(x.e, 'sender') === payer && attr(x.e, 'amount') === String(c.amount) + c.denom);
+    if (m) m.ante = true;
+  }
+  if (indexed) top.forEach(x => { if (isMove(x) && x.msg === null) x.ante = true; });
+  // one log copy for one top-level event: the fee first, then the rest
+  const used = new Set();
+  const copyOf = x => logs.find(l => !used.has(l) && keyOf(l.e) === keyOf(x.e) && (x.msg === null || x.msg === l.msg) && !(x.ante && claimed.has(l)));
+  const keep = [];
+  for (const x of top.filter(x => x.ante).concat(top.filter(x => !x.ante))) {
+    const l = copyOf(x);
+    if (l) { used.add(l); continue; }
+    keep.push(x);
+  }
+  // in their own order: the top level as it came, then the logs
+  const out = top.filter(x => keep.includes(x)).concat(logs);
+  RECON.set(t, out);
   return out;
+}
+// the events alone, for the moves between addresses
+function txEvents(t){ return reconcile(t).map(x => x.e); }
+/* Every move to the fee collector, once, each marked as the fee or as a burn
+   tax, with the address that made it. Each tax_payment marker (the logs'
+   first) takes one move: of the same coin, from its own message, sent by the
+   payer it names; the move's sender is who paid that tax. What is left is fee. */
+function collectorMoves(t){
+  if (MOVES.has(t)) return MOVES.get(t);
+  const attr = (e, k) => { for (const a of (e.attributes || [])) if (a.key === k) return a.value; return ''; };
+  const split = what => String(what || '').split(',').map(p => /^(\d+)(.+)$/.exec(p.trim())).filter(Boolean).map(mm => ({ amount: mm[1], denom: mm[2] }));
+  const evs = reconcile(t);
+  const indexed = (t.events || []).some(e => attr(e, 'msg_index'));
+  const moves = [], marks = [];
+  for (const x of evs) {
+    if (x.e.type === 'transfer' && attr(x.e, 'recipient') === FEE_COLLECTOR)
+      for (const c of split(attr(x.e, 'amount'))) moves.push({ from: attr(x.e, 'sender'), c: c, msg: x.msg, ante: x.ante, tax: false });
+    if (x.e.type === 'tax_payment')
+      for (const c of split(attr(x.e, 'tax_amount'))) marks.push({ payer: attr(x.e, 'payer') || attr(x.e, 'sender'), c: c, msg: x.msg, top: x.top });
+  }
+  const same = (a, b) => a.c.denom === b.c.denom && a.c.amount === b.c.amount;
+  for (const k of marks.filter(k => !k.top).concat(marks.filter(k => k.top))) {
+    const fits = m => !m.tax && !m.ante && same(m, k) && (!k.payer || m.from === k.payer);
+    const hit = (k.msg !== null && moves.find(m => fits(m) && m.msg === k.msg)) ||
+      // where the marker or its move cannot be placed (no index): by coin
+      ((k.msg === null || !indexed) && moves.find(m => fits(m) && (k.msg === null || m.msg === null))) || null;
+    if (hit) hit.tax = true;
+  }
+  MOVES.set(t, moves);
+  return moves;
+}
+// The burn tax this address paid, as coins
+function taxPaid(t, me){
+  return collectorMoves(t).filter(m => m.tax && m.from === me).map(m => ({ amount: m.c.amount, denom: m.c.denom }));
 }
 
 // Token moves are not transfer events; each token contract logs its own
@@ -403,6 +537,8 @@ function openTx(hash){
     }).join('') + '</div>';
   }
   if (l.place) html += row('Where', l.place);
+  // spending approved for someone other than the contract above
+  for (const a of l.also) { const r = alsoRow(a); html += row(r[0], r[1], 'warn') + '<p class="tx-who">' + esc(a.sp) + '</p>'; }
   // what actually arrived, when the tax came out of it
   if (!failed && taxPaid(t, me).length) {
     for (const mv of transfersIn(t, me)) if (!mv.mine) html += row('Recipient got', mv.text) +
@@ -418,7 +554,9 @@ function openTx(hash){
 
   html += row('Status', failed ? 'Failed' : 'Confirmed', failed ? 'out' : 'in');
   html += row('Block', String(t.height || ''));
-  if (feeOf(t)) html += row('Network fee', feeOf(t));
+  // a fee paid by someone else (a granter) is named as theirs, not this wallet's
+  const payer = feePayer(t);
+  if (feeOf(t)) html += row('Network fee', feeOf(t) + (payer && payer !== me ? ' \u00b7 paid by ' + short(payer) : ''));
   if (!failed) for (const c of taxPaid(t, me)) html += row('Burn tax', coins([c]));
   if (t.gas_used) html += row('Gas', t.gas_used + ' of ' + (t.gas_wanted || '?'));
   if (memo) html += row('Memo', memo);
@@ -453,7 +591,7 @@ function permSet(k, v){ try { localStorage.setItem('fw:perm:' + k, JSON.stringif
 function flows(t, me){
   const net = {};
   const add = (k, n) => { if (k && n) net[k] = (net[k] || 0) + n; };
-  for (const e of eventsOf(t)) {
+  for (const e of txEvents(t)) {
     if (e.type !== 'transfer') continue;
     let to = '', from = '', what = '';
     for (const a of (e.attributes || [])) {
@@ -503,6 +641,18 @@ function worthOf(f){
 }
 const symOfKey = k => rowOfKey(k).sym;
 const amountText = f => (f.raw > 0 ? '+' : '-') + fmt(human(f)) + ' ' + symOfKey(f.key);
+// flows summed per asset (denom or token), in the order first seen; formatted
+// only when shown
+function byAsset(fs){
+  const at = {}, out = [];
+  for (const f of fs) {
+    if (!f || !f.raw) continue;
+    if (!(f.key in at)) { at[f.key] = out.length; out.push({ key: f.key, raw: 0 }); }
+    out[at[f.key]].raw += f.raw;
+  }
+  return out;
+}
+const rewardText = rs => rs.length ? rs.map(amountText).join(' \u00b7 ') + ' rewards' : '';
 
 /* Where it happened. Same code ids as the DeFi screen; a contract seen for
    the first time is looked up once in the background and the list redrawn. */
@@ -532,6 +682,8 @@ function placeOf(c, me){
 function prettyLabel(l){
   // a contract's label is whatever its deployer typed
   l = clean(l, 60).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // an all-lowercase label ("oracle prophecy") reads as a name with capitals
+  if (l === l.toLowerCase()) l = l.replace(/(^|\s)([a-z])/g, (x, a, b) => a + b.toUpperCase());
   if (/router/i.test(l)) return 'Swap router' + (/terraport/i.test(l) ? ' \u00b7 Terraport' : /garuda/i.test(l) ? ' \u00b7 Garuda' : '');
   return l.length > 28 ? l.slice(0, 27) + '\u2026' : l;
 }
@@ -599,7 +751,7 @@ function gramSwapRow(t, m, intent, ins, me){
 
 function look(t, me){
   const msgs = ((t.tx || {}).body || {}).messages || [];
-  const m = msgs[0] || {};
+  const m = primaryMsg(msgs);
   const type = String(m['@type'] || '');
   const d = describe(t, me);
   const intent = type.indexOf('MsgExecuteContract') >= 0 ? intentOf(m) : '';
@@ -607,6 +759,9 @@ function look(t, me){
   const ins = f.filter(x => x.raw > 0), outs = f.filter(x => x.raw < 0);
   const swap = d.kind === 'swap' || /swap/.test(intent);
   let title = d.title.replace(/ \+\d+$/, ''), kind = d.kind, group = 'other';
+  // an approval for someone other than the contract this transaction deals
+  // with stays in sight: in the title of the row and named in the detail
+  const also = alsoOf(msgs, m);
   if (swap) { title = 'Swapped'; kind = 'swap'; group = 'swaps'; }
   else if (type.indexOf('MsgSend') >= 0 || intent === 'transfer') group = 'transfers';
   else if (STAKING_MSG.test(type)) group = 'staking';
@@ -617,10 +772,15 @@ function look(t, me){
   }
   if (intent === 'withdraw_unlocked' || intent === 'withdraw_released') { title = 'Withdrew'; kind = 'in'; }
   if (intent === 'withdraw' && ins.length && PLACE_CODE[permGet('code:' + m.contract)] === 'Garuda staking') { title = 'Claimed rewards'; kind = 'gift'; }
-  if (msgs.length > 1 && !swap) title += msgs.every(x => x['@type'] === m['@type']) ? ' \u00d7' + msgs.length : '';
+  // the same action repeated in one transaction (approvals before it do not count)
+  const same = msgs.filter(x => x['@type'] === m['@type'] && intentOf(x) === intent).length;
+  if (same > 1 && !swap) title += ' \u00d7' + same;
   // where: the product for a contract call, the other person for a transfer
   let sub = d.sub;
-  const place = m.contract ? placeOf(m.contract, me) : '';
+  // a token sent into a contract (a farm, a pool) happened at that contract,
+  // not at the token's own: the hook's target names the place
+  const target = m.msg && m.msg.send && m.msg.send.contract;
+  const place = (target && placeOf(target, me)) || (m.contract ? placeOf(m.contract, me) : '');
   if (swap) {
     const a = outs[0], b = ins[0];
     sub = a && b ? symOfKey(a.key) + ' \u2192 ' + symOfKey(b.key) : d.sub;
@@ -649,13 +809,51 @@ function look(t, me){
       msgKey = k;
     }
   }
+  if (/prophecy/i.test(place) && PROPHECY[intent]) {
+    title = PROPHECY[intent] + (same > 1 ? ' \u00d7' + same : '');
+    group = 'defi';
+    kind = ins.length && !outs.length ? 'in' : outs.length && !ins.length ? 'out' : kind;
+  }
   const gs = gramSwapRow(t, m, intent, ins, me);
   if (gs) { title = gs.title; kind = gs.kind; group = gs.group; sub = gs.sub; if (gs.below) below = gs.below; }
-  const main = swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0 } : null));
+  title += alsoTitle(also);
+  // a request with no flow yet (an unstake): its amount rides along as req,
+  // so a folded run can add it up. A contract's is in its message, a native
+  // (un)delegation's is the one coin it names.
+  let req = msgKey ? Number(m.msg[intent].amount) : 0;
+  // native unstakes: this wallet's own messages, from which the count, the
+  // amount and the validator all come (another delegator's in the same
+  // transaction are not this wallet's request) (#68 review)
+  const unMsgs = /MsgUndelegate/.test(type) ? msgs.filter(x => x['@type'] === m['@type'] && x.amount && x.amount.denom &&
+    (!x.delegator_address || x.delegator_address === me)) : [];
+  const um = unMsgs[0] || m;
+  const coin = um.amount && !Array.isArray(um.amount) && um.amount.denom ? um.amount : null;
+  if (!msgKey && coin && STAKING_MSG.test(type)) { msgKey = 'native:' + coin.denom; req = Number(coin.amount); }
+  // a native unstake asks for the amount in its message; the rewards the chain
+  // pays out with it are income, kept apart under it (#68 review)
+  const undel = !swap && !!coin && unMsgs.length > 0 && req > 0;
+  if (undel) {
+    // several unstakes in one transaction: all this wallet asked for in the
+    // coin, counted and placed from the same messages
+    const ours = unMsgs.filter(x => x.amount.denom === coin.denom);
+    req = ours.reduce((a, x) => a + Number(x.amount.amount || 0), 0);
+    const vals = ours.map(x => x.validator_address).filter((v, i, a) => v && a.indexOf(v) === i);
+    title = 'Undelegated' + (ours.length > 1 ? ' \u00d7' + ours.length : '') + alsoTitle(also);
+    sub = vals.length === 1 ? short(vals[0]) : vals.length + ' validators';
+  }
+  let rewards = [];
+  if (undel) {
+    top = fmt(human({ key: msgKey, raw: req })) + ' ' + symOfKey(msgKey); topIn = false;
+    // every reward kept by its asset, each summed apart (1 LUNC and 4 USTC)
+    rewards = byAsset(ins);
+    below = rewardText(rewards);
+  }
+  const main = undel ? { key: msgKey, raw: 0, req: req }
+    : swap ? (outs[0] || ins[0]) : (ins[0] || outs[0] || (msgKey ? { key: msgKey, raw: 0, req: req } : null));
   const second = swap ? ins[0] : null;
   const usdMain = main ? worthOf(main) : 0;
   return { title: title, kind: kind, group: group, sub: sub, top: top, topIn: topIn, below: below,
-           main: main, second: second, usd: usdMain, flows: f, place: place };
+           main: main, second: second, usd: usdMain, flows: f, place: place, also: also, rewards: rewards, undel: undel };
 }
 
 const BADGE = {
@@ -679,17 +877,32 @@ function face(l, failed, pending){
 }
 
 // One row of the list. The token screen draws the same rows for one token.
-function rowHTML(t, me, dated){
+// The product a contract belongs to is a chip beside the title ("Garuda farm"),
+// and the line under it says the rest (the pair, the other side of a swap).
+function rowHTML(t, me, dated, fold){
   TXS[t.txhash] = t;
   const l = look(t, me);
   const failed = Number(t.code) > 0;
   const when = dated && dayName(t.timestamp) !== 'Today' ? dayName(t.timestamp) : clock(t.timestamp);
   const dollars = l.usd ? usd(Math.abs(l.usd)) : '';
-  return '<div class="ac-row" data-hash="' + esc(t.txhash) + '">' + face(l, failed) +
-    '<div class="ac-mid"><div class="ac-t">' + esc(l.title) + '</div>' +
-      '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span> \u00b7 ' : '') + esc(l.sub || short(t.txhash)) + '</div></div>' +
+  const app = l.place ? l.place.split(' \u00b7 ')[0] : '';
+  const sub = l.place && l.sub === l.place ? l.place.split(' \u00b7 ').slice(1).join(' \u00b7 ') : (l.sub || (app ? '' : short(t.txhash)));
+  let usd2 = l.usd ? usd(Math.abs(l.usd)) : dollars;
+  if (fold) {
+    // several of the same in a row, folded into one line (render): the run's
+    // own totals, or only the count - never the first row's amounts
+    l.title = l.title.replace(/ \u00d7\d+$/, '') + ' \u00d7' + fold.n;
+    l.top = fold.top || '';
+    l.below = fold.below || '';
+    l.topIn = !!fold.topIn;
+    usd2 = fold.usd ? usd(Math.abs(fold.usd)) : '';
+  }
+  return '<div class="ac-row' + (fold ? ' ac-fold-head' : '') + '" data-hash="' + esc(t.txhash) + '" data-g="' + esc(failed ? 'fail' : l.group) + '">' + face(l, failed) +
+    '<div class="ac-mid"><div class="ac-t"><span>' + esc(l.title) + '</span>' + (app ? '<em class="ac-app">' + esc(app) + '</em>' : '') +
+      (fold ? '<i class="ac-chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></i>' : '') + '</div>' +
+      ((failed || sub) ? '<div class="ac-s">' + (failed ? '<span class="ac-bad">failed</span>' + (sub ? ' \u00b7 ' : '') : '') + esc(sub) + '</div>' : '') + '</div>' +
     '<div class="ac-r"><div class="ac-v' + (l.topIn && !failed ? ' in' : '') + '">' + (failed ? '' : esc(l.top)) + '</div>' +
-      '<div class="ac-w">' + esc(l.below && !failed ? l.below : (dollars && !failed ? dollars + ' \u00b7 ' : '') + when) + '</div></div>' +
+      '<div class="ac-w">' + esc(l.below && !failed ? l.below : (usd2 && !failed ? usd2 + ' \u00b7 ' : '') + when) + '</div></div>' +
     '</div>';
 }
 
@@ -764,7 +977,8 @@ function render(){
   const rows = ALL.map(t => ({ t: t, l: look(t, me) }))
     .filter(x => FILTER === 'all' || x.l.group === FILTER).slice(0, SHOWN);
   // sends still waiting for their block go on top, as the first thing today
-  const pend = FILTER === 'all' || FILTER === 'transfers' ? PENDING : [];
+  // only this wallet's: a send from another wallet never shows here (#68)
+  const pend = FILTER === 'all' || FILTER === 'transfers' ? PENDING.filter(j => j.from && j.from === me) : [];
   if (!rows.length && !pend.length) {
     list.innerHTML = '<div class="empty">' + (ALL.length ? 'Nothing of this kind in the history read so far.' : 'Nothing on chain for this address yet.') + '</div>';
   } else {
@@ -782,15 +996,189 @@ function render(){
       const tag = inn >= 0.01 && out < 0.01 ? '+' + usd(inn) + ' in'
         : out >= 0.01 && inn < 0.01 ? '-' + usd(out) + ' out'
         : inn + out >= 0.01 ? (inn - out >= 0 ? '+' : '-') + usd(Math.abs(inn - out)) + ' net' : '';
-      html += '<div class="ac-day"><span>' + dayName(xs[0].t.timestamp) + '</span><em>' + tag + '</em></div>';
-      html += xs.map(x => rowHTML(x.t, me)).join('');
+      html += '<div class="ac-day" id="ac-d-' + k + '"><span>' + dayName(xs[0].t.timestamp) + '</span><em>' + tag + '</em></div>';
+      html += foldDay(xs, me);
     }
     if (MORE || ALL.length > SHOWN) html += '<button type="button" class="ac-more" id="ac-more">Load more</button>';
     list.innerHTML = html;
     paintIcons(list);
   }
   $('#ac-note').textContent = ALL.length ? ALL.length + ' transactions read so far.' : '';
+  summary(me);
   learnPlaces();
+}
+
+/* The same thing several times in a row on one day (two markets settled at
+   02:15) is one line, "\u00d72", with the total when it is all one token;
+   tapped, it opens to show each. */
+const FOLD_OPEN = {};
+function foldDay(xs, me){
+  const keyOf = x => {
+    const f = x.l.main;
+    return Number(x.t.code) > 0 ? '' : x.l.title.replace(/ \u00d7\d+$/, '') + '|' + (x.l.place || x.l.sub || '') + '|' + (f ? f.key + (f.raw > 0 ? '+' : '-') : '');
+  };
+  let out = '';
+  for (let i = 0; i < xs.length;) {
+    let j = i + 1;
+    const k = keyOf(xs[i]);
+    while (k && j < xs.length && keyOf(xs[j]) === k) j++;
+    const run = xs.slice(i, j);
+    if (run.length < 2) out += rowHTML(run[0].t, me);
+    else {
+      const id = run[0].t.txhash;
+      const main = run.map(x => x.l.main);
+      const sameKey = main.every(f => f && f.key === main[0].key);
+      let fold = { n: run.length };
+      if (run.every(x => x.l.kind === 'swap')) {
+        // swaps: what came in above, what went out below, each side once. A
+        // row's known flows (main and second can be the same one) split by
+        // sign; a side is added up only when every swap has one of it and
+        // they are all the same token, else it is left out (#68 review)
+        const sides = run.map(x => [x.l.main, x.l.second].filter((f, i, a) => f && a.indexOf(f) === i));
+        const side = pos => {
+          const fs = sides.map(ss => ss.filter(f => pos ? f.raw > 0 : f.raw < 0));
+          if (!fs.every(ss => ss.length === 1) || !fs.every(ss => ss[0].key === fs[0][0].key)) return null;
+          return { key: fs[0][0].key, raw: fs.reduce((a, ss) => a + ss[0].raw, 0) };
+        };
+        const got = side(true), paid = side(false);
+        if (got) { fold.top = amountText(got); fold.topIn = true; }
+        if (paid) fold.below = amountText(paid);
+        if (got || paid) fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
+      } else if (sameKey && main.every(f => f.req > 0)) {
+        // requests (unstakes) move nothing yet: add up what was asked for
+        const asked = main.reduce((a, f) => a + f.req, 0);
+        fold.top = fmt(human({ key: main[0].key, raw: asked })) + ' ' + symOfKey(main[0].key);
+        // and the rewards paid out with them, still as income: every asset
+        // summed apart across the run (+3 LUNC and +4 USTC), none dropped
+        const rw = byAsset([].concat(...run.map(x => x.l.rewards || [])));
+        if (rw.length) fold.below = rewardText(rw);
+      } else if (sameKey && main.every(f => f.raw !== 0)) {
+        const tot = { key: main[0].key, raw: main.reduce((a, f) => a + f.raw, 0) };
+        fold.top = amountText(tot);
+        fold.topIn = tot.raw > 0;
+        fold.usd = run.reduce((a, x) => a + (x.l.usd || 0), 0);
+      }
+      // otherwise only the count: no total that could be wrong
+      out += '<div class="ac-fold' + (FOLD_OPEN[id] ? ' open' : '') + '" data-fold="' + esc(id) + '">' + rowHTML(run[0].t, me, false, fold) +
+        '<div class="ac-fold-in">' + run.map(x => rowHTML(x.t, me)).join('') + '</div></div>';
+    }
+    i = j;
+  }
+  return out;
+}
+
+/* ---------------- the period at a glance (wide screen) ----------------
+   What came in, what went out and the network fees over 7 days, 30 days or
+   everything read so far, at today's prices, and a bar per day: in above the
+   line, out below. A bar jumps to its day in the list. Built from the history
+   already read, so it grows as older pages are read. */
+let PERIOD = 30;
+const isDesk = () => document.documentElement.classList.contains('dk');
+// the network fee this address paid: its moves to the fee collector that are
+// not the burn tax (the tax has its own line)
+// the network fee this address paid: its moves to the fee collector that
+// are not a burn tax (collectorMoves)
+function feePaid(t, me){
+  return collectorMoves(t).filter(m => !m.tax && m.from === me && m.c.denom === 'uluna').reduce((a, m) => a + Number(m.c.amount), 0);
+}
+// local midnight i calendar days before now's day
+function calDay(now, i){
+  const t = new Date(now);
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
+}
+function sumClick(e){
+  const p = e.target.closest('[data-p]');
+  if (p) { PERIOD = Number(p.getAttribute('data-p')); summary(S.ADDR || (S.SAVED && S.SAVED.addr) || ''); return; }
+  const d = e.target.closest('[data-day]');
+  if (d) revealDay(d.getAttribute('data-day'));
+}
+// A bar's day, reached even when its rows are past the ones drawn (a day
+// below the first 40): the list grows to it, then scrolls to its heading.
+// Under a filter that hides the day, the filter goes back to All.
+function revealDay(k){
+  let el = document.getElementById('ac-d-' + k);
+  if (!el) {
+    const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+    const at = () => ALL.filter(t => FILTER === 'all' || look(t, me).group === FILTER).findIndex(t => dayKey(t.timestamp) === k);
+    let i = at();
+    if (i < 0 && FILTER !== 'all') { FILTER = 'all'; i = at(); }
+    if (i < 0) return;
+    SHOWN = Math.max(SHOWN, Math.ceil((i + 1) / 40) * 40);
+    render();
+    el = document.getElementById('ac-d-' + k);
+  }
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// the summary belongs to one wallet: emptied the moment another one opens
+function clearSummary(){
+  const box = document.getElementById('ac-sum');
+  if (box) { box.hidden = true; box.innerHTML = ''; box.dataset.for = ''; }
+}
+function summary(me){
+  let box = document.getElementById('ac-sum');
+  // drawn only for the wallet that is open and whose history is in ALL
+  const active = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
+  if (!isDesk() || !ALL.length || me !== active || LOADED_FOR !== me) { clearSummary(); return; }
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'ac-sum'; box.className = 'ac-sum';
+    const chips = $('#ac-chips');
+    chips.parentNode.insertBefore(box, chips);
+    box.addEventListener('click', sumClick);
+  }
+  box.hidden = false;
+  box.dataset.for = me;
+  // the period is whole local days, the same days the bars show: today and
+  // the 6 (or 29) before it, counted on the calendar so a clock change does
+  // not shift or double a day
+  const now = Date.now(), dayAt = i => calDay(now, i);
+  const from = PERIOD ? dayAt(PERIOD - 1).getTime() : -Infinity;
+  const within = ALL.filter(t => new Date(t.timestamp).getTime() >= from);
+  const xs = within.filter(t => Number(t.code) === 0);
+  let inn = 0, out = 0, fee = 0, nIn = 0, nOut = 0;
+  // a failed transaction moved nothing but still paid its fee
+  within.forEach(t => { if (Number(t.code) !== 0) fee += feePaid(t, me); });
+  const perDay = {};
+  xs.forEach(t => {
+    const f = flows(t, me);
+    let a = 0, b = 0;
+    f.forEach(x => { const w = worthOf(x); if (w > 0) a += w; else b -= w; });
+    inn += a; out += b;
+    // counted by what moved, priced or not
+    if (f.some(x => x.raw > 0)) nIn++;
+    if (f.some(x => x.raw < 0)) nOut++;
+    fee += feePaid(t, me);
+    const k = dayKey(t.timestamp);
+    const d = perDay[k] = perDay[k] || { a: 0, b: 0, ca: 0, cb: 0 };
+    d.a += a; d.b += b;
+    if (f.some(x => x.raw > 0)) d.ca++;
+    if (f.some(x => x.raw < 0)) d.cb++;
+  });
+  // the bars: the last 30 days (7 when the period is 7)
+  const nBars = PERIOD === 7 ? 7 : 30;
+  const bars = [];
+  for (let i = nBars - 1; i >= 0; i--) {
+    const d = dayAt(i), k = dayKey(d);
+    bars.push({ k: k, v: perDay[k] || { a: 0, b: 0, ca: 0, cb: 0 }, label: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) });
+  }
+  // priced in dollars; with no prices yet, by how many transactions
+  if (!bars.some(b => b.v.a || b.v.b)) bars.forEach(b => { b.v = { a: b.v.ca, b: b.v.cb, ca: b.v.ca, cb: b.v.cb, n: true }; });
+  const top = Math.max(0.01, ...bars.map(b => Math.max(b.v.a, b.v.b)));
+  const h = v => v > 0 ? Math.max(2, Math.round(v / top * 42)) : 0;
+  const net = inn - out;
+  const lunc = fee / 1e6;
+  box.innerHTML =
+    '<div class="ac-sum-top"><div class="ac-per" role="tablist" aria-label="Period">' + [[7, '7D'], [30, '30D'], [0, 'All']].map(([v, l]) =>
+      '<button type="button" role="tab" data-p="' + v + '" aria-selected="' + (PERIOD === v) + '" class="' + (PERIOD === v ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
+      '<span>' + (PERIOD ? 'Last ' + PERIOD + ' days' : 'Everything read so far') + ' \u00b7 at today\u2019s prices</span></div>' +
+    '<div class="ac-sum-b"><div class="ac-tiles">' +
+      '<div><span>Came in</span><b class="in">+' + usd(inn) + '</b><small>' + nIn + ' transaction' + (nIn === 1 ? '' : 's') + '</small></div>' +
+      '<div><span>Went out</span><b>-' + usd(out) + '</b><small>' + nOut + ' transaction' + (nOut === 1 ? '' : 's') + '</small></div>' +
+      '<div><span>Network fees</span><b>' + fmt(lunc) + ' LUNC</b><small>paid by this address</small></div>' +
+      '<div><span>Net</span><b class="' + (net >= 0 ? 'in' : 'out') + '">' + (net >= 0 ? '+' : '-') + usd(Math.abs(net)) + '</b><small>' + xs.length + ' in total</small></div>' +
+    '</div><div class="ac-bars" aria-label="In and out by day">' + bars.map(b =>
+      '<button type="button" data-day="' + b.k + '" title="' + esc(b.label + (b.v.a || b.v.b ? (b.v.n ? ': ' + b.v.ca + ' in / ' + b.v.cb + ' out' : ': +' + usd(b.v.a) + ' / -' + usd(b.v.b)) : '')) + '"' + (b.v.a || b.v.b ? '' : ' disabled') + '>' +
+        '<i class="a" style="height:' + h(b.v.a) + 'px"></i><i class="b" style="height:' + h(b.v.b) + 'px"></i></button>').join('') + '</div></div>';
 }
 
 function pendingRow(j){
@@ -829,9 +1217,14 @@ async function load(){
   if (AGAIN) { AGAIN = false; LOADED = ''; load(); }
 }
 async function read(me){
+  // another wallet: the last one's summary goes before anything of this one,
+  // even before waiting for a read of the old wallet still in flight
+  const sumBox = document.getElementById('ac-sum');
+  if (sumBox && sumBox.dataset.for !== me) clearSummary();
   // a "Load more" still running for this wallet: let it end before starting
   // over, so the fresh read gets its own first page instead of joining it
   while (FETCH_P) await FETCH_P.catch(() => {});
+  if ((S.ADDR || (S.SAVED && S.SAVED.addr) || '') !== me) return;
   const list = $('#ac-list');
   const old = cached(me);
   ALL = []; PAGE_OFF = 0; SHOWN = 40; MORE = true; LOADED_FOR = me;
@@ -870,7 +1263,13 @@ document.addEventListener('frontier:wallet', () => {
   // another wallet: the list shown belongs to the old one, and a read still
   // running for it must not land here
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
-  if (LOADED_FOR && LOADED_FOR !== me) { LOADED_FOR = ''; LOADED = ''; ALL = []; MORE = true; }
+  if (LOADED_FOR && LOADED_FOR !== me) {
+    LOADED_FOR = ''; LOADED = ''; ALL = []; MORE = true;
+    // the old wallet's figures leave the screen now, not when the new read starts
+    clearSummary();
+    const list = document.getElementById('ac-list');
+    if (list) list.innerHTML = '<div class="empty">Reading the chain</div>';
+  }
   clearTimeout(load._pre);
   load._pre = setTimeout(() => {
     const a = document.getElementById('st-activity');
@@ -892,6 +1291,13 @@ $('#ac-list').addEventListener('click', async e => {
     const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
     if (ALL.length < SHOWN && MORE) await fetchMore(me, render);
     render();
+    return;
+  }
+  const head = e.target.closest('.ac-fold-head');
+  if (head) {
+    const f = head.parentNode, id = f.getAttribute('data-fold');
+    FOLD_OPEN[id] = !FOLD_OPEN[id];
+    f.classList.toggle('open', FOLD_OPEN[id]);
     return;
   }
   const row = e.target.closest('.ac-row');
