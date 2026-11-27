@@ -1265,10 +1265,14 @@ document.addEventListener('frontier:wallet', () => {
   const me = S.ADDR || (S.SAVED && S.SAVED.addr) || '';
   if (LOADED_FOR && LOADED_FOR !== me) {
     LOADED_FOR = ''; LOADED = ''; ALL = []; MORE = true;
-    // the old wallet's figures leave the screen now, not when the new read starts
+    // the old wallet's rows and figures go now, not when the next read starts
+    // (the tab waits for its move before reading, #77 review): the new
+    // wallet's kept list if there is one, else the reading state; the chain
+    // read still waits
     clearSummary();
-    const list = document.getElementById('ac-list');
-    if (list) list.innerHTML = '<div class="empty">Reading the chain</div>';
+    const kept = me ? cached(me) : null;
+    if (kept && kept.length) { ALL = kept.slice(); SHOWN = 40; render(); }
+    else { const list = document.getElementById('ac-list'); if (list) list.innerHTML = '<div class="empty">Reading the chain</div>'; }
   }
   clearTimeout(load._pre);
   load._pre = setTimeout(() => {
@@ -1330,9 +1334,13 @@ $('#tx-copy').addEventListener('click', async function () {
   setTimeout(() => { this.textContent = back; }, 1500);
 });
 
+// Work a screen starts when it comes on waits for the move onto it to finish
+// (0.24 s on a desktop, 0.42 s on a phone): run in the same frame as the
+// switch, a repaint of a long list held the first frame of the move back.
+const later = fn => setTimeout(fn, document.documentElement.classList.contains('dk') ? 280 : 460);
 // loaded when the tab is opened, not on boot: the home screen has enough to do
 document.querySelectorAll('[data-tab="activity"]').forEach(b =>
-  b.addEventListener('click', () => { load(); }));
+  b.addEventListener('click', () => { later(load); }));
 
 /* A transaction from somewhere else in the wallet: a send that just landed,
    a notification's Details button. Read by hash if the list has not got it. */

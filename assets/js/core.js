@@ -172,6 +172,10 @@ async function update(){
   });
 }
 
+// Work a screen starts when it comes on waits for the move onto it to finish
+// (0.24 s on a desktop, 0.42 s on a phone): run in the same frame as the
+// switch, a repaint of a long list held the first frame of the move back.
+const later = fn => setTimeout(fn, document.documentElement.classList.contains('dk') ? 280 : 460);
 const core = $('#core');
 if (core) {
   core.addEventListener('click', e => {
@@ -200,7 +204,7 @@ if (core) {
     let was = home.classList.contains('on');
     new MutationObserver(() => {
       const on = home.classList.contains('on');
-      if (on && !was) { STK = null; refreshBalances(false); }
+      if (on && !was) { STK = null; later(() => refreshBalances(false)); }
       was = on;
     }).observe(home, { attributes: true, attributeFilter: ['class'] });
   }

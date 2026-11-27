@@ -27,7 +27,8 @@ ok('the market is read only while home is the screen shown', /function onHome\(\
 ok('the answer window comes from the policy', /aw = Number\(p\.answer_window_sec\)/.test(gram) && /time: aw > 0 \? 'up to '/.test(gram));
 ok('the last figures are kept per network and painted at once', /const HOME_KEY = 'fw:gram:home:' \+ NET\.name;/.test(gram) && /paintMarket\(keptMarket\(\)\)/.test(gram));
 ok('kept figures are a day old at most and painted as text', /now\(\) - Number\(m\.at\) < 86400/.test(gram) && !/innerHTML/.test(gram.slice(gram.indexOf('function paintMarket('), gram.indexOf('async function homeMarket('))));
-ok('home shown reads the market at once (not only a click or the 30 s tick)', /new MutationObserver\(\(\) => \{ if \(onHome\(\)\) homeCard\(false\); \}\)/.test(gram));
+// "at once" = as soon as the move onto Home has finished (later(), #77), not on the 30 s tick
+ok('home shown reads the market at once (not only a click or the 30 s tick)', /new MutationObserver\(\(\) => \{ if \(onHome\(\) && card && !card\.hidden\) \{ homeDeal\(\); later\(\(\) => homeCard\(false\)\); \} \}\)/.test(gram) && /const later = fn => setTimeout\(fn, [^;]*\? 280 : 460\);/.test(gram));
 ok('a failed read does not hold the next one back 2 minutes', /catch \(e\) \{ HOME_AT = 0; return; \}/.test(gram));
 ok('Worker numbers reach the card as text only', !/innerHTML/.test(gram.slice(gram.indexOf('function homeDeal('), gram.indexOf('function homeCard('))));
 

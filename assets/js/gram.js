@@ -366,17 +366,28 @@ function homeCard(force){ if (!card || card.hidden) return; homeDeal(); homeMark
 setInterval(() => homeCard(false), 30000);
 document.addEventListener('frontier:tx', () => setTimeout(() => homeCard(true), 4000));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) homeCard(false); });
+// Work a screen starts when it comes on waits for the move onto it to finish
+// (0.24 s on a desktop, 0.42 s on a phone): run in the same frame as the
+// switch, a repaint of a long list held the first frame of the move back.
+const later = fn => setTimeout(fn, document.documentElement.classList.contains('dk') ? 280 : 460);
 // coming back to home reads the market if the last read is over 2 minutes old
 document.addEventListener('click', e => {
-  if (e.target.closest('[data-go="home"], #tabs .tab[data-tab="home"]')) setTimeout(() => homeCard(false), 50);
+  if (e.target.closest('[data-go="home"], #tabs .tab[data-tab="home"]')) later(() => homeCard(false));
 });
 // home shown (after unlock, a tab, a back button, a wallet switch): the
 // market is read then, not 30 s later on the next tick
 {
   const st = card && card.closest('.step');
-  if (st && window.MutationObserver) new MutationObserver(() => { if (onHome()) homeCard(false); })
+  // the deal part is local and drawn at once; only the market read waits for the move
+  if (st && window.MutationObserver) new MutationObserver(() => { if (onHome() && card && !card.hidden) { homeDeal(); later(() => homeCard(false)); } })
     .observe(st, { attributes: true, attributeFilter: ['class'] });
 }
+// another wallet: the old one's deal state goes at once, and the card (and
+// its Open button's tab) is drawn for the new one before any delay (#77 review)
+document.addEventListener('frontier:wallet', () => {
+  WAITING_N = 0; HOME_TAB = '';
+  if (card && !card.hidden) homeDeal();
+});
 if (card && !card.hidden) paintMarket(keptMarket());
 setTimeout(() => homeCard(true), 1500);
 
