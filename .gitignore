@@ -5,3 +5,4 @@ patch*.py
 add-tests.py
 add-*.py
 .wrangler/
+.dev.vars

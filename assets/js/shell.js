@@ -80,21 +80,111 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); dropKeyboard(); }
 });
 
-const WALLET_TABS = ['home','stake','gov','activity','settings'];
-function go(name){
-  tap();
+const WALLET_TABS = ['home','stake','gov','activity','dev','settings'];
+/* On a desktop, Receive, Send and Swap open as a window over the screen they
+   were opened from (a tab, a token's page, DeFi positions), which stays in
+   view under it; closing returns there. They are short and come back to where
+   they started, so a whole screen for each was more travel than they need.
+   The phone keeps them as screens. */
+const MODAL = ['receive','send','swap','tsend'];
+const UNDER = WALLET_TABS.concat(['token','earn','epos']);
+const modal = () => document.querySelector('.step.as-modal');
+/* A window takes the keyboard while it is open (#76 review): the control that
+   opened it is kept, focus moves into it, Tab and Shift+Tab go round inside
+   it, and closing gives focus back to that control. */
+let OPENER = null;
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const inWindow = m => [...m.querySelectorAll(FOCUSABLE)].filter(x => !x.closest('[hidden]') && x.getClientRects().length);
+function enterModal(m){
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  const h = m.querySelector('h1, h2');
+  if (h) { h.id = h.id || m.id + '-title'; m.setAttribute('aria-labelledby', h.id); }
+  if (!m.hasAttribute('tabindex')) m.setAttribute('tabindex', '-1');
+  const first = inWindow(m).find(x => !x.classList.contains('back')) || inWindow(m)[0] || m;
+  first.focus({ preventScroll: true });
+}
+function closeModal(){
+  const m = modal();
+  if (!m) return false;
+  m.classList.remove('on', 'as-modal');
+  ['role', 'aria-modal', 'aria-labelledby'].forEach(a => m.removeAttribute(a));
+  document.body.classList.remove('modal-open');
+  const o = OPENER; OPENER = null;
+  if (o && o.isConnected && !o.closest('[hidden]')) o.focus({ preventScroll: true });
+  return true;
+}
+// Tab stays inside the open window
+document.addEventListener('keydown', e => {
+  const m = modal();
+  if (e.key !== 'Tab' || !m) return;
+  const f = inWindow(m);
+  if (!f.length) { e.preventDefault(); m.focus(); return; }
+  const i = f.indexOf(document.activeElement);
+  if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && (i < 0 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+});
+// the tab bar for a page: shown on the wallet's tabs only, its own tab picked
+function tabsFor(name){
   const t = $('#tabs');
-  if (t) {
-    t.classList.toggle('on', WALLET_TABS.includes(name));
-    t.querySelectorAll('.tab').forEach(b => b.classList.toggle('sel', b.dataset.tab === name));
+  if (!t) return;
+  t.classList.toggle('on', WALLET_TABS.includes(name));
+  t.querySelectorAll('.tab').forEach(b => b.classList.toggle('sel', b.dataset.tab === name));
+}
+function go(name){
+  const dk = document.documentElement.classList.contains('dk');
+  const base = [...document.querySelectorAll('.step.on')].find(s => !s.classList.contains('as-modal'));
+  if (dk && MODAL.includes(name) && base && UNDER.includes(base.id.slice(3))) {
+    tap();
+    const m = modal();
+    // the opener is what was focused before the first window: one window
+    // replacing another hands it on
+    if (!m) OPENER = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+    if (m && m.id !== 'st-' + name) { m.classList.remove('on', 'as-modal'); ['role', 'aria-modal', 'aria-labelledby'].forEach(a => m.removeAttribute(a)); }
+    // as-modal before on, in one write: the room move (scene.js) leaves it alone
+    const w = $('#st-' + name);
+    w.classList.add('as-modal', 'on');
+    document.body.classList.add('modal-open');
+    enterModal(w);
+    return;
   }
+  closeModal();
+  tap();
+  tabsFor(name);
   // the intro plays once; coming back to welcome later must be instant
   $('#st-welcome').classList.remove('intro');
   $$('.step').forEach(s => s.classList.remove('on'));
   $('#st-' + name).classList.add('on');
   window.scrollTo(0,0);
 }
-$$('[data-go]').forEach(el => el.addEventListener('click', () => go(el.dataset.go)));
+$$('[data-go]').forEach(el => el.addEventListener('click', () => {
+  // inside a window, going "home" (Back, Done, the arrow) means closing it:
+  // back to whatever was under it, which need not be Home
+  if (el.closest('.step.as-modal') && el.dataset.go === 'home') { tap(); closeModal(); return; }
+  go(el.dataset.go);
+}));
+// a window closes on Escape and on a press outside it (a sheet it opened is
+// part of it); pointerdown, so the click that opened it cannot close it
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !modal()) return;
+  if (modal().querySelector('.sw-sheet:not([hidden])')) return;   // the sheet closes first
+  closeModal();
+});
+document.addEventListener('pointerdown', e => {
+  const m = modal();
+  if (!m || m.contains(e.target) || e.target.closest('.sw-sheet, .nt-card, .sync-ask, .crash, .fav-flash')) return;
+  closeModal();
+});
+// the window turning back into a screen when the window narrows to a phone
+new MutationObserver(() => {
+  const m = modal();
+  if (m && !document.documentElement.classList.contains('dk')) { m.classList.remove('as-modal'); document.body.classList.remove('modal-open');
+    // a page again, still open: no longer a dialog to assistive tech (#76 review)
+    ['role', 'aria-modal', 'aria-labelledby'].forEach(a => m.removeAttribute(a)); OPENER = null;
+    $$('.step').forEach(s => { if (s !== m) s.classList.remove('on'); });
+    // the same tab bar as opening that page on a phone (#76 review)
+    tabsFor(m.id.slice(3)); }
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
 // One promise, not a flag. Two callers arriving together used to start two
 // imports, and the second could run on a half-filled set of bindings - which
@@ -130,4 +220,117 @@ export { $, $$, base, bip32, bip39, buzz, dropKeyboard, go, libs, report, ripe, 
   const mo = new MutationObserver(sync);
   sheets.forEach(s => mo.observe(s, { attributes: true, attributeFilter: ['hidden'] }));
   sync();
+})();
+
+/* Token pickers in a window (Swap, Send) unfold under the field that opened
+   them, as a menu, instead of a second window over the first. The sheets stay
+   what they are - the same list, search and handlers - only placed and shaped
+   differently. On a phone they are bottom sheets, as before. */
+(function pickerDrops(){
+  const ids = ['sw-sheet', 'sd-sheet'];
+  const sheets = ids.map(id => document.getElementById(id)).filter(Boolean);
+  if (!sheets.length || typeof MutationObserver === 'undefined') return;
+  let anchor = null;
+  // capture: noted before the button's own handler opens the sheet
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('.sw-pick, .sd-pick');
+    if (a) anchor = a;
+  }, true);
+  const inner = s => s.querySelector('.sw-sheet-in');
+  function clear(s){
+    s.classList.remove('drop', 'up');
+    const i = inner(s);
+    if (i) ['left', 'width', 'top', 'bottom', 'maxHeight'].forEach(k => { i.style[k] = ''; });
+  }
+  function place(s){
+    const i = inner(s);
+    if (!i || !anchor || !document.documentElement.classList.contains('dk') || !anchor.closest('.step.as-modal')) { clear(s); return; }
+    const r = (anchor.closest('.sw-side') || anchor).getBoundingClientRect();
+    const below = innerHeight - r.bottom - 22, above = r.top - 22;
+    const up = below < 280 && above > below;
+    s.classList.add('drop');
+    s.classList.toggle('up', up);
+    i.style.left = r.left + 'px';
+    i.style.width = r.width + 'px';
+    i.style.top = up ? '' : (r.bottom + 6) + 'px';
+    i.style.bottom = up ? (innerHeight - r.top + 6) + 'px' : '';
+    i.style.maxHeight = Math.min(440, up ? above : below) + 'px';
+  }
+  const open = () => sheets.find(s => !s.hidden && s.classList.contains('drop'));
+  sheets.forEach(s => new MutationObserver(() => {
+    if (!s.hidden) {
+      place(s);
+      if (anchor) anchor.setAttribute('aria-expanded', 'true');
+      const q = s.querySelector('.sw-find input');
+      if (q && s.classList.contains('drop')) q.focus({ preventScroll: true });
+    } else {
+      if (anchor) anchor.setAttribute('aria-expanded', 'false');
+      clear(s);
+    }
+  }).observe(s, { attributes: true, attributeFilter: ['hidden'] }));
+  const shut = s => { const x = s.querySelector('.sw-x'); if (x) x.click(); else s.hidden = true; };
+  // a press beside the menu folds it (the sheet's own backdrop, now clear)
+  sheets.forEach(s => s.addEventListener('click', e => { if (e.target === s && s.classList.contains('drop')) shut(s); }));
+  // Escape folds the menu and leaves the window open
+  document.addEventListener('keydown', e => {
+    const s = open();
+    if (e.key === 'Escape' && s) { e.stopPropagation(); shut(s); if (anchor) anchor.focus({ preventScroll: true }); }
+  }, true);
+  addEventListener('resize', () => { const s = open(); if (s) place(s); });
+  document.addEventListener('scroll', e => {
+    const s = open();
+    if (s && !s.contains(e.target)) place(s);
+  }, true);
+})();
+
+/* Long screens (a token with 27 pools, DeFi positions, a proposal): the bar
+   with the back button stays at the top while the page scrolls, and once the
+   screen's own title has scrolled away the bar carries it. Further down, a
+   small button at the bottom goes back to the top. One place for every
+   screen with a back button; windows (Receive, Send, Swap) are left out. */
+(function longScreens(){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'to-top';
+  btn.setAttribute('aria-label', 'Back to top');
+  btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>';
+  btn.hidden = true;
+  document.body.appendChild(btn);
+  btn.addEventListener('click', () => {
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+  });
+  const active = () => document.querySelector('.step.on:not(.as-modal)');
+  let ticking = false;
+  function update(){
+    ticking = false;
+    const st = active();
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    // the button: past about two screens' worth of a long page, and never over
+    // a window or a sheet
+    const covered = document.body.classList.contains('modal-open') || document.body.classList.contains('sheet-open');
+    btn.hidden = !(st && y > Math.max(500, innerHeight * 0.9)) || covered;
+    document.querySelectorAll('.step > .bar.stuck').forEach(b => { if (!st || b.parentElement !== st) b.classList.remove('stuck'); });
+    if (!st) return;
+    const bar = st.querySelector(':scope > .bar');
+    if (!bar || !bar.querySelector('.back')) return;
+    // stuck once the page has moved under it
+    const stuck = y > 6 && bar.getBoundingClientRect().top <= 1;
+    bar.classList.toggle('stuck', stuck);
+    // the title, from the screen's own heading, once that heading is out of view
+    const h = st.querySelector(':scope > .bar h1, :scope > .tk-head h1, :scope > h1, :scope > .head h1');
+    const inBar = h && bar.contains(h);
+    let t = bar.querySelector(':scope > .bar-title');
+    if (!inBar && h) {
+      if (!t) { t = document.createElement('span'); t.className = 'bar-title'; bar.insertBefore(t, bar.querySelector('.back').nextSibling); }
+      const gone = h.getBoundingClientRect().bottom < bar.getBoundingClientRect().bottom;
+      t.textContent = gone ? h.textContent.trim() : '';
+      t.classList.toggle('on', stuck && gone);
+    }
+  }
+  const later = () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } };
+  addEventListener('scroll', later, { passive: true });
+  addEventListener('resize', later);
+  // a screen change starts at the top with nothing stuck
+  new MutationObserver(later).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
 })();

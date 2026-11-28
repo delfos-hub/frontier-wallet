@@ -1,0 +1,42 @@
+{
+	// frontier-faucet: test LUNC on rebel-2 for the wallet's DEV tab.
+	// Deployed to the Delfos Hub Cloudflare account (README.md):
+	//   source ~/.delfos-cf.env && npx wrangler deploy
+	"name": "frontier-faucet",
+	"main": "worker.js",
+	"compatibility_date": "2026-11-01",
+	"workers_dev": true,
+	// put the id printed by `npx wrangler d1 create frontier-faucet` here
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "frontier-faucet",
+			"database_id": "7f4ae828-6251-47ee-aaa1-42342c97493e"
+		}
+	],
+	"triggers": {
+		"crons": []
+	},
+	// per client, on top of the per-day limits below. Namespace ids differ from
+	// the other Workers' on the account (sync-worker 2611/2612).
+	"ratelimits": [
+		{
+			"name": "CLAIMS",
+			"namespace_id": "2621",
+			"simple": {
+				"limit": 5,
+				"period": 60
+			}
+		}
+	],
+	// The faucet's key is a secret: node key.mjs (README.md), never here.
+	"vars": {
+		"CHAIN": "rebel-2",
+		"LCD": "https://lcd.luncblaze.com",
+		"AMOUNT": "1000000000", // uluna per claim: 1,000 LUNC
+		"COOLDOWN_H": "24", // hours between claims of one address
+		"PER_CLIENT_DAY": "3", // claims per IP (or IPv6 /64) a day
+		"DAILY_CAP": "2000000000000", // uluna across everyone a day: 2,000,000 LUNC
+		"PAUSED": "" // "1" stops claims without a deploy of code
+	}
+}
